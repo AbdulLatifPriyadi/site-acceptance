@@ -496,6 +496,10 @@
     position:fixed; bottom:0; left:0; right:0; height:60px;
     pointer-events:none; overflow:hidden; z-index:1;
   }
+  .walk-peep-wrap{
+    display:flex; flex-direction:column; align-items:center;
+    position:absolute; bottom:4px;
+  }
   .walk-peep{
     height:40px; opacity:.65;
     image-rendering:pixelated;
@@ -513,6 +517,7 @@
   .walk-peep-wrap.walk-left .walk-peep{ transform:scaleX(-1); }
 
   .walk-bubble{
+    position:relative; align-self:center;
     background:#fff; color:#1c2530; font-size:10px; font-weight:700;
     padding:3px 7px; border-radius:8px; white-space:nowrap; margin-bottom:3px;
     opacity:0; transition:opacity .3s; box-shadow:0 1px 4px rgba(0,0,0,.3);
@@ -546,7 +551,7 @@
         </button>
       </div>
       <div id="loginDebugLog" style="margin-top:12px; background:#0d1117; border:1px solid #30363d; border-radius:8px; padding:8px 10px; font-family:monospace; font-size:10px; color:#7ee787; max-height:120px; overflow:auto;"><div style="color:#8b949e; margin-bottom:4px;">System log:</div></div>
-      <div id="appVersion" style="position:fixed; bottom:8px; right:12px; font-size:9.5px; color:rgba(255,255,255,.25); font-family:monospace;">v2026.08.27-dbg17</div>
+      <div id="appVersion" style="position:fixed; bottom:8px; right:12px; font-size:9.5px; color:rgba(255,255,255,.25); font-family:monospace;">v2026.08.27-dbg18</div>
     </div>
     <div class="walk-peeps">
       <div class="walk-peep-wrap walk-right" style="animation-name:walkRight;animation-duration:18s;animation-delay:0s;animation-timing-function:linear;animation-iteration-count:infinite;"><div class="walk-bubble" id="wB1"></div><img class="walk-peep" src="walk.gif"></div>
