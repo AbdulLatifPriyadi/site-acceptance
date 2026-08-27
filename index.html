@@ -3160,10 +3160,10 @@ Remark = ${remark}`;
       const si = document.getElementById('tableSearchInput');
       if (si) si.value = '';
       renderTableView();
-    }
+    } else if (view === 'graph') {
       renderGraphView();
-    } else if(view === 'table') {
-      renderTableView();
+    } else {
+      // map view — handled above
     }
   }
 
