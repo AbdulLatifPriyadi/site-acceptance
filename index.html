@@ -3278,8 +3278,33 @@ Remark = ${remark}`;
     const val = document.getElementById('loginInput').value.trim();
     if(!val){ document.getElementById('loginError').textContent = 'Enter a password'; document.getElementById('loginError').style.display = 'block'; return; }
 
-    // Immediate DOM switch — show dashboard, hide login
-    console.log('[LOGIN] Adding dashboard-mode, hiding login, showing dashboard');
+    // Validate password BEFORE switching to dashboard
+    let isValid = false;
+    let errorMsg = '';
+    if(val.toLowerCase() === DASHBOARD_PASSWORD.toLowerCase()){
+      dashboardUnlocked = true;
+      mySubcont = '';
+      isValid = true;
+    } else {
+      const scMatch = val.match(/^([A-Za-z]+)(\d+)$/);
+      if(scMatch && scMatch[2] === '123'){
+        mySubcont = normalizeSubcontKey(scMatch[1]);
+        unlockedSubconts = {};
+        unlockedSubconts[mySubcont] = true;
+        isValid = true;
+      } else {
+        errorMsg = 'Wrong password';
+      }
+    }
+
+    if(!isValid){
+      document.getElementById('loginError').textContent = errorMsg;
+      document.getElementById('loginError').style.display = 'block';
+      return;
+    }
+
+    // Password OK — switch to dashboard
+    console.log('[LOGIN] Password OK — switching to dashboard');
     document.body.classList.add('dashboard-mode');
     document.getElementById('loginScreen').style.display = 'none';
     document.getElementById('loginScreen').style.visibility = 'hidden';
@@ -3288,47 +3313,12 @@ Remark = ${remark}`;
     document.getElementById('dashboardScreen').style.inset = '0';
     document.getElementById('dashboardScreen').style.zIndex = '60';
     document.getElementById('dashboardScreen').style.background = '#eef1f3';
-    // Visible feedback that something happened
-    const status = document.getElementById('dashStatus');
-    if (status) status.textContent = 'Loading…';
-    console.log('[LOGIN] body classList:', document.body.className);
-    console.log('[LOGIN] loginScreen display:', document.getElementById('loginScreen').style.display);
-    console.log('[LOGIN] dashboardScreen display:', document.getElementById('dashboardScreen').style.display);
 
     try {
-      // surge123 → full dashboard access — check exact match FIRST before subcont pattern
-      if(val.toLowerCase() === DASHBOARD_PASSWORD.toLowerCase()){
-        dashboardUnlocked = true;
-        mySubcont = '';
-      } else {
-        // [SUBCONT]123 → subcont-only access — only try this if dashboard password didn't match
-        const scMatch = val.match(/^([A-Za-z]+)(\d+)$/);
-        if(scMatch && scMatch[2] === '123'){
-          const subcontKey = normalizeSubcontKey(scMatch[1]);
-          mySubcont = subcontKey;
-          unlockedSubconts = {};
-          unlockedSubconts[mySubcont] = true;
-        } else {
-          throw new Error('Wrong password');
-        }
-      }
-
-      // Init dashboard (await so errors are caught by outer try/catch)
       await initDashboard();
-
     } catch(e) {
-      console.error('[LOGIN] Error caught:', e);
-      document.getElementById('loginError').textContent = e.message === 'Wrong password' ? 'Wrong password' : ('Error: ' + e.message);
-      document.getElementById('loginError').style.display = 'block';
-      // Revert — clear ALL inline styles set during login
-      document.body.classList.remove('dashboard-mode');
-      document.getElementById('loginScreen').style.display = '';
-      document.getElementById('loginScreen').style.visibility = '';
-      document.getElementById('dashboardScreen').style.display = 'none';
-      document.getElementById('dashboardScreen').style.position = '';
-      document.getElementById('dashboardScreen').style.inset = '';
-      document.getElementById('dashboardScreen').style.zIndex = '';
-      document.getElementById('dashboardScreen').style.background = '';
+      console.error('[LOGIN] initDashboard error:', e);
+      document.getElementById('dashStatus').textContent = 'Error: ' + (e.message || String(e));
     }
   });
 
