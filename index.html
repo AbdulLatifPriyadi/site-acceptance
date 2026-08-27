@@ -1951,21 +1951,33 @@ Remark = ${remark}`;
     });
 
     // Build filter dropdowns per column
+    function buildFilterOptions(opts, cur) {
+      var html = '';
+      for (var i = 0; i < opts.length; i++) {
+        var v = opts[i];
+        var label = v.length > 25 ? v.slice(0, 25) + '...' : v;
+        var sel = v === cur ? ' selected' : '';
+        html += '<option value="' + escapeHtml(v) + '"' + sel + '>' + escapeHtml(label) + '</option>';
+      }
+      return html;
+    }
     const filterRow = allCols.map(col => {
       const uniq = getUniqueColValues(sites, col);
       const cur = tableColFilters[col] || '';
       const hasFilter = !!cur;
-      return `<th style="padding:0;white-space:nowrap;background:#0d1117;user-select:none;">
-        <div style="display:flex;align-items:center;gap:2px;padding:0 4px;">
-          <span data-key="${col}" class="tbl-sort-btn" style="cursor:pointer;padding:4px 3px;font-weight:${tableSortKey===col?'700':'400'};color:${tableSortKey===col?'#58a6ff':'#8b949e'};white-space:nowrap;">
-            ${colLabels[col]}${tableSortKey===col?(tableSortDir==='asc'?' &#9650;':' &#9660;'):''}
-          </span>
-          <select data-filter-col="${col}" style="background:${hasFilter?'#1f4b6e':'#161b22'};color:${hasFilter?'#58a6ff':'#484f58'};border:1px solid ${hasFilter?'#388bfd':'#30363d'};border-radius:3px;font-size:9px;padding:1px 2px;cursor:pointer;max-width:${colWidths[col]}px;outline:none;">
-            <option value="">${hasFilter?'✗ Clear':'(All)'}</option>
-            ${uniq.map(v => `<option value="${escapeHtml(v)}" ${v===cur?'selected':''}>${escapeHtml(v.length > 25 ? v.slice(0,25)+'…' : v}</option>`).join('')}
-          </select>
-        </div>
-      </th>`;
+      const arrow = tableSortKey === col ? (tableSortDir === 'asc' ? '&#9650;' : '&#9660;') : '';
+      const filterOptions = buildFilterOptions(uniq, cur);
+      return '<th style="padding:0;white-space:nowrap;background:#0d1117;user-select:none;">' +
+        '<div style="display:flex;align-items:center;gap:2px;padding:0 4px;">' +
+        '<span data-key="' + col + '" class="tbl-sort-btn" style="cursor:pointer;padding:4px 3px;font-weight:' + (tableSortKey === col ? '700' : '400') + ';color:' + (tableSortKey === col ? '#58a6ff' : '#8b949e') + ';white-space:nowrap;">' +
+        (colLabels[col] || col) + arrow +
+        '</span>' +
+        '<select data-filter-col="' + col + '" style="background:' + (hasFilter ? '#1f4b6e' : '#161b22') + ';color:' + (hasFilter ? '#58a6ff' : '#484f58') + ';border:1px solid ' + (hasFilter ? '#388bfd' : '#30363d') + ';border-radius:3px;font-size:9px;padding:1px 2px;cursor:pointer;max-width:' + (colWidths[col] || 120) + 'px;outline:none;">' +
+        '<option value="">' + (hasFilter ? '&#10005; Clear' : '(All)') + '</option>' +
+        filterOptions +
+        '</select>' +
+        '</div>' +
+        '</th>';
     }).join('');
 
     const row = (site) => {
@@ -1974,32 +1986,31 @@ Remark = ${remark}`;
         let val = site[c] || '';
         if (c === 'gap') {
           const color = dashGapColor(val);
-          return `<td data-val="${escapeHtml(val)}" style="background:${bg};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(val || '-')}"><span style="display:inline-block;padding:2px 7px;border-radius:999px;font-size:10.5px;font-weight:700;color:#fff;background:${color};white-space:nowrap;">${escapeHtml(val || '-')}</span></td>`;
+          const lbl = escapeHtml(val || '-');
+          return '<td data-val="' + lbl + '" style="background:' + bg + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + lbl + '"><span style="display:inline-block;padding:2px 7px;border-radius:999px;font-size:10.5px;font-weight:700;color:#fff;background:' + color + ';white-space:nowrap;">' + lbl + '</span></td>';
         }
-        return `<td data-val="${escapeHtml(val)}" style="background:${bg};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(val)}">${escapeHtml(val)}</td>`;
+        const lbl2 = escapeHtml(val);
+        return '<td data-val="' + lbl2 + '" style="background:' + bg + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + lbl2 + '">' + lbl2 + '</td>';
       }).join('');
     };
 
-    container.innerHTML = `
-      <div id="tableWrap" style="overflow:auto;position:absolute;top:46px;left:0;right:0;bottom:0;user-select:none;-webkit-user-select:none;" tabindex="0">
-        <table id="tableData" style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:11.5px;min-width:1200px;cursor:cell;user-select:none;-webkit-user-select:none;">
-          <colgroup>
-            ${allCols.map(c => `<col style="width:${colWidths[c]}px;min-width:${colWidths[c]}px;">`).join('')}
-          </colgroup>
-          <thead style="position:sticky;top:0;z-index:3;">
-            <tr style="background:#1c2530;color:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);">
-              ${filterRow}
-            </tr>
-          </thead>
-          <tbody>
-            ${sorted.length === 0
-              ? `<tr><td colspan="${allCols.length}" style="text-align:center;color:#9aa0a6;padding:40px 0;font-size:13px;">No sites found</td></tr>`
-              : sorted.map((s, idx) => `<tr style="border-bottom:1px solid #eef1f3;">${row(s)}</tr>`).join('')
-            }
-          </tbody>
-        </table>
-      </div>
-    `;
+    const colgroupHtml = allCols.map(c => '<col style="width:' + (colWidths[c] || 100) + 'px;min-width:' + (colWidths[c] || 100) + 'px;">').join('');
+    const rowsHtml = sorted.length === 0
+      ? '<tr><td colspan="' + allCols.length + '" style="text-align:center;color:#9aa0a6;padding:40px 0;font-size:13px;">No sites found</td></tr>'
+      : sorted.map((s, idx) => '<tr style="border-bottom:1px solid #eef1f3;">' + row(s) + '</tr>').join('');
+
+    container.innerHTML =
+      '<div id="tableWrap" style="overflow:auto;position:absolute;top:46px;left:0;right:0;bottom:0;user-select:none;-webkit-user-select:none;" tabindex="0">' +
+        '<table id="tableData" style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:11.5px;min-width:1200px;cursor:cell;user-select:none;-webkit-user-select:none;">' +
+          '<colgroup>' + colgroupHtml + '</colgroup>' +
+          '<thead style="position:sticky;top:0;z-index:3;">' +
+            '<tr style="background:#1c2530;color:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);">' +
+              filterRow +
+            '</tr>' +
+          '</thead>' +
+          '<tbody>' + rowsHtml + '</tbody>' +
+        '</table>' +
+      '</div>';
 
     // Wire sort buttons
     container.querySelectorAll('.tbl-sort-btn').forEach(btn => {
