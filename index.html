@@ -158,6 +158,12 @@
     flex:1; border:1px solid #d8dce0; background:#f5f6f7; border-radius:6px;
     font-size:10px; font-weight:700; padding:4px; cursor:pointer;
   }
+  .dash-excel-btn{
+    display:inline-block; padding:5px 10px; border-radius:7px; border:1.2px solid #d8dce0;
+    background:#f0f4ff; color:var(--ink); font-size:10.5px; font-weight:700; cursor:pointer;
+    transition:background .15s;
+  }
+  .dash-excel-btn:hover{ background:#dce4ff; }
 
   .pivot-table{ width:100%; border-collapse:collapse; font-size:11.5px; margin-top:4px; }
   .pivot-table th, .pivot-table td{ padding:7px 9px; border:1px solid #e2e5e8; text-align:center; }
@@ -512,6 +518,7 @@ document.getElementById('dashStatus').textContent='Loading...';
 if(window.initDashboard){window.initDashboard();}
 })()">Enter Dashboard</button>
       <div id="loginDebugLog" style="margin-top:12px; background:#0d1117; border:1px solid #30363d; border-radius:8px; padding:8px 10px; font-family:monospace; font-size:10px; color:#7ee787; max-height:120px; overflow:auto;"><div style="color:#8b949e; margin-bottom:4px;">System log:</div></div>
+      <div id="appVersion" style="position:fixed; bottom:8px; right:12px; font-size:9.5px; color:rgba(255,255,255,.25); font-family:monospace;">v2026.08.27-dbg</div>
     </div>
   </div>
 
@@ -577,6 +584,13 @@ if(window.initDashboard){window.initDashboard();}
             <button type="button" class="dash-filter-mini" id="dashGapAll">All</button>
             <button type="button" class="dash-filter-mini" id="dashGapNone">None</button>
           </div>
+        </div>
+        <div class="dash-filter-group" style="border-top:1px solid rgba(255,255,255,.1); padding-top:8px; margin-top:4px;">
+          <div class="dash-filter-label" style="margin-bottom:4px;">Debug</div>
+          <label class="dash-excel-btn" title="Load sites from Excel file (bypasses server)">
+            <input type="file" id="dashExcelUpload" accept=".xlsx,.xls" style="display:none;">
+            Upload Excel
+          </label>
         </div>
 
       </div>
@@ -1478,7 +1492,11 @@ Remark = ${remark}`;
         console.log('[fetchTrackerForMap] JSON parsed, items:', data ? data.length : 0);
         if(data && data.length > 0) return data;
         console.warn('[fetchTrackerForMap] Apps Script returned empty array');
-      }catch(e){ console.warn('Apps Script tracker fetch error:', e); }
+      }catch(e){
+        console.warn('[fetchTrackerForMap] Apps Script error:', e.name, e.message);
+        console.warn('[fetchTrackerForMap] This likely means: CORS blocked, network error, or redirect to login page.');
+        return [];
+      }
     }
     // Fallback: Google Sheets CSV export (may be affected by filters)
     if(SHEETS_CSV_URL && SHEETS_CSV_URL.includes('docs.google.com')){
@@ -1488,7 +1506,7 @@ Remark = ${remark}`;
         const text = await res.text();
         const data = parseSheetsCSV(text);
         if(data && data.length > 0) return data;
-      }catch(e){ console.warn('Sheets CSV fetch error:', e); }
+      }catch(e){ console.warn('Sheets CSV fetch error:', e); return []; }
     }
     return [];
   }
@@ -3299,6 +3317,9 @@ Remark = ${remark}`;
           const [tracker, msgLookup] = await Promise.race([dataPromise, timeoutPromise]);
           dashTrackerData = tracker;
           dashMessageLookup = msgLookup;
+          // Diagnostic: log data summary
+          const sample = dashTrackerData && dashTrackerData[0];
+          console.log('[initDashboard] Data loaded:', dashTrackerData ? dashTrackerData.length : 0, 'sites', sample ? JSON.stringify(sample).substring(0, 120) : '(empty)');
         } catch(e) {
           if(timedOut){
             console.warn('[initDashboard] Server timeout after ' + FALLBACK_DELAY + 'ms — using empty data');
@@ -3318,7 +3339,7 @@ Remark = ${remark}`;
       dashSelectedGaps = null;
       populateBatchOptions();
       renderChecklistFilters();
-      const count = dashTrackerData.length;
+      const count = dashTrackerData.length || 0;
       document.getElementById('dashStatus').textContent = count > 0 ? `${count} sites loaded` : 'No sites (upload Excel or check server)';
       console.log('[initDashboard] Status set to:', document.getElementById('dashStatus').textContent);
       if(dashView === 'map') {
@@ -3496,6 +3517,64 @@ Remark = ${remark}`;
     document.getElementById('modeGapBtn').classList.remove('active');
     renderChecklistFilters();
     drawDashboardMap();
+  });
+
+  // Excel upload debug tool — bypasses server fetch
+  document.getElementById('dashExcelUpload').addEventListener('change', async (e)=>{
+    const file = e.target.files && e.target.files[0];
+    if(!file) return;
+    const statusEl = document.getElementById('dashStatus');
+    statusEl.textContent = 'Parsing Excel…';
+    try {
+      const buffer = await file.arrayBuffer();
+      const wb = XLSX.read(buffer, {type:'array'});
+      // Build gviz-like table from XLSX sheet and pass to parseSheetsGviz
+      const sheetName = wb.SheetNames[0];
+      const sheet = wb.Sheets[sheetName];
+      const gvizTable = XLSX.utils.sheet_to_json(sheet, {header:1});
+      if(!gvizTable || gvizTable.length < 2){
+        statusEl.textContent = 'Excel sheet is empty or has no data rows';
+        e.target.value = '';
+        return;
+      }
+      const headers = (gvizTable[0] || []).map(h => String(h || '').trim().toLowerCase().replace(/\s+/g, ''));
+      const colMap = {
+        'batchrfi':'batchRfi','batch':'batchRfi',
+        'tpsiteid':'tpId','tpsite':'tpId',
+        'duid':'duId','du_id':'duId',
+        'sitename':'siteName','site_name':'siteName',
+        'subcontplan':'subcontPlan','subcont':'subcontPlan',
+        'gapanalysis':'gap','gap':'gap',
+        'remark':'remark',
+        'city':'city',
+        'latitude':'lat','lat':'lat',
+        'longitude':'lng','lng':'lng'
+      };
+      const normalized = headers.map(h => colMap[h] || h);
+      const rows = [];
+      for(let i = 1; i < gvizTable.length; i++){
+        const rowData = gvizTable[i] || [];
+        const site = {};
+        normalized.forEach((key, idx) => {
+          site[key] = rowData[idx] != null ? String(rowData[idx]).trim() : '';
+        });
+        if(site.duId || site.tpId || site.siteName){
+          rows.push(site);
+        }
+      }
+      if(rows && rows.length > 0){
+        dashTrackerData = rows;
+        dashMessageLookup = {};
+        statusEl.textContent = rows.length + ' sites loaded from Excel';
+        refreshDashboardView();
+      } else {
+        statusEl.textContent = 'No valid rows found in Excel (check columns: duId, lat, lng)';
+      }
+    } catch(err){
+      console.warn('[ExcelUpload] Error:', err);
+      statusEl.textContent = 'Excel parse error: ' + err.message;
+    }
+    e.target.value = '';
   });
   console.log('[APP] Script initialized successfully');
   document.getElementById('loginDebugLog').innerHTML += '<div style="color:#7ee787; margin-bottom:2px;">[APP] Script OK - waiting for login...</div>';
