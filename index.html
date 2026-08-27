@@ -56,6 +56,14 @@
     cursor:pointer; letter-spacing:.02em;
   }
   .login-btn:active{ filter:brightness(.92); }
+  .login-btn-row{ display:flex; gap:8px; }
+  .login-quick-btn{
+    flex-shrink:0; width:44px; height:44px; border:none; border-radius:10px;
+    background:var(--ground); color:#082e1b; cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .login-quick-btn svg{ width:20px; height:20px; }
+  .login-quick-btn:active{ filter:brightness(.92); }
 
 
   /* ---------------- map dashboard (landscape / desktop) ---------------- */
@@ -500,9 +508,14 @@
       <div class="login-label">Token</div>
       <input type="text" id="loginInput" class="login-input" placeholder="Enter token" autocomplete="off" spellcheck="false">
       <div class="login-error" id="loginError"></div>
-      <button type="button" class="login-btn" id="loginBtn">Enter Dashboard</button>
+      <div class="login-btn-row">
+        <button type="button" class="login-btn" id="loginBtn">Enter Dashboard</button>
+        <button type="button" class="login-quick-btn" id="loginQuickBtn" title="Quick enter with saved token">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </button>
+      </div>
       <div id="loginDebugLog" style="margin-top:12px; background:#0d1117; border:1px solid #30363d; border-radius:8px; padding:8px 10px; font-family:monospace; font-size:10px; color:#7ee787; max-height:120px; overflow:auto;"><div style="color:#8b949e; margin-bottom:4px;">System log:</div></div>
-      <div id="appVersion" style="position:fixed; bottom:8px; right:12px; font-size:9.5px; color:rgba(255,255,255,.25); font-family:monospace;">v2026.08.27-dbg8</div>
+      <div id="appVersion" style="position:fixed; bottom:8px; right:12px; font-size:9.5px; color:rgba(255,255,255,.25); font-family:monospace;">v2026.08.27-dbg9</div>
     </div>
   </div>
 
@@ -891,6 +904,7 @@ Remark = ${remark}`;
   const FORWARD_OWN_KEY = 'forward_own_v1';          // this device's own submissions, never overwritten
   const FORWARD_SHARED_CACHE_KEY = 'forward_shared_cache_v1';   // cached copy of the full shared log (for History)
   const FORWARD_SUMMARY_CACHE_KEY = 'forward_summary_cache_v1'; // cached lightweight log (for Leaderboard, no message/state)
+  const SAVED_TOKEN_KEY = 'savedToken';
 
   // Paste your Apps Script Web App URL here (ends in /exec). Leave as-is to run local-only.
   // This Web App should fetch from the Google Sheets URL below.
@@ -3415,6 +3429,9 @@ Remark = ${remark}`;
     document.getElementById('loginInput').value = '';
     document.getElementById('loginError').textContent = '';
     document.getElementById('loginError').style.display = 'none';
+    // Restore saved token to input
+    const saved = getSavedToken();
+    if(saved) document.getElementById('loginInput').value = saved;
   }
 
   // ----- Login screen -----
@@ -3429,6 +3446,17 @@ Remark = ${remark}`;
     const el = document.getElementById('loginDebugLog');
     if(el) el.innerHTML = '<div style="color:#8b949e; margin-bottom:4px;">System log:</div>';
   }
+
+  function getSavedToken(){
+    try { return localStorage.getItem(SAVED_TOKEN_KEY) || ''; } catch(e) { return ''; }
+  }
+
+  // Prefill login input with saved token on page load
+  (function(){
+    const saved = getSavedToken();
+    const input = document.getElementById('loginInput');
+    if(saved && input) input.value = saved;
+  })();
 
   // Show ready message on page load
   showLoginDebug('Page ready. Enter token and click Enter Dashboard.');
@@ -3476,6 +3504,9 @@ Remark = ${remark}`;
       // Init dashboard — await so errors are caught by outer try/catch
       await initDashboard();
 
+      // Save token for quick-enter
+      try { localStorage.setItem(SAVED_TOKEN_KEY, val); } catch(e){}
+
     } catch(e) {
       document.getElementById('loginError').textContent = e.message === 'Wrong token' ? 'Wrong token' : ('Error: ' + e.message);
       document.getElementById('loginError').style.display = 'block';
@@ -3492,7 +3523,26 @@ Remark = ${remark}`;
   });
 
   document.getElementById('loginInput').addEventListener('keydown', (e)=>{
-    if(e.key === 'Enter') document.getElementById('loginBtn').click();
+    if(e.key === 'Enter') document.getElementById('loginQuickBtn').click();
+  });
+
+  document.getElementById('loginQuickBtn').addEventListener('click', ()=>{
+    const input = document.getElementById('loginInput');
+    const val = input.value.trim();
+    if(val){
+      // Has input — treat as normal login
+      document.getElementById('loginBtn').click();
+    } else {
+      // Empty input — try saved token
+      const saved = getSavedToken();
+      if(saved){
+        input.value = saved;
+        document.getElementById('loginBtn').click();
+      } else {
+        document.getElementById('loginError').textContent = 'Enter a token';
+        document.getElementById('loginError').style.display = 'block';
+      }
+    }
   });
 
   // ----- Dashboard password overlay (for subcont table re-auth) -----
