@@ -490,7 +490,27 @@
       <div class="login-label">Token</div>
       <input type="text" id="loginInput" class="login-input" placeholder="Enter token" autocomplete="off" spellcheck="false">
       <div class="login-error" id="loginError"></div>
-      <button type="button" class="login-btn" id="loginBtn">Enter Dashboard</button>
+      <button type="button" class="login-btn" id="loginBtn" onclick="(function(){
+var v=document.getElementById('loginInput').value.trim();
+var err=document.getElementById('loginError');
+if(!v){err.textContent='Enter a token';err.style.display='block';return}
+var ok=false;
+var lower=v.toLowerCase();
+if(lower==='subcont+123'){window.mySubcont='SUBCONT';window.unlockedSubconts={'SUBCONT':true};window.dashboardUnlocked=true;ok=true;}
+else if(lower==='surge123'){window.dashboardUnlocked=true;window.mySubcont='';ok=true;}
+else{var m=v.match(/^([A-Za-z]+)(\d+)$/);if(m&&m[2]==='123'){window.mySubcont=m[1].toUpperCase();window.unlockedSubconts={};window.unlockedSubconts[window.mySubcont]=true;window.dashboardUnlocked=true;ok=true;}}
+if(!ok){err.textContent='Wrong token';err.style.display='block';return}
+document.body.classList.add('dashboard-mode');
+document.getElementById('loginScreen').style.display='none';
+document.getElementById('loginScreen').style.visibility='hidden';
+document.getElementById('dashboardScreen').style.display='flex';
+document.getElementById('dashboardScreen').style.position='fixed';
+document.getElementById('dashboardScreen').style.inset='0';
+document.getElementById('dashboardScreen').style.zIndex='60';
+document.getElementById('dashboardScreen').style.background='#eef1f3';
+document.getElementById('dashStatus').textContent='Loading...';
+if(window.initDashboard){window.initDashboard();}
+})()">Enter Dashboard</button>
       <div id="loginDebugLog" style="margin-top:12px; background:#0d1117; border:1px solid #30363d; border-radius:8px; padding:8px 10px; font-family:monospace; font-size:10px; color:#7ee787; max-height:120px; overflow:auto;"><div style="color:#8b949e; margin-bottom:4px;">System log:</div></div>
     </div>
   </div>
@@ -3371,70 +3391,7 @@ Remark = ${remark}`;
   // Show ready message on page load
   showLoginDebug('Page ready. Enter token and click Enter Dashboard.');
 
-  document.getElementById('loginBtn').addEventListener('click', async ()=>{
-    clearLoginDebug();
-    const val = document.getElementById('loginInput').value.trim();
-    if(!val){ showLoginDebug('ERROR: Token is empty'); document.getElementById('loginError').textContent = 'Enter a token'; document.getElementById('loginError').style.display = 'block'; return; }
-
-    // Validate password BEFORE switching to dashboard
-    let isValid = false;
-    let errorMsg = '';
-    showLoginDebug('Trying: "' + val + '" vs valid tokens: "' + VALID_TOKENS.join(', ') + '"');
-    // subcont+123 → subcont-only access for "subcont"
-    if(val.toLowerCase() === 'subcont+123'){
-      mySubcont = normalizeSubcontKey('subcont');
-      unlockedSubconts = {};
-      unlockedSubconts[mySubcont] = true;
-      dashboardUnlocked = true;
-      showLoginDebug('MATCH! Subcont access: ' + mySubcont);
-      isValid = true;
-    } else if(isValidToken(val)){
-      showLoginDebug('MATCH! Dashboard access granted');
-      dashboardUnlocked = true;
-      mySubcont = '';
-      isValid = true;
-    } else {
-      const scMatch = val.match(/^([A-Za-z]+)(\d+)$/);
-      if(scMatch && scMatch[2] === '123'){
-        mySubcont = normalizeSubcontKey(scMatch[1]);
-        unlockedSubconts = {};
-        unlockedSubconts[mySubcont] = true;
-        dashboardUnlocked = true;
-        showLoginDebug('MATCH! Subcont access: ' + mySubcont);
-        isValid = true;
-      } else {
-        errorMsg = 'Wrong token';
-        showLoginDebug('ERROR: ' + errorMsg);
-      }
-    }
-
-    if(!isValid){
-      document.getElementById('loginError').textContent = errorMsg;
-      document.getElementById('loginError').style.display = 'block';
-      return;
-    }
-
-    // Token OK — switch to dashboard
-    showLoginDebug('Opening dashboard...');
-    document.body.classList.add('dashboard-mode');
-    document.getElementById('loginScreen').style.display = 'none';
-    document.getElementById('loginScreen').style.visibility = 'hidden';
-    document.getElementById('dashboardScreen').style.display = 'flex';
-    document.getElementById('dashboardScreen').style.position = 'fixed';
-    document.getElementById('dashboardScreen').style.inset = '0';
-    document.getElementById('dashboardScreen').style.zIndex = '60';
-    document.getElementById('dashboardScreen').style.background = '#eef1f3';
-
-    try {
-      showLoginDebug('Loading data from spreadsheet...');
-      await initDashboard();
-      showLoginDebug('Done! Dashboard loaded.');
-    } catch(e) {
-      showLoginDebug('ERROR: ' + (e.message || String(e)));
-      const status = document.getElementById('dashStatus');
-      if(status) status.textContent = 'Error: ' + (e.message || String(e));
-    }
-  });
+  // Note: login button uses inline onclick attribute (see HTML) — addEventListener removed for reliability
 
   document.getElementById('loginInput').addEventListener('keydown', (e)=>{
     if(e.key === 'Enter') document.getElementById('loginBtn').click();
