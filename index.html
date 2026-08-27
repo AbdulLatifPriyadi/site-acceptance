@@ -496,33 +496,26 @@
     position:fixed; bottom:0; left:0; right:0; height:60px;
     pointer-events:none; overflow:hidden; z-index:1;
   }
-  .walk-peep-wrap.walk-right, .walk-peep-wrap.walk-left{
-    position:absolute; bottom:4px;
-    display:flex; flex-direction:column; align-items:center;
-    height:44px;
+  .walk-peep{
+    height:40px; opacity:.65;
+    image-rendering:pixelated;
   }
   @keyframes walkRight{
     from{ transform:translateX(-60px); }
     to{ transform:translateX(calc(100vw + 60px)); }
   }
   @keyframes walkLeft{
-    from{ left:calc(100vw + 60px); }
-    to{ left:-60px; }
+    from{ transform:translateX(calc(100vw + 60px)); }
+    to{ transform:translateX(-60px); }
   }
   .walk-right{ animation:walkRight linear infinite; }
   .walk-left{ animation:walkLeft linear infinite; }
   .walk-peep-wrap.walk-left .walk-peep{ transform:scaleX(-1); }
 
-  .walk-peep-wrap{
-    position:absolute; bottom:4px;
-    display:flex; flex-direction:column; align-items:center;
-  }
   .walk-bubble{
     background:#fff; color:#1c2530; font-size:10px; font-weight:700;
-    padding:3px 7px; border-radius:8px; white-space:nowrap;
-    margin-bottom:3px; position:relative;
-    opacity:0; transition:opacity .3s;
-    box-shadow:0 1px 4px rgba(0,0,0,.3);
+    padding:3px 7px; border-radius:8px; white-space:nowrap; margin-bottom:3px;
+    opacity:0; transition:opacity .3s; box-shadow:0 1px 4px rgba(0,0,0,.3);
   }
   .walk-bubble.show{ opacity:1; }
   .walk-bubble::after{
@@ -553,21 +546,12 @@
         </button>
       </div>
       <div id="loginDebugLog" style="margin-top:12px; background:#0d1117; border:1px solid #30363d; border-radius:8px; padding:8px 10px; font-family:monospace; font-size:10px; color:#7ee787; max-height:120px; overflow:auto;"><div style="color:#8b949e; margin-bottom:4px;">System log:</div></div>
-      <div id="appVersion" style="position:fixed; bottom:8px; right:12px; font-size:9.5px; color:rgba(255,255,255,.25); font-family:monospace;">v2026.08.27-dbg16</div>
+      <div id="appVersion" style="position:fixed; bottom:8px; right:12px; font-size:9.5px; color:rgba(255,255,255,.25); font-family:monospace;">v2026.08.27-dbg17</div>
     </div>
     <div class="walk-peeps">
-      <div class="walk-peep-wrap walk-right" id="wW1" style="animation-delay:0s;">
-        <div class="walk-bubble" id="wB1"></div>
-        <img class="walk-peep" src="walk.gif">
-      </div>
-      <div class="walk-peep-wrap walk-left" id="wW2" style="animation-delay:6s;">
-        <div class="walk-bubble" id="wB2"></div>
-        <img class="walk-peep" src="walk.gif">
-      </div>
-      <div class="walk-peep-wrap walk-right" id="wW3" style="animation-delay:12s;">
-        <div class="walk-bubble" id="wB3"></div>
-        <img class="walk-peep" src="walk.gif">
-      </div>
+      <div class="walk-peep-wrap walk-right" style="animation-name:walkRight;animation-duration:18s;animation-delay:0s;animation-timing-function:linear;animation-iteration-count:infinite;"><div class="walk-bubble" id="wB1"></div><img class="walk-peep" src="walk.gif"></div>
+      <div class="walk-peep-wrap walk-left" style="animation-name:walkLeft;animation-duration:22s;animation-delay:6s;animation-timing-function:linear;animation-iteration-count:infinite;"><div class="walk-bubble" id="wB2"></div><img class="walk-peep" src="walk.gif"></div>
+      <div class="walk-peep-wrap walk-right" style="animation-name:walkRight;animation-duration:25s;animation-delay:12s;animation-timing-function:linear;animation-iteration-count:infinite;"><div class="walk-bubble" id="wB3"></div><img class="walk-peep" src="walk.gif"></div>
     </div>
   </div>
 
@@ -3748,39 +3732,12 @@ Remark = ${remark}`;
   });
   console.log('[APP] Script initialized successfully');
   document.getElementById('loginDebugLog').innerHTML += '<div style="color:#7ee787; margin-bottom:2px;">[APP] Script OK - waiting for login...</div>';
-  // ----- Walking people speech bubbles -----
   (function(){
-    const BUBBLES = [
-      'sudah waktunya ganti ke ira','aku adalah surge','otw cico','jangan lupa report',
-      'kapan mau diSVQC?','toko tutup doc','pak kena comcase','pak permit blom rilis',
-      'one day one site','apa itu libur','otw site','lelahku menjadi lillah',
-      'semangat pagi!','pagi!pagi!pagi!','pak minta azimuth','pak minta kode padlock',
-      'pak @abdullatifpriyadi','pak @andrean eka'
-    ];
-    function randBubble(){
-      return BUBBLES[Math.floor(Math.random() * BUBBLES.length)];
-    }
-    function showBubble(id){
-      const el = document.getElementById(id);
-      if(!el || document.body.classList.contains('dashboard-mode')) return;
-      el.textContent = randBubble();
-      el.classList.add('show');
-      setTimeout(()=>{ el.classList.remove('show'); }, 3000);
-    }
-    function schedBubble(id, minMs, maxMs){
-      const delay = minMs + Math.random() * (maxMs - minMs);
-      setTimeout(()=>{
-        showBubble(id);
-        schedBubble(id, minMs, maxMs);
-      }, delay);
-    }
-    schedBubble('wB1', 4000, 9000);
-    schedBubble('wB2', 6000, 12000);
-    schedBubble('wB3', 5000, 10000);
+    var _b=['sudah waktunya ganti ke ira','aku adalah surge','otw cico','jangan lupa report','kapan mau diSVQC?','toko tutup doc','pak kena comcase','pak permit blom rilis','one day one site','apa itu libur','otw site','lelahku menjadi lillah','semangat pagi!','pagi!pagi!pagi!','pak minta azimuth','pak minta kode padlock','pak @abdullatifpriyadi','pak @andrean eka'];
+    function _s(id){var el=document.getElementById(id);if(!el||document.body.classList.contains('dashboard-mode'))return;el.textContent=_b[Math.floor(Math.random()*_b.length)];el.classList.add('show');setTimeout(function(){el.classList.remove('show');},3000);}
+    function _l(id,mn,mx){setTimeout(function(){_s(id);_l(id,mn,mx);},mn+Math.random()*(mx-mn));}
+    _l('wB1',4000,9000);_l('wB2',6000,12000);_l('wB3',5000,10000);
   })();
-  } })();
+})
+();
 </script>
-
-</body>
-</html>
-
