@@ -491,6 +491,7 @@
       <input type="text" id="loginInput" class="login-input" placeholder="Enter token" autocomplete="off" spellcheck="false">
       <div class="login-error" id="loginError"></div>
       <button type="button" class="login-btn" id="loginBtn">Enter Dashboard</button>
+      <div id="loginDebugLog" style="margin-top:12px; background:#0d1117; border:1px solid #30363d; border-radius:8px; padding:8px 10px; font-family:monospace; font-size:10px; color:#7ee787; max-height:120px; overflow:auto; display:none;"></div>
     </div>
   </div>
 
@@ -3283,44 +3284,55 @@ Remark = ${remark}`;
   }
 
   // ----- Login screen -----
+  function showLoginDebug(msg){
+    const el = document.getElementById('loginDebugLog');
+    if(!el) return;
+    el.style.display = 'block';
+    const ts = new Date().toLocaleTimeString();
+    el.innerHTML += '<div style="margin-bottom:2px;">[<span style="color:#8b949e">' + ts + '</span>] ' + escapeHtml(String(msg)) + '</div>';
+    el.scrollTop = el.scrollHeight;
+  }
+  function clearLoginDebug(){
+    const el = document.getElementById('loginDebugLog');
+    if(el) el.innerHTML = '';
+  }
+
   document.getElementById('loginBtn').addEventListener('click', async ()=>{
-    console.log('[LOGIN] Button clicked');
+    clearLoginDebug();
     const val = document.getElementById('loginInput').value.trim();
-    console.log('[LOGIN] Value:', val);
-    if(!val){ document.getElementById('loginError').textContent = 'Enter a token'; document.getElementById('loginError').style.display = 'block'; return; }
+    if(!val){ showLoginDebug('ERROR: Token is empty'); document.getElementById('loginError').textContent = 'Enter a token'; document.getElementById('loginError').style.display = 'block'; return; }
 
     // Validate password BEFORE switching to dashboard
     let isValid = false;
     let errorMsg = '';
-    console.log('[LOGIN] DASHBOARD_PASSWORD:', DASHBOARD_PASSWORD);
+    showLoginDebug('Trying: "' + val + '" vs password: "' + DASHBOARD_PASSWORD + '"');
     if(val.toLowerCase() === DASHBOARD_PASSWORD.toLowerCase()){
-      console.log('[LOGIN] Dashboard password match!');
+      showLoginDebug('MATCH! Dashboard access granted');
       dashboardUnlocked = true;
       mySubcont = '';
       isValid = true;
     } else {
-      console.log('[LOGIN] Dashboard password NO match, trying subcont pattern');
       const scMatch = val.match(/^([A-Za-z]+)(\d+)$/);
-      console.log('[LOGIN] Subcont match:', scMatch);
       if(scMatch && scMatch[2] === '123'){
         mySubcont = normalizeSubcontKey(scMatch[1]);
         unlockedSubconts = {};
         unlockedSubconts[mySubcont] = true;
+        showLoginDebug('MATCH! Subcont access: ' + mySubcont);
         isValid = true;
       } else {
         errorMsg = 'Wrong token';
+        showLoginDebug('ERROR: ' + errorMsg);
       }
     }
 
     if(!isValid){
-      console.log('[LOGIN] Invalid:', errorMsg);
       document.getElementById('loginError').textContent = errorMsg;
       document.getElementById('loginError').style.display = 'block';
       return;
     }
 
-    // Password OK — switch to dashboard
-    console.log('[LOGIN] Valid! Switching to dashboard...');
+    // Token OK — switch to dashboard
+    showLoginDebug('Opening dashboard...');
     document.body.classList.add('dashboard-mode');
     document.getElementById('loginScreen').style.display = 'none';
     document.getElementById('loginScreen').style.visibility = 'hidden';
@@ -3330,12 +3342,12 @@ Remark = ${remark}`;
     document.getElementById('dashboardScreen').style.zIndex = '60';
     document.getElementById('dashboardScreen').style.background = '#eef1f3';
 
-    console.log('[LOGIN] Calling initDashboard...');
     try {
+      showLoginDebug('Loading data from spreadsheet...');
       await initDashboard();
-      console.log('[LOGIN] initDashboard completed!');
+      showLoginDebug('Done! Dashboard loaded.');
     } catch(e) {
-      console.error('[LOGIN] initDashboard error:', e);
+      showLoginDebug('ERROR: ' + (e.message || String(e)));
       const status = document.getElementById('dashStatus');
       if(status) status.textContent = 'Error: ' + (e.message || String(e));
     }
