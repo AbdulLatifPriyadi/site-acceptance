@@ -490,7 +490,7 @@
       <div class="login-label">Token</div>
       <input type="text" id="loginInput" class="login-input" placeholder="Enter token" autocomplete="off" spellcheck="false">
       <div class="login-error" id="loginError"></div>
-      <button type="button" class="login-btn" id="loginBtn" onclick="try{var v=document.getElementById('loginInput').value.trim();document.getElementById('loginDebugLog').innerHTML='<div style=\'color:#7ee787\'>[FALLBACK] token=\''+v+'</div>';if(!v){document.getElementById('loginError').textContent='Enter a token';document.getElementById('loginError').style.display='block';return}if(v.toLowerCase()==='surge123'){document.getElementById('loginDebugLog').innerHTML+='<div style=\'color:#7ee787\'>[FALLBACK] MATCH! Full access. Opening dashboard...</div>';document.body.classList.add('dashboard-mode');document.getElementById('loginScreen').style.display='none';document.getElementById('loginScreen').style.visibility='hidden';document.getElementById('dashboardScreen').style.display='flex';document.getElementById('dashboardScreen').style.position='fixed';document.getElementById('dashboardScreen').style.inset='0';document.getElementById('dashboardScreen').style.zIndex='60';document.getElementById('dashboardScreen').style.background='#eef1f3';document.getElementById('dashStatus').textContent='Loading...';}else if(v.toLowerCase()==='subcont+123'){document.getElementById('loginDebugLog').innerHTML+='<div style=\'color:#7ee787\'>[FALLBACK] MATCH! Subcont access: subcont</div>';document.body.classList.add('dashboard-mode');document.getElementById('loginScreen').style.display='none';document.getElementById('loginScreen').style.visibility='hidden';document.getElementById('dashboardScreen').style.display='flex';document.getElementById('dashboardScreen').style.position='fixed';document.getElementById('dashboardScreen').style.inset='0';document.getElementById('dashboardScreen').style.zIndex='60';document.getElementById('dashboardScreen').style.background='#eef1f3';document.getElementById('dashStatus').textContent='Loading... (subcont view)';}else{document.getElementById('loginDebugLog').innerHTML+='<div style=\'color:#f85149\'>[FALLBACK] WRONG TOKEN</div>';document.getElementById('loginError').textContent='Wrong token';document.getElementById('loginError').style.display='block'}}catch(err){var el=document.getElementById('loginDebugLog');if(el)el.innerHTML+='<div style=\'color:#f85149\'>[FALLBACK ERROR] '+err.message+'</div>';}">Enter Dashboard</button>
+      <button type="button" class="login-btn" id="loginBtn" onclick="try{var v=document.getElementById('loginInput').value.trim();document.getElementById('loginDebugLog').innerHTML='<div style=\'color:#7ee787\'>[FALLBACK] token=\''+v+'</div>';if(!v){document.getElementById('loginError').textContent='Enter a token';document.getElementById('loginError').style.display='block';return}if(v.toLowerCase()==='surge123'){document.getElementById('loginDebugLog').innerHTML+='<div style=\'color:#7ee787\'>[FALLBACK] MATCH! Full access. Opening dashboard...</div>';}else if(v.toLowerCase()==='subcont+123'){document.getElementById('loginDebugLog').innerHTML+='<div style=\'color:#7ee787\'>[FALLBACK] MATCH! Subcont access: subcont</div>';mySubcont='subcont';unlockedSubconts={};unlockedSubconts[mySubcont]=true;dashboardUnlocked=true;}else{document.getElementById('loginDebugLog').innerHTML+='<div style=\'color:#f85149\'>[FALLBACK] WRONG TOKEN</div>';document.getElementById('loginError').textContent='Wrong token';document.getElementById('loginError').style.display='block';return}document.body.classList.add('dashboard-mode');document.getElementById('loginScreen').style.display='none';document.getElementById('loginScreen').style.visibility='hidden';document.getElementById('dashboardScreen').style.display='flex';document.getElementById('dashboardScreen').style.position='fixed';document.getElementById('dashboardScreen').style.inset='0';document.getElementById('dashboardScreen').style.zIndex='60';document.getElementById('dashboardScreen').style.background='#eef1f3';document.getElementById('dashStatus').textContent='Loading...';initDashboard().catch(function(e){document.getElementById('dashStatus').textContent='Error: '+e.message;document.getElementById('loginDebugLog').innerHTML+='<div style=\'color:#f85149\'>[INIT ERROR] '+e.message+'</div>';});}catch(err){var el=document.getElementById('loginDebugLog');if(el)el.innerHTML+='<div style=\'color:#f85149\'>[FALLBACK ERROR] '+err.message+'</div>';}">Enter Dashboard</button>
       <div id="loginDebugLog" style="margin-top:12px; background:#0d1117; border:1px solid #30363d; border-radius:8px; padding:8px 10px; font-family:monospace; font-size:10px; color:#7ee787; max-height:120px; overflow:auto;"><div style="color:#8b949e; margin-bottom:4px;">System log:</div></div>
     </div>
   </div>
@@ -1361,6 +1361,11 @@ Remark = ${remark}`;
   let mySubcont = ''; // set to subcont name when logged in as subcont user
   const VALID_TOKENS = ['surge123'];
   function isValidToken(v) { return VALID_TOKENS.some(t => v.toLowerCase() === t.toLowerCase()); }
+  // Expose to global scope so inline onclick handler can set these before calling initDashboard
+  Object.defineProperty(window, 'mySubcont', { get: () => mySubcont, set: v => { mySubcont = v; }, configurable: true, enumerable: true });
+  Object.defineProperty(window, 'unlockedSubconts', { get: () => unlockedSubconts, set: v => { unlockedSubconts = v; }, configurable: true, enumerable: true });
+  Object.defineProperty(window, 'dashboardUnlocked', { get: () => dashboardUnlocked, set: v => { dashboardUnlocked = v; }, configurable: true, enumerable: true });
+  let initDashboardRunning = false; // guard against double-call from inline onclick + script handler
 
   const dashHoverBox = document.getElementById('dashHoverBox');
   const dashHoverBody = document.getElementById('dashHoverBody');
@@ -3189,51 +3194,59 @@ Remark = ${remark}`;
   let dashFilterPanelMinimized = false;
 
   async function initDashboard(){
-    // Switch to map view first
-    setDashView('map');
-
-    // Check Leaflet CDN
-    if(!window.L){
-      console.error('[initDashboard] Leaflet (L) not loaded — check CDN access');
-      document.getElementById('dashStatus').textContent = 'Error: Leaflet CDN failed. Check internet connection.';
-      return;
-    }
-
-    if(!dashMap){
-      dashMap = L.map('dashMap').setView([-6.9, 107.6], 9);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom:19, attribution:'© OpenStreetMap contributors'
-      }).addTo(dashMap);
-      dashLinesLayer = L.layerGroup().addTo(dashMap);
-      dashMarkersLayer = L.layerGroup().addTo(dashMap);
-    }
-    setTimeout(()=> dashMap.invalidateSize(), 50);
-
+    // Guard: prevent double-call (inline onclick + script-level openDashboard both trigger this)
+    if(initDashboardRunning){ console.log('[initDashboard] Already running, skipping'); return; }
+    initDashboardRunning = true;
     try {
-      console.log('[initDashboard] Starting...');
-      document.getElementById('dashStatus').textContent = 'Loading sites…';
-      const [tracker, msgLookup] = await Promise.all([fetchTrackerForMap(), buildMessageLookup()]);
-      dashTrackerData = tracker;
-      dashMessageLookup = msgLookup;
-    } catch(e) {
-      console.warn('Failed to load sites from server:', e);
-      dashTrackerData = [];
-      dashMessageLookup = {};
+      // Switch to map view first
+      setDashView('map');
+
+      // Check Leaflet CDN
+      if(!window.L){
+        console.error('[initDashboard] Leaflet (L) not loaded — check CDN access');
+        document.getElementById('dashStatus').textContent = 'Error: Leaflet CDN failed. Check internet connection.';
+        return;
+      }
+
+      if(!dashMap){
+        dashMap = L.map('dashMap').setView([-6.9, 107.6], 9);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom:19, attribution:'© OpenStreetMap contributors'
+        }).addTo(dashMap);
+        dashLinesLayer = L.layerGroup().addTo(dashMap);
+        dashMarkersLayer = L.layerGroup().addTo(dashMap);
+      }
+      setTimeout(()=> dashMap.invalidateSize(), 50);
+
+      try {
+        console.log('[initDashboard] Starting...');
+        document.getElementById('dashStatus').textContent = 'Loading sites…';
+        const [tracker, msgLookup] = await Promise.all([fetchTrackerForMap(), buildMessageLookup()]);
+        dashTrackerData = tracker;
+        dashMessageLookup = msgLookup;
+      } catch(e) {
+        console.warn('Failed to load sites from server:', e);
+        dashTrackerData = [];
+        dashMessageLookup = {};
+      }
+      dashSelectedSubconts = null;
+      dashSelectedGaps = null;
+      populateBatchOptions();
+      renderChecklistFilters();
+      const count = dashTrackerData.length;
+      document.getElementById('dashStatus').textContent = count > 0 ? `${count} sites loaded` : 'No sites (upload Excel or check server)';
+      console.log('[initDashboard] Status set to:', document.getElementById('dashStatus').textContent);
+      if(dashView === 'map') {
+        try { drawDashboardMap(); console.log('[initDashboard] drawDashboardMap done'); } catch(e) { console.warn('Failed to draw map:', e); }
+      } else {
+        try { renderGraphView(); console.log('[initDashboard] renderGraphView done'); } catch(e) { console.warn('Failed to render graph:', e); }
+      }
+      console.log('[initDashboard] Complete');
+    } finally {
+      initDashboardRunning = false;
     }
-    dashSelectedSubconts = null;
-    dashSelectedGaps = null;
-    populateBatchOptions();
-    renderChecklistFilters();
-    const count = dashTrackerData.length;
-    document.getElementById('dashStatus').textContent = count > 0 ? `${count} sites loaded` : 'No sites (upload Excel or check server)';
-    console.log('[initDashboard] Status set to:', document.getElementById('dashStatus').textContent);
-    if(dashView === 'map') {
-      try { drawDashboardMap(); console.log('[initDashboard] drawDashboardMap done'); } catch(e) { console.warn('Failed to draw map:', e); }
-    } else {
-      try { renderGraphView(); console.log('[initDashboard] renderGraphView done'); } catch(e) { console.warn('Failed to render graph:', e); }
-    }
-    console.log('[initDashboard] Complete');
   }
+  window.initDashboard = initDashboard; // expose for inline onclick fallback
 
   function openDashboard(){
     document.body.classList.add('dashboard-mode');
