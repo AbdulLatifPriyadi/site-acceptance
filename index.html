@@ -1428,7 +1428,8 @@ Remark = ${remark}`;
         if(!res.ok) throw new Error('Tracker fetch failed: ' + res.status);
         const data = await res.json();
         if(data && data.length > 0) return data;
-      }catch(e){ console.warn('Apps Script tracker fetch error:', e); }
+        console.warn('[fetchTrackerForMap] Apps Script returned empty array');
+      }catch(e){ console.warn('Apps Script tracker fetch error:', e); showLoginDebug('[TRACKER FETCH ERROR] ' + e.message); }
     }
     // Fallback: Google Sheets CSV export (may be affected by filters)
     if(SHEETS_CSV_URL && SHEETS_CSV_URL.includes('docs.google.com')){
@@ -3221,11 +3222,21 @@ Remark = ${remark}`;
       try {
         console.log('[initDashboard] Starting...');
         document.getElementById('dashStatus').textContent = 'Loading sites…';
-        const [tracker, msgLookup] = await Promise.all([fetchTrackerForMap(), buildMessageLookup()]);
+        // Add timeout to prevent hanging
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Fetch timeout (15s)')), 15000)
+        );
+        const [tracker, msgLookup] = await Promise.race([
+          Promise.all([fetchTrackerForMap(), buildMessageLookup()]),
+          timeoutPromise
+        ]).catch(e => { throw e; });
         dashTrackerData = tracker;
         dashMessageLookup = msgLookup;
+        showLoginDebug('[initDashboard] Sites loaded: ' + (tracker ? tracker.length : 0));
       } catch(e) {
         console.warn('Failed to load sites from server:', e);
+        document.getElementById('dashStatus').textContent = 'Error loading sites: ' + e.message;
+        showLoginDebug('[INIT ERROR] ' + e.message);
         dashTrackerData = [];
         dashMessageLookup = {};
       }
