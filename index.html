@@ -496,29 +496,9 @@
       <div class="login-label">Token</div>
       <input type="text" id="loginInput" class="login-input" placeholder="Enter token" autocomplete="off" spellcheck="false">
       <div class="login-error" id="loginError"></div>
-      <button type="button" class="login-btn" id="loginBtn" onclick="(function(){
-var v=document.getElementById('loginInput').value.trim();
-var err=document.getElementById('loginError');
-if(!v){err.textContent='Enter a token';err.style.display='block';return}
-var ok=false;
-var lower=v.toLowerCase();
-if(lower==='subcont+123'){window.mySubcont='SUBCONT';window.unlockedSubconts={'SUBCONT':true};window.dashboardUnlocked=true;ok=true;}
-else if(lower==='surge123'){window.dashboardUnlocked=true;window.mySubcont='';ok=true;}
-else{var m=v.match(/^([A-Za-z]+)(\d+)$/);if(m&&m[2]==='123'){window.mySubcont=m[1].toUpperCase();window.unlockedSubconts={};window.unlockedSubconts[window.mySubcont]=true;window.dashboardUnlocked=true;ok=true;}}
-if(!ok){err.textContent='Wrong token';err.style.display='block';return}
-document.body.classList.add('dashboard-mode');
-document.getElementById('loginScreen').style.display='none';
-document.getElementById('loginScreen').style.visibility='hidden';
-document.getElementById('dashboardScreen').style.display='flex';
-document.getElementById('dashboardScreen').style.position='fixed';
-document.getElementById('dashboardScreen').style.inset='0';
-document.getElementById('dashboardScreen').style.zIndex='60';
-document.getElementById('dashboardScreen').style.background='#eef1f3';
-document.getElementById('dashStatus').textContent='Loading...';
-if(window.initDashboard){window.initDashboard();}
-})()">Enter Dashboard</button>
+      <button type="button" class="login-btn" id="loginBtn">Enter Dashboard</button>
       <div id="loginDebugLog" style="margin-top:12px; background:#0d1117; border:1px solid #30363d; border-radius:8px; padding:8px 10px; font-family:monospace; font-size:10px; color:#7ee787; max-height:120px; overflow:auto;"><div style="color:#8b949e; margin-bottom:4px;">System log:</div></div>
-      <div id="appVersion" style="position:fixed; bottom:8px; right:12px; font-size:9.5px; color:rgba(255,255,255,.25); font-family:monospace;">v2026.08.27-dbg3</div>
+      <div id="appVersion" style="position:fixed; bottom:8px; right:12px; font-size:9.5px; color:rgba(255,255,255,.25); font-family:monospace;">v2026.08.27-dbg4</div>
     </div>
   </div>
 
@@ -1518,18 +1498,26 @@ Remark = ${remark}`;
     if(lines.length < 2) return [];
     const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, '').replace(/\s+/g, ''));
     // Map CSV column names to our keys (flexible matching)
-    const colMap = {
-      'batchrfi':'batchRfi','batch':'batchRfi',
-      'tpsiteid':'tpId','tpsite':'tpId','tpid':'tpId',
-      'duid':'duId','du_id':'duId','du':'duId',
-      'sitename':'siteName','site_name':'siteName','site':'siteName',
-      'subcontplan':'subcontPlan','subcont':'subcontPlan',
-      'gapanalysis':'gap','gapan':'gap','gap':'gap',
-      'remark':'remark','remarks':'remark',
-      'city':'city',
-      'latitude':'lat','lat':'lat',
-      'longitude':'lng','lng':'lng'
-    };
+      const colMap = {
+        'batchrfi':'batchRfi','batch':'batchRfi',
+        'batchcsg':'batchCsg',
+        'tpsiteid':'tpId','tpsite':'tpId',
+        'surgeid':'surgeId',
+        'duid':'duId','du_id':'duId',
+        'sitename':'siteName','site_name':'siteName',
+        'subcontplan':'subcontPlan','subcont':'subcontPlan',
+        'gapanalysis':'gap','gap':'gap',
+        'remark':'remark',
+        'team':'team',
+        'city':'city',
+        'tp':'tp',
+        'km':'km',
+        'peowner':'peOwner',
+        'latitude':'lat','lat':'lat',
+        'longitude':'lng','lng':'lng',
+        'ring':'ring',
+        'seq':'seq'
+      };
     const normalized = headers.map(h => colMap[h] || h);
     const rows = [];
     for(let i = 1; i < lines.length; i++){
@@ -3309,40 +3297,14 @@ Remark = ${remark}`;
       setTimeout(()=> dashMap.invalidateSize(), 50);
       setTimeout(()=>{ if(dashMap) dashMap.invalidateSize({ panConstraint: false }); }, 200);
 
-      // Always force a timeout so dashboard never hangs waiting for server data
-      const FALLBACK_DELAY = 15000;
-      let timedOut = false;
-      let statusText = document.getElementById('dashStatus');
-
       try {
         console.log('[initDashboard] Starting...');
-        statusText.textContent = 'Loading sites from spreadsheet…';
-        const dataPromise = Promise.all([fetchTrackerForMap(), buildMessageLookup()]);
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => {
-            timedOut = true;
-            reject(new Error('Server timeout — showing empty map (upload Excel or check connection)'));
-          }, FALLBACK_DELAY)
-        );
-        try {
-          const [tracker, msgLookup] = await Promise.race([dataPromise, timeoutPromise]);
-          dashTrackerData = tracker;
-          dashMessageLookup = msgLookup;
-          // Diagnostic: log data summary
-          const sample = dashTrackerData && dashTrackerData[0];
-          console.log('[initDashboard] Data loaded:', dashTrackerData ? dashTrackerData.length : 0, 'sites', sample ? JSON.stringify(sample).substring(0, 120) : '(empty)');
-        } catch(e) {
-          if(timedOut){
-            console.warn('[initDashboard] Server timeout after ' + FALLBACK_DELAY + 'ms — using empty data');
-            dashTrackerData = [];
-            dashMessageLookup = {};
-          } else {
-            throw e;
-          }
-        }
+        const [tracker, msgLookup] = await Promise.all([fetchTrackerForMap(), buildMessageLookup()]);
+        dashTrackerData = tracker;
+        dashMessageLookup = msgLookup;
+        console.log('[initDashboard] Data loaded:', dashTrackerData ? dashTrackerData.length : 0, 'sites');
       } catch(e) {
         console.warn('Failed to load sites from server:', e);
-        statusText.textContent = 'Error: ' + e.message;
         dashTrackerData = [];
         dashMessageLookup = {};
       }
@@ -3440,7 +3402,63 @@ Remark = ${remark}`;
   // Show ready message on page load
   showLoginDebug('Page ready. Enter token and click Enter Dashboard.');
 
-  // Note: login button uses inline onclick attribute (see HTML) — addEventListener removed for reliability
+
+  // ----- Login screen -----
+  document.getElementById('loginBtn').addEventListener('click', async ()=>{
+    const val = document.getElementById('loginInput').value.trim();
+    if(!val){ document.getElementById('loginError').textContent = 'Enter a token'; document.getElementById('loginError').style.display = 'block'; return; }
+
+    // Immediate DOM switch — show dashboard, hide login
+    document.body.classList.add('dashboard-mode');
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('loginScreen').style.visibility = 'hidden';
+    document.getElementById('dashboardScreen').style.display = 'flex';
+    document.getElementById('dashboardScreen').style.position = 'fixed';
+    document.getElementById('dashboardScreen').style.inset = '0';
+    document.getElementById('dashboardScreen').style.zIndex = '60';
+    document.getElementById('dashboardScreen').style.background = '#eef1f3';
+    const status = document.getElementById('dashStatus');
+    if(status) status.textContent = 'Loading…';
+
+    try {
+      // surge123 → full dashboard access
+      const lower = val.toLowerCase();
+      if(lower === 'surge123'){
+        dashboardUnlocked = true;
+        mySubcont = '';
+      } else if(lower === 'subcont+123'){
+        mySubcont = 'SUBCONT';
+        unlockedSubconts = { 'SUBCONT': true };
+        dashboardUnlocked = true;
+      } else {
+        const m = val.match(/^([A-Za-z]+)(\d+)$/);
+        if(m && m[2] === '123'){
+          mySubcont = m[1].toUpperCase();
+          unlockedSubconts = {};
+          unlockedSubconts[mySubcont] = true;
+          dashboardUnlocked = true;
+        } else {
+          throw new Error('Wrong token');
+        }
+      }
+
+      // Init dashboard — await so errors are caught by outer try/catch
+      await initDashboard();
+
+    } catch(e) {
+      document.getElementById('loginError').textContent = e.message === 'Wrong token' ? 'Wrong token' : ('Error: ' + e.message);
+      document.getElementById('loginError').style.display = 'block';
+      // Revert — clear ALL inline styles set during login
+      document.body.classList.remove('dashboard-mode');
+      document.getElementById('loginScreen').style.display = '';
+      document.getElementById('loginScreen').style.visibility = '';
+      document.getElementById('dashboardScreen').style.display = 'none';
+      document.getElementById('dashboardScreen').style.position = '';
+      document.getElementById('dashboardScreen').style.inset = '';
+      document.getElementById('dashboardScreen').style.zIndex = '';
+      document.getElementById('dashboardScreen').style.background = '';
+    }
+  });
 
   document.getElementById('loginInput').addEventListener('keydown', (e)=>{
     if(e.key === 'Enter') document.getElementById('loginBtn').click();
