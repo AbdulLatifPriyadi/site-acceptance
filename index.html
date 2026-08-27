@@ -3170,11 +3170,13 @@ Remark = ${remark}`;
   let dashFilterPanelMinimized = false;
 
   async function initDashboard(){
+    // Switch to map view first
     setDashView('map');
 
+    // Check Leaflet CDN
     if(!window.L){
       console.error('[initDashboard] Leaflet (L) not loaded — check CDN access');
-      document.getElementById('dashStatus').textContent = 'Error: Leaflet not loaded. Check internet connection.';
+      document.getElementById('dashStatus').textContent = 'Error: Leaflet CDN failed. Check internet connection.';
       return;
     }
 
