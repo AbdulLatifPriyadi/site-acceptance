@@ -960,7 +960,7 @@ Remark = ${remark}`;
     if(!serverConfigured()) return null;
     try{
       const url = kind === 'summary' ? (SCRIPT_URL + '?type=summary') : SCRIPT_URL;
-      const res = await fetch(url);
+      const res = await fetchWithTimeout(url, 10000);
       if(!res.ok) return null;
       const data = await res.json();
       const key = kind === 'summary' ? FORWARD_SUMMARY_CACHE_KEY : FORWARD_SHARED_CACHE_KEY;
@@ -1421,13 +1421,30 @@ Remark = ${remark}`;
     return dashColorMode === 'gap' ? dashGapColor(site.gap) : dashSubcontColor(site);
   }
 
+  // Helper: fetch with timeout
+  async function fetchWithTimeout(url, timeoutMs = 10000){
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, { signal: controller.signal });
+      clearTimeout(id);
+      return res;
+    } catch(e) {
+      clearTimeout(id);
+      throw e;
+    }
+  }
+
   async function fetchTrackerForMap(){
     // Use Apps Script as primary source — it reads ALL rows without filter restrictions
     if(SCRIPT_URL && !SCRIPT_URL.includes('PASTE_YOUR')){
       try{
-        const res = await fetch(SCRIPT_URL + '?type=tracker');
+        console.log('[fetchTrackerForMap] Fetching from Apps Script...');
+        const res = await fetchWithTimeout(SCRIPT_URL + '?type=tracker', 10000);
+        console.log('[fetchTrackerForMap] Response received, status:', res.status);
         if(!res.ok) throw new Error('Tracker fetch failed: ' + res.status);
         const data = await res.json();
+        console.log('[fetchTrackerForMap] JSON parsed, items:', data ? data.length : 0);
         if(data && data.length > 0) return data;
         console.warn('[fetchTrackerForMap] Apps Script returned empty array');
       }catch(e){ console.warn('Apps Script tracker fetch error:', e); }
@@ -1435,7 +1452,7 @@ Remark = ${remark}`;
     // Fallback: Google Sheets CSV export (may be affected by filters)
     if(SHEETS_CSV_URL && SHEETS_CSV_URL.includes('docs.google.com')){
       try{
-        const res = await fetch(SHEETS_CSV_URL);
+        const res = await fetchWithTimeout(SHEETS_CSV_URL, 10000);
         if(!res.ok) throw new Error('CSV fetch failed: ' + res.status);
         const text = await res.text();
         const data = parseSheetsCSV(text);
@@ -1589,7 +1606,7 @@ Remark = ${remark}`;
     // for tooltip message display on the dashboard map
     if(SCRIPT_URL && !SCRIPT_URL.includes('PASTE_YOUR')){
       try{
-        const res = await fetch(SCRIPT_URL);  // GET = full log (no ?type param)
+        const res = await fetchWithTimeout(SCRIPT_URL, 10000);  // GET = full log (no ?type param)
         if(!res.ok) return lookup;
         const log = await res.json();
         (log || []).forEach(entry=>{
