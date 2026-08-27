@@ -490,7 +490,7 @@
       <div class="login-label">Token</div>
       <input type="text" id="loginInput" class="login-input" placeholder="Enter token" autocomplete="off" spellcheck="false">
       <div class="login-error" id="loginError"></div>
-      <button type="button" class="login-btn" id="loginBtn">Enter Dashboard</button>
+      <button type="button" class="login-btn" id="loginBtn" onclick="var v=document.getElementById('loginInput').value.trim();if(!v){document.getElementById('loginError').textContent='Enter a token';document.getElementById('loginError').style.display='block';return}var ok=false;if(v.toLowerCase()==='subcont+123'){window.mySubcont='subcont';window.unlockedSubconts={};window.unlockedSubconts[window.mySubcont]=true;window.dashboardUnlocked=true;ok=true;}else if(v.toLowerCase()==='surge123'||(window.isValidToken&&window.isValidToken(v))){window.dashboardUnlocked=true;window.mySubcont='';ok=true;}else{var m=v.match(/^([A-Za-z]+)(\d+)$/);if(m&&m[2]==='123'){window.mySubcont=m[1].toUpperCase();window.unlockedSubconts={};window.unlockedSubconts[window.mySubcont]=true;window.dashboardUnlocked=true;ok=true;}}if(!ok){document.getElementById('loginError').textContent='Wrong token';document.getElementById('loginError').style.display='block';return}document.body.classList.add('dashboard-mode');document.getElementById('loginScreen').style.display='none';document.getElementById('loginScreen').style.visibility='hidden';document.getElementById('dashboardScreen').style.display='flex';document.getElementById('dashboardScreen').style.position='fixed';document.getElementById('dashboardScreen').style.inset='0';document.getElementById('dashboardScreen').style.zIndex='60';document.getElementById('dashboardScreen').style.background='#eef1f3';document.getElementById('dashStatus').textContent='Loading...';if(window.initDashboard){window.initDashboard().catch(function(e){document.getElementById('dashStatus').textContent='Error: '+e.message;});}">Enter Dashboard</button>
       <div id="loginDebugLog" style="margin-top:12px; background:#0d1117; border:1px solid #30363d; border-radius:8px; padding:8px 10px; font-family:monospace; font-size:10px; color:#7ee787; max-height:120px; overflow:auto;"><div style="color:#8b949e; margin-bottom:4px;">System log:</div></div>
     </div>
   </div>
@@ -1361,6 +1361,7 @@ Remark = ${remark}`;
   let mySubcont = ''; // set to subcont name when logged in as subcont user
   const VALID_TOKENS = ['surge123'];
   function isValidToken(v) { return VALID_TOKENS.some(t => v.toLowerCase() === t.toLowerCase()); }
+  window.isValidToken = isValidToken;
   // Expose to global scope so inline onclick handler can set these before calling initDashboard
   Object.defineProperty(window, 'mySubcont', { get: () => mySubcont, set: v => { mySubcont = v; }, configurable: true, enumerable: true });
   Object.defineProperty(window, 'unlockedSubconts', { get: () => unlockedSubconts, set: v => { unlockedSubconts = v; }, configurable: true, enumerable: true });
