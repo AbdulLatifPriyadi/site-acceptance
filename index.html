@@ -490,7 +490,7 @@
       <div class="login-label">Token</div>
       <input type="text" id="loginInput" class="login-input" placeholder="Enter token" autocomplete="off" spellcheck="false">
       <div class="login-error" id="loginError"></div>
-      <button type="button" class="login-btn" id="loginBtn">Enter Dashboard</button>
+      <button type="button" class="login-btn" id="loginBtn" onclick="try{var v=document.getElementById('loginInput').value.trim();document.getElementById('loginDebugLog').innerHTML='<div style=\'color:#7ee787\'>[FALLBACK] token=\''+v+'</div>';if(!v){document.getElementById('loginError').textContent='Enter a token';document.getElementById('loginError').style.display='block';return}if(v.toLowerCase()==='surge123'){document.getElementById('loginDebugLog').innerHTML+='<div style=\'color:#7ee787\'>[FALLBACK] MATCH! Opening dashboard...</div>';document.body.classList.add('dashboard-mode');document.getElementById('loginScreen').style.display='none';document.getElementById('loginScreen').style.visibility='hidden';document.getElementById('dashboardScreen').style.display='flex';document.getElementById('dashboardScreen').style.position='fixed';document.getElementById('dashboardScreen').style.inset='0';document.getElementById('dashboardScreen').style.zIndex='60';document.getElementById('dashboardScreen').style.background='#eef1f3';document.getElementById('dashStatus').textContent='Loading...';}else{document.getElementById('loginDebugLog').innerHTML+='<div style=\'color:#f85149\'>[FALLBACK] WRONG TOKEN</div>';document.getElementById('loginError').textContent='Wrong token';document.getElementById('loginError').style.display='block'}}catch(err){var el=document.getElementById('loginDebugLog');if(el)el.innerHTML+='<div style=\'color:#f85149\'>[FALLBACK ERROR] '+err.message+'</div>';}">Enter Dashboard</button>
       <div id="loginDebugLog" style="margin-top:12px; background:#0d1117; border:1px solid #30363d; border-radius:8px; padding:8px 10px; font-family:monospace; font-size:10px; color:#7ee787; max-height:120px; overflow:auto;"><div style="color:#8b949e; margin-bottom:4px;">System log:</div></div>
     </div>
   </div>
@@ -620,12 +620,22 @@
 
 <script>
 window.addEventListener('error', function(e){
-  console.error('[JS ERROR]', e.message, 'at', e.filename, 'line', e.lineno, 'col', e.colno);
+  var el = document.getElementById('loginDebugLog');
+  if(el) {
+    el.innerHTML += '<div style="color:#f85149; margin-bottom:2px;">[JS ERROR] ' + (e.message || 'unknown') + ' at ' + (e.filename || '?').split('/').pop() + ':' + (e.lineno || '?') + '</div>';
+  }
 });
 window.addEventListener('unhandledrejection', function(e){
-  console.error('[UNHANDLED PROMISE REJECTION]', e.reason);
+  var el = document.getElementById('loginDebugLog');
+  if(el) {
+    el.innerHTML += '<div style="color:#f85149; margin-bottom:2px;">[PROMISE ERROR] ' + (e.reason && e.reason.message ? e.reason.message : String(e.reason)) + '</div>';
+  }
 });
 (function(){
+  try {
+  document.getElementById('loginDebugLog').innerHTML += '<div style="color:#7ee787; margin-bottom:2px;">Script loaded OK</div>';
+  } catch(e) {}
+
   const COLORS = {
     ant1:'var(--antenna1)', ant2:'var(--antenna2)', ant3:'var(--antenna3)',
     rru1:'var(--rru1)', rru2:'var(--rru2)', rru3:'var(--rru3)',
@@ -3443,7 +3453,12 @@ Remark = ${remark}`;
     drawDashboardMap();
   });
   console.log('[APP] Script initialized successfully');
-})(); // end IIFE
+  document.getElementById('loginDebugLog').innerHTML += '<div style="color:#7ee787; margin-bottom:2px;">[APP] Script OK - waiting for login...</div>';
+  } catch(err) {
+    var el = document.getElementById('loginDebugLog');
+    if(el) el.innerHTML += '<div style="color:#f85149; margin-bottom:2px;">[IIFE ERROR] ' + (err.message || String(err)) + '</div>';
+  }
+  } // end IIFE try/catch
 </script>
 
 </body>
