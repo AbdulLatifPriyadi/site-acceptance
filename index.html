@@ -491,7 +491,7 @@
       <input type="text" id="loginInput" class="login-input" placeholder="Enter token" autocomplete="off" spellcheck="false">
       <div class="login-error" id="loginError"></div>
       <button type="button" class="login-btn" id="loginBtn">Enter Dashboard</button>
-      <div id="loginDebugLog" style="margin-top:12px; background:#0d1117; border:1px solid #30363d; border-radius:8px; padding:8px 10px; font-family:monospace; font-size:10px; color:#7ee787; max-height:120px; overflow:auto; display:none;"></div>
+      <div id="loginDebugLog" style="margin-top:12px; background:#0d1117; border:1px solid #30363d; border-radius:8px; padding:8px 10px; font-family:monospace; font-size:10px; color:#7ee787; max-height:120px; overflow:auto;"><div style="color:#8b949e; margin-bottom:4px;">System log:</div></div>
     </div>
   </div>
 
@@ -3287,15 +3287,17 @@ Remark = ${remark}`;
   function showLoginDebug(msg){
     const el = document.getElementById('loginDebugLog');
     if(!el) return;
-    el.style.display = 'block';
     const ts = new Date().toLocaleTimeString();
     el.innerHTML += '<div style="margin-bottom:2px;">[<span style="color:#8b949e">' + ts + '</span>] ' + escapeHtml(String(msg)) + '</div>';
     el.scrollTop = el.scrollHeight;
   }
   function clearLoginDebug(){
     const el = document.getElementById('loginDebugLog');
-    if(el) el.innerHTML = '';
+    if(el) el.innerHTML = '<div style="color:#8b949e; margin-bottom:4px;">System log:</div>';
   }
+
+  // Show ready message on page load
+  showLoginDebug('Page ready. Enter token and click Enter Dashboard.');
 
   document.getElementById('loginBtn').addEventListener('click', async ()=>{
     clearLoginDebug();
