@@ -266,10 +266,6 @@
     -webkit-user-select: none;
   }
 
-  .dash-upload-btn{
-    width:100%; padding:7px 10px; border-radius:7px; border:1.4px solid #d8dce0;
-    background:#f5f6f7; color:var(--ink); font-size:10.5px; font-weight:700; cursor:pointer;
-  }
 
   .dash-pw-overlay{
     display:none; position:fixed; inset:0; z-index:80; background:rgba(10,14,20,.6);
@@ -514,7 +510,15 @@
     <div class="dash-body">
       <div id="dashMap"></div>
       <div id="dashGraph"></div>
-      <div id="dashTable" style="display:none; position:absolute; inset:0; overflow:auto; background:#fff;"></div>
+      <div id="dashTableBar" style="display:none; position:absolute; top:0; left:0; right:0; z-index:100; background:#f5f7f8; border-bottom:1px solid #e2e5e8; padding:8px 14px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+        <span style="font-size:13px; font-weight:800; color:var(--ink);" id="tableBarTitle">All Sites</span>
+        <span style="font-size:11.5px; color:#7a828a;" id="tableBarCount"></span>
+        <span id="tableSelInfo" style="font-size:11px; color:#2f6bc4; font-weight:700; display:none;"></span>
+        <span style="margin-left:auto; font-size:10px; color:#9aa0a6;">Click header to sort &nbsp;·&nbsp; Click &amp; drag to select &nbsp;·&nbsp; Ctrl+C to copy</span>
+        <input type="search" id="tableSearchInput" placeholder="Search..."
+          style="padding:6px 10px; border:1.2px solid #d8dce0; border-radius:8px; font-size:12px; min-width:200px; outline:none;">
+      </div>
+      <div id="dashTable" style="display:none; position:absolute; inset:0; overflow:auto; background:#fff; padding-top:50px;"></div>
       <button class="dash-var-toggle" id="dashVarToggle" title="Toggle variable reference">_vars</button>
       <div class="dash-var-overlay" id="dashVarOverlay"></div>
       <div class="dash-legend" id="dashLegend"></div>
@@ -553,10 +557,7 @@
             <button type="button" class="dash-filter-mini" id="dashGapNone">None</button>
           </div>
         </div>
-        <div class="dash-filter-group">
-          <button class="dash-upload-btn" id="dashUploadBtn">Upload Excel (debug)</button>
-          <input type="file" id="dashFileInput" accept=".xlsx,.xls,.csv" style="display:none">
-        </div>
+
       </div>
       <div class="dash-hover-box" id="dashHoverBox">
         <div class="dash-hover-tools" id="dashHoverTools">
@@ -592,7 +593,7 @@
         </div>
         <input type="search" id="subTableSearch" class="sub-table-search" placeholder="Searchâ€¦">
         <span class="spacer"></span>
-        <span class="sub-hint" id="subTableHint">Click &amp; drag to select · Ctrl+C to copy · Double-click cell to edit GAP / Remark</span>
+        <span class="sub-hint" id="subTableHint">Click &amp; drag to select · Ctrl+C to copy · Double-click GAP to change</span>
         <button class="sub-table-save" id="subTableSave">Save</button>
         <button class="sub-table-close" id="subTableClose">Close</button>
       </div>
@@ -1297,15 +1298,16 @@ Remark = ${remark}`;
     TRITAMA: '#f0d040'
   };
   const GAP_COL_STYLE = {
-    '1.ATP': { head:'#4caf7d', cell:'#d8f3e3' },
-    '2.ON AIR': { head:'#2f6bc4', cell:'#d6e6f8' },
-    '3.Install': { head:'#e8a33d', cell:'#fde9c8' },
-    '4.Comcase': { head:'#e0574f', cell:'#f8d4d2' },
-    '5.Po requested': { head:'#9aa0a6', cell:'#e8eaec' },
-    'Other': { head:'#9aa0a6', cell:'#e8eaec' },
-    'Total': { head:'#1c2530', cell:'#f5f6f7' }
+    'ATP':         { head:'#4caf7d', cell:'#d8f3e3' },
+    'ON AIR':      { head:'#2f6bc4', cell:'#d6e6f8' },
+    'Install':    { head:'#e8a33d', cell:'#fde9c8' },
+    'Commcase':    { head:'#e0574f', cell:'#f8d4d2' },
+    'PO Requested':{ head:'#9aa0a6', cell:'#e8eaec' },
+    'DN Requested':{ head:'#9aa0a6', cell:'#e8eaec' },
+    'Other':      { head:'#9aa0a6', cell:'#e8eaec' },
+    'Total':       { head:'#1c2530', cell:'#f5f6f7' }
   };
-  const GAP_STATUSES = ['1.ATP', '2.ON AIR', '3.Install', '4.Comcase', '5.Po requested'];
+  const GAP_STATUSES = ['ATP', 'ON AIR', 'Install', 'Commcase', 'DN Requested', 'PO Requested'];
   const SUB_TABLE_FIELDS = [
     { key:'batchRfi', label:'Batch RFI' },
     { key:'tpId', label:'TP ID' },
@@ -1357,8 +1359,9 @@ Remark = ${remark}`;
 
   function dashGapColor(gap){
     const g = String(gap || '').toLowerCase();
-    if(g.includes('comcase')) return '#e0574f';
+    if(g.includes('comcase') || g.includes('commcase')) return '#e0574f';
     if(g.includes('po requested') || g.includes('po request')) return '#9aa0a6';
+    if(g.includes('dn requested') || g.includes('dn request') || g.includes('dn_request')) return '#9aa0a6';
     if(g.includes('install')) return '#e8a33d';
     if(g.includes('on air') || g.includes('onair')) return '#2f6bc4';
     if(g.includes('atp')) return '#4caf7d';
@@ -1524,8 +1527,8 @@ Remark = ${remark}`;
     let rows;
     if(dashColorMode === 'gap'){
       rows = [
-        ['#4caf7d','1.ATP'], ['#2f6bc4','2.ON AIR'], ['#e8a33d','3.Install'],
-        ['#e0574f','4.Comcase'], ['#9aa0a6','5.Po requested'], ['#c9cdd0','Other / blank']
+        ['#4caf7d','ATP'], ['#2f6bc4','ON AIR'], ['#e8a33d','Install'],
+        ['#e0574f','Commcase'], ['#9aa0a6','PO Requested / DN Requested'], ['#c9cdd0','Other / blank']
       ];
     } else {
       const seen = {};
@@ -1740,11 +1743,12 @@ Remark = ${remark}`;
 
   function matchGapStatus(gap){
     const g = String(gap || '').toLowerCase();
-    if(g.includes('commcase') || g.includes('comcase')) return '4.Comcase';
-    if(g.includes('po requested') || g.includes('po request')) return '5.Po requested';
-    if(g.includes('install')) return '3.Install';
-    if(g.includes('on air') || g.includes('onair')) return '2.ON AIR';
-    if(g.includes('atp')) return '1.ATP';
+    if(g.includes('commcase') || g.includes('comcase')) return 'Commcase';
+    if(g.includes('dn requested') || g.includes('dn request') || g.includes('dn_request')) return 'DN Requested';
+    if(g.includes('po requested') || g.includes('po request') || g.includes('po_request')) return 'PO Requested';
+    if(g.includes('install')) return 'Install';
+    if(g.includes('on air') || g.includes('onair')) return 'ON AIR';
+    if(g.includes('atp')) return 'ATP';
     return 'Other';
   }
 
@@ -1777,6 +1781,13 @@ Remark = ${remark}`;
   }
 
   let tableBatchColors = {};
+
+  // ---- Table view persistent state (moved outside renderTableView to avoid closure bugs) ----
+  let tableSelStart = null;
+  let tableSelEnd = null;
+  let tableIsSelecting = false;
+  let tableSelInfoEl = null;
+  let tableInitialized = false;
 
   function renderTableView(){
     const container = document.getElementById('dashTable');
@@ -1814,6 +1825,10 @@ Remark = ${remark}`;
         })
       : sorted;
 
+    // Update persistent count bar
+    document.getElementById('tableBarTitle').textContent = (mySubcont ? mySubcont + ' Sites' : 'All Sites');
+    document.getElementById('tableBarCount').textContent = filtered.length + ' / ' + sites.length + ' sites';
+
     const cols = ["batchRfi","tpId","duId","siteName","subcontPlan","gap","remark","city","lat","lng"];
     const colLabels = {"batchRfi":"Batch RFI","tpId":"TP Site ID","duId":"DU ID","siteName":"Site Name","subcontPlan":"Subcont Plan","gap":"GAP Analysis","remark":"Remark","city":"City","lat":"Latitude","lng":"Longitude"};
     const colWidths = { batchRfi:90, tpId:115, duId:155, siteName:165, subcontPlan:105, gap:125, remark:145, city:95, lat:100, lng:100 };
@@ -1821,7 +1836,7 @@ Remark = ${remark}`;
     const th = (key) => {
       const active = tableSortKey === key;
       const arrow = active ? (tableSortDir === 'asc' ? ' &#9650;' : ' &#9660;') : '';
-      return `<th data-key="${key}" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${colLabels[key]}${arrow}</th>`;
+      return `<th data-key="${key}" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;user-select:none;">${colLabels[key]}${arrow}</th>`;
     };
 
     const row = (site) => {
@@ -1836,53 +1851,8 @@ Remark = ${remark}`;
       }).join('');
     };
 
-    // Build pivot summary (only for subcont users)
-    const showPivot = !!mySubcont;
-    const pivotData = showPivot ? (() => {
-      const counts = {};
-      sites.forEach(s => {
-        const g = matchGapStatus(s.gap);
-        counts[g] = (counts[g] || 0) + 1;
-      });
-      const total = sites.length;
-      const order = ['1.ATP', '2.ON AIR', '3.Install', '4.Comcase', '5.Po requested', 'Other'];
-      return order.map(g => ({
-        label: g,
-        count: counts[g] || 0,
-        pct: total > 0 ? Math.round((counts[g] || 0) / total * 100) : 0,
-        color: dashGapColor(g === 'Other' ? '' : g)
-      }));
-    })() : [];
-
-    const pivotHtml = showPivot && sites.length > 0 ? `
-      <div style="padding:10px 16px 8px;background:#fff;border-bottom:1px solid #e2e5e8;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-        <span style="font-size:11px;font-weight:800;color:#6b7688;text-transform:uppercase;letter-spacing:.06em;">GAP Summary</span>
-        ${pivotData.map(g => `
-          <div style="display:flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;background:${g.color}18;border:1px solid ${g.color}44;">
-            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${g.color};flex-shrink:0;"></span>
-            <span style="font-size:11px;font-weight:700;color:#3a4148;">${escapeHtml(g.label)}</span>
-            <span style="font-size:13px;font-weight:800;color:${g.color};">${g.count}</span>
-            <span style="font-size:10px;color:#7a828a;">(${g.pct}%)</span>
-          </div>
-        `).join('')}
-        <div style="margin-left:auto;font-size:12px;font-weight:800;color:var(--ink);">
-          Total: <span style="color:var(--cpri);font-size:15px;">${sites.length}</span>
-        </div>
-      </div>
-    ` : '';
-
     container.innerHTML = `
-      <div style="padding:12px 16px 10px;background:#f5f7f8;border-bottom:1px solid #e2e5e8;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-        <span style="font-size:13px;font-weight:800;color:var(--ink);">${escapeHtml(mySubcont ? mySubcont + ' Sites' : 'All Sites')}</span>
-        <span style="font-size:11.5px;color:#7a828a;">${filtered.length} / ${sites.length} sites</span>
-        <span id="tableSelInfo" style="font-size:11px;color:#2f6bc4;font-weight:700;display:none;"></span>
-        <span style="margin-left:auto;font-size:10px;color:#9aa0a6;">Ctrl+C to copy selected cells &nbsp;·&nbsp; Click header to sort</span>
-        <input type="search" id="tableSearchInput" placeholder="Search…"
-          style="padding:6px 10px;border:1.2px solid #d8dce0;border-radius:8px;font-size:12px;min-width:200px;outline:none;"
-          value="${escapeHtml(tableSearch)}">
-      </div>
-      ${pivotHtml}
-      <div id="tableWrap" style="overflow:auto;flex:1;position:relative;user-select:none;-webkit-user-select:none;" tabindex="0">
+      <div id="tableWrap" style="overflow:auto;position:absolute;top:50px;left:0;right:0;bottom:0;user-select:none;-webkit-user-select:none;" tabindex="0">
         <table id="tableData" style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:11.5px;min-width:1200px;cursor:cell;user-select:none;-webkit-user-select:none;">
           <colgroup>
             ${cols.map(c => `<col style="width:${colWidths[c]}px;min-width:${colWidths[c]}px;">`).join('')}
@@ -1902,151 +1872,11 @@ Remark = ${remark}`;
       </div>
     `;
 
-    const wrap = container.querySelector('#tableWrap');
-    const tbl = container.querySelector('#tableData');
-    const selInfo = container.querySelector('#tableSelInfo');
-
-    // ---- Cell selection with mouse ----
-    let selStart = null;
-    let selEnd = null;
-    let isSelecting = false;
-
-    function clearSelection(){
-      tbl.querySelectorAll('td.selected, th.selected').forEach(el => el.classList.remove('selected'));
-      selStart = null;
-      selEnd = null;
-      selInfo.style.display = 'none';
-    }
-
-    function getCellCoords(td){
-      if(!td) return null;
-      const row = td.closest('tr');
-      if(!row) return null;
-      const bodyRows = tbl.tBodies[0].rows;
-      const rowIdx = [...bodyRows].indexOf(row);
-      const colIdx = [...row.cells].indexOf(td);
-      return { row: rowIdx, col: colIdx };
-    }
-
-    function applySelection(){
-      tbl.querySelectorAll('td.selected, th.selected').forEach(el => el.classList.remove('selected'));
-      if(!selStart || !selEnd) return;
-      const minRow = Math.min(selStart.row, selEnd.row);
-      const maxRow = Math.max(selStart.row, selEnd.row);
-      const minCol = Math.min(selStart.col, selEnd.col);
-      const maxCol = Math.max(selStart.col, selEnd.col);
-      const bodyRows = tbl.tBodies[0].rows;
-      const headRow = tbl.tHead.rows[0];
-      for(let r = minRow; r <= maxRow; r++){
-        if(bodyRows[r]){
-          for(let c = minCol; c <= maxCol; c++){
-            if(bodyRows[r].cells[c]) bodyRows[r].cells[c].classList.add('selected');
-          }
-        }
-      }
-      // Highlight header columns
-      for(let c = minCol; c <= maxCol; c++){
-        if(headRow.cells[c]) headRow.cells[c].classList.add('selected');
-      }
-      const count = (maxRow - minRow + 1) * (maxCol - minCol + 1);
-      selInfo.textContent = `${count} cell${count > 1 ? 's' : ''} selected`;
-      selInfo.style.display = 'inline';
-    }
-
-    wrap.addEventListener('mousedown', (e) => {
-      // Ignore clicks on the search input
-      if(e.target.closest('#tableSearchInput')) return;
-      const td = e.target.closest('td');
-      if(td){
-        isSelecting = true;
-        selStart = getCellCoords(td);
-        selEnd = selStart;
-        applySelection();
-        e.preventDefault();
-      } else if(e.target.closest('th')){
-        // Header click — sort (not selection)
-      } else {
-        // Click on empty area — clear selection
-        clearSelection();
-      }
-    });
-
-    wrap.addEventListener('mousemove', (e) => {
-      if(!isSelecting) return;
-      const td = e.target.closest('td');
-      if(!td) return;
-      selEnd = getCellCoords(td);
-      applySelection();
-    });
-
-    document.addEventListener('mouseup', () => {
-      isSelecting = false;
-    });
-
-    // Prevent text selection during drag
-    wrap.addEventListener('selectstart', (e) => { if(isSelecting) e.preventDefault(); });
-
-    // Ctrl+C to copy selected cells
-    function copySelectedCells(){
-      if(!selStart || !selEnd) return;
-      const minRow = Math.min(selStart.row, selEnd.row);
-      const maxRow = Math.max(selStart.row, selEnd.row);
-      const minCol = Math.min(selStart.col, selEnd.col);
-      const maxCol = Math.max(selStart.col, selEnd.col);
-      const bodyRows = tbl.tBodies[0].rows;
-      let text = '';
-      for(let r = minRow; r <= maxRow; r++){
-        const rowData = [];
-        for(let c = minCol; c <= maxCol; c++){
-          if(bodyRows[r] && bodyRows[r].cells[c]){
-            rowData.push((bodyRows[r].cells[c].getAttribute('data-val') || '').replace(/\t/g,' '));
-          }
-        }
-        text += rowData.join('\t') + '\n';
-      }
-      navigator.clipboard.writeText(text).catch(() => {});
-      // Show copied feedback
-      const info = container.querySelector('#tableSelInfo');
-      const prevText = info.textContent;
-      info.textContent = 'Copied!';
-      info.style.color = '#4caf7d';
-      setTimeout(() => {
-        info.textContent = prevText;
-        info.style.color = '';
-      }, 1200);
-    }
-
-    function handleCtrlC(e){
-      if(!(e.ctrlKey || e.metaKey) || e.key !== 'c') return;
-      // Only trigger if table has active selection
-      const active = document.activeElement;
-      if(active && (active.closest('#dashTable') || active.id === 'tableSearchInput')){
-        if(selStart && selEnd){
-          copySelectedCells();
-          e.preventDefault();
-          e.stopPropagation();
-        }
-      } else if(selStart && selEnd){
-        // Ctrl+C from anywhere when table has selection
-        copySelectedCells();
-        e.preventDefault();
-      }
-    }
-
-    container.addEventListener('keydown', handleCtrlC);
-    document.addEventListener('keydown', handleCtrlC);
-
-    // Search input
-    container.querySelector('#tableSearchInput').addEventListener('input', (e) => {
-      tableSearch = e.target.value;
-      renderTableView();
-    });
-
-    // Column header sort (all columns) — click does NOT start cell selection
-    tbl.querySelectorAll('th').forEach(th => {
-      th.addEventListener('click', (e) => {
-        e.stopPropagation(); // prevent mousedown on wrap from clearing selection
-        const key = th.dataset.key;
+    // Re-wire sort on ALL column headers (now that DOM is rebuilt)
+    container.querySelectorAll('th[data-key]').forEach(thEl => {
+      thEl.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const key = thEl.dataset.key;
         if(tableSortKey === key){
           tableSortDir = tableSortDir === 'asc' ? 'desc' : 'asc';
         } else {
@@ -2056,7 +1886,145 @@ Remark = ${remark}`;
         renderTableView();
       });
     });
+
+    // Wire table mouse events (only once — guard with flag)
+    if(!tableInitialized){
+      tableInitialized = true;
+      const wrap = container.querySelector('#tableWrap');
+
+      wrap.addEventListener('mousedown', (e) => {
+        if(e.target.closest('#tableSearchInput')) return;
+        const td = e.target.closest('td');
+        if(td){
+          tableIsSelecting = true;
+          tableSelStart = getTableCellCoords(td);
+          tableSelEnd = tableSelStart;
+          applyTableSelection();
+          e.preventDefault();
+        } else {
+          clearTableSelection();
+        }
+      });
+
+      wrap.addEventListener('mousemove', (e) => {
+        if(!tableIsSelecting) return;
+        const td = e.target.closest('td');
+        if(td){
+          tableSelEnd = getTableCellCoords(td);
+          applyTableSelection();
+        }
+      });
+
+      document.addEventListener('mouseup', () => {
+        tableIsSelecting = false;
+      });
+
+      wrap.addEventListener('selectstart', (e) => { if(tableIsSelecting) e.preventDefault(); });
+
+      // Click on empty area clears selection
+      wrap.addEventListener('click', (e) => {
+        if(!e.target.closest('td') && !e.target.closest('th')){
+          clearTableSelection();
+        }
+      });
+    }
   }
+
+  function getTableCellCoords(td){
+    if(!td) return null;
+    const row = td.closest('tr');
+    if(!row) return null;
+    const tbl = document.getElementById('tableData');
+    if(!tbl) return null;
+    const bodyRows = tbl.tBodies[0].rows;
+    const rowIdx = [...bodyRows].indexOf(row);
+    const colIdx = [...row.cells].indexOf(td);
+    return { row: rowIdx, col: colIdx };
+  }
+
+  function clearTableSelection(){
+    const tbl = document.getElementById('tableData');
+    if(!tbl) return;
+    tbl.querySelectorAll('td.selected, th.selected').forEach(el => el.classList.remove('selected'));
+    tableSelStart = null;
+    tableSelEnd = null;
+    tableSelInfoEl = document.getElementById('tableSelInfo');
+    if(tableSelInfoEl) tableSelInfoEl.style.display = 'none';
+  }
+
+  function applyTableSelection(){
+    const tbl = document.getElementById('tableData');
+    if(!tbl || !tableSelStart || !tableSelEnd) return;
+    tbl.querySelectorAll('td.selected, th.selected').forEach(el => el.classList.remove('selected'));
+    const minRow = Math.min(tableSelStart.row, tableSelEnd.row);
+    const maxRow = Math.max(tableSelStart.row, tableSelEnd.row);
+    const minCol = Math.min(tableSelStart.col, tableSelEnd.col);
+    const maxCol = Math.max(tableSelStart.col, tableSelEnd.col);
+    const bodyRows = tbl.tBodies[0].rows;
+    const headRow = tbl.tHead.rows[0];
+    for(let r = minRow; r <= maxRow; r++){
+      if(bodyRows[r]){
+        for(let c = minCol; c <= maxCol; c++){
+          if(bodyRows[r].cells[c]) bodyRows[r].cells[c].classList.add('selected');
+        }
+      }
+    }
+    for(let c = minCol; c <= maxCol; c++){
+      if(headRow.cells[c]) headRow.cells[c].classList.add('selected');
+    }
+    const count = (maxRow - minRow + 1) * (maxCol - minCol + 1);
+    tableSelInfoEl = document.getElementById('tableSelInfo');
+    if(tableSelInfoEl){
+      tableSelInfoEl.textContent = count + ' cell' + (count > 1 ? 's' : '') + ' selected';
+      tableSelInfoEl.style.display = 'inline';
+    }
+  }
+
+  function copyTableSelection(){
+    const tbl = document.getElementById('tableData');
+    if(!tbl || !tableSelStart || !tableSelEnd) return;
+    const minRow = Math.min(tableSelStart.row, tableSelEnd.row);
+    const maxRow = Math.max(tableSelStart.row, tableSelEnd.row);
+    const minCol = Math.min(tableSelStart.col, tableSelEnd.col);
+    const maxCol = Math.max(tableSelStart.col, tableSelEnd.col);
+    const bodyRows = tbl.tBodies[0].rows;
+    let text = '';
+    for(let r = minRow; r <= maxRow; r++){
+      const rowData = [];
+      for(let c = minCol; c <= maxCol; c++){
+        if(bodyRows[r] && bodyRows[r].cells[c]){
+          rowData.push((bodyRows[r].cells[c].getAttribute('data-val') || '').replace(/\t/g,' '));
+        }
+      }
+      text += rowData.join('\t') + '\n';
+    }
+    navigator.clipboard.writeText(text).catch(() => {});
+    const info = document.getElementById('tableSelInfo');
+    if(info){
+      const prev = info.textContent;
+      info.textContent = 'Copied!';
+      info.style.color = '#4caf7d';
+      setTimeout(() => { info.textContent = prev; info.style.color = ''; }, 1200);
+    }
+  }
+
+  // Global Ctrl+C for table
+  document.addEventListener('keydown', (e) => {
+    if(!(e.ctrlKey || e.metaKey) || e.key !== 'c') return;
+    const active = document.activeElement;
+    if(active && (active.closest('#dashTable') || active.id === 'tableSearchInput')){
+      if(tableSelStart && tableSelEnd){
+        copyTableSelection();
+        e.preventDefault();
+      }
+    }
+  });
+
+  // Search input — persistent outside renderTableView
+  document.getElementById('tableSearchInput').addEventListener('input', (e) => {
+    tableSearch = e.target.value;
+    renderTableView();
+  });
   function renderPivotTable(){
     const container = document.getElementById('dashGraph');
     const sites = getFilteredSites();
@@ -2434,15 +2402,54 @@ Remark = ${remark}`;
       subDblclickTime = Date.now();
       const td = e.target.closest('td');
       if(!td) return;
-      const inp = td.querySelector('input[data-i], select[data-i]');
+      const inp = td.querySelector('select[data-i]');
       if(!inp) return;
       const k = inp.getAttribute('data-k');
       if(k !== 'gap' && k !== 'remark') return;
-      inp.removeAttribute('readonly');
-      inp.removeAttribute('disabled');
-      inp.focus();
-      inp.select();
-      editingCell = td;
+      // For GAP cells: convert the disabled select to an active dropdown
+      if(k === 'gap'){
+        inp.removeAttribute('disabled');
+        inp.focus();
+        inp.value = inp.value; // ensure valid selection
+        editingCell = td;
+        return;
+      }
+      // For remark: convert to textarea
+      if(k === 'remark'){
+        const currentVal = inp.value || '';
+        const textarea = document.createElement('textarea');
+        textarea.value = currentVal;
+        textarea.style.cssText = 'width:100%;min-height:40px;padding:3px 5px;border:1px solid #2f6bc4;border-radius:3px;font-size:10.5px;resize:vertical;box-sizing:border-box;';
+        textarea.setAttribute('data-i', inp.getAttribute('data-i'));
+        textarea.setAttribute('data-k', 'remark');
+        textarea.addEventListener('input', ()=>{
+          const i = Number(textarea.getAttribute('data-i'));
+          if(subTableRows[i]) subTableRows[i].remark = textarea.value;
+        });
+        textarea.addEventListener('blur', ()=>{
+          const i = Number(textarea.getAttribute('data-i'));
+          if(!subTableRows[i]) return;
+          const val = textarea.value;
+          const span = document.createElement('span');
+          span.textContent = val || '-';
+          span.style.cssText = 'font-size:10.5px;white-space:pre-wrap;word-break:break-word;';
+          td.innerHTML = '';
+          td.appendChild(span);
+          // Re-create the hidden input for future edits
+          const hiddenInp = document.createElement('input');
+          hiddenInp.setAttribute('data-i', i);
+          hiddenInp.setAttribute('data-k', 'remark');
+          hiddenInp.setAttribute('readonly', '');
+          hiddenInp.value = val;
+          hiddenInp.style.cssText = 'position:absolute;opacity:0;pointer-events:none;width:1px;height:1px;';
+          td.style.position = 'relative';
+          td.appendChild(hiddenInp);
+        });
+        td.innerHTML = '';
+        td.appendChild(textarea);
+        textarea.focus();
+        editingCell = td;
+      }
     };
 
     table.addEventListener('mousedown', initSubTableDrag._md);
@@ -2696,7 +2703,7 @@ Remark = ${remark}`;
       document.body.appendChild(el);
       return el;
     })();
-    const GL={'1.ATP':'ATP','2.ON AIR':'ON AIR','3.Install':'Install','4.Comcase':'Comcase','5.Po requested':'PO Req.','Other':'Other'};
+    const GL={'ATP':'ATP','ON AIR':'ON AIR','Install':'Install','Commcase':'Commcase','PO Requested':'PO Requested','DN Requested':'DN Requested','Other':'Other'};
     const gLbl=GL[cellData.colKey]||cellData.colKey;
     const colHdr=dashPivotMode==='batch-subcont'?cellData.colKey:gLbl;
     const tbodyRows = sites.length ? sites.map(function(s){
@@ -2749,21 +2756,21 @@ Remark = ${remark}`;
       const name = String(site.subcontPlan || 'Unknown').trim() || 'Unknown';
       if(!groups[name]) groups[name] = { name, atp:0, onair:0, install:0, commcase:0, po:0, total:0 };
       const g = matchGapStatus(site.gap);
-      if(g === '1.ATP') groups[name].atp++;
-      else if(g === '2.ON AIR') groups[name].onair++;
-      else if(g === '3.Install') groups[name].install++;
-      else if(g === '4.Comcase') groups[name].commcase++;
-      else if(g === '5.Po requested') groups[name].po++;
+      if(g === 'ATP') groups[name].atp++;
+      else if(g === 'ON AIR') groups[name].onair++;
+      else if(g === 'Install') groups[name].install++;
+      else if(g === 'Commcase') groups[name].commcase++;
+      else if(g === 'PO Requested' || g === 'DN Requested') groups[name].po++;
       groups[name].total++;
     });
     const ranked = Object.values(groups).sort((a,b)=> b.total - a.total);
     const dateStr = new Date().toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
     const stages = [
       { key:'atp', label:'ATP', color:'#2fa84f' },
-      { key:'onair', label:'On Air', color:'#2f80ed' },
+      { key:'onair', label:'ON AIR', color:'#2f80ed' },
       { key:'install', label:'Install', color:'#f2994a' },
-      { key:'commcase', label:'Comcase', color:'#e0453c' },
-      { key:'po', label:'PO Req.', color:'#98a2b3' }
+      { key:'commcase', label:'Commcase', color:'#e0453c' },
+      { key:'po', label:'PO/DN Req.', color:'#98a2b3' }
     ];
 
     mount.innerHTML = `<div class="sub-cards">` + ranked.map((item, idx)=>{
@@ -2904,13 +2911,16 @@ Remark = ${remark}`;
 
     // GAP color map
     const GAP_CELL_COLORS = {
-      '1.ATP': { bg:'#d8f3e3', text:'#1a5c2e' },
-      '2.ON AIR': { bg:'#d6e6f8', text:'#1a3d7c' },
-      '3.Install': { bg:'#fde9c8', text:'#8c4a0a' },
-      '4.Comcase': { bg:'#f8d4d2', text:'#8c1a14' },
-      '5.Po requested': { bg:'#e8eaec', text:'#555' },
-      'Other': { bg:'#e8eaec', text:'#555' }
+      'ATP':          { bg:'#d8f3e3', text:'#1a5c2e' },
+      'ON AIR':       { bg:'#d6e6f8', text:'#1a3d7c' },
+      'Install':      { bg:'#fde9c8', text:'#8c4a0a' },
+      'Commcase':     { bg:'#f8d4d2', text:'#8c1a14' },
+      'PO Requested':{ bg:'#e8eaec', text:'#555' },
+      'DN Requested':{ bg:'#e8eaec', text:'#555' },
+      'Other':        { bg:'#e8eaec', text:'#555' }
     };
+    // GAP dropdown options for editing
+    const GAP_OPTIONS = ['ATP', 'ON AIR', 'Install', 'Commcase', 'DN Requested', 'PO Requested'];
 
     const head = '<tr>' + SUB_TABLE_FIELDS.map(f=> `<th>${escapeHtml(f.label)}</th>`).join('') + '</tr>';
     const filterHeadRow = '<tr style="background:#2d3748;">' + filterRow + '</tr>';
@@ -2924,7 +2934,7 @@ Remark = ${remark}`;
             ? `background:${GAP_CELL_COLORS[current] ? GAP_CELL_COLORS[current].bg : '#e8eaec'};color:${GAP_CELL_COLORS[current] ? GAP_CELL_COLORS[current].text : '#555'}`
             : `background:#f5f6f7;color:#888`;
           return `<td style="${colorStyle}"><select data-i="${i}" data-k="${f.key}" ${editable?'':'disabled'} style="width:100%;${colorStyle}">${
-            ['1.ATP','2.ON AIR','3.Install','4.Comcase','5.Po requested','Other'].map(g=> `<option value="${escapeHtml(g)}" ${current===g?'selected':''}>${escapeHtml(g)}</option>`).join('')
+            ['ATP','ON AIR','Install','Commcase','DN Requested','PO Requested','Other'].map(g=> `<option value="${escapeHtml(g)}" ${current===g?'selected':''}>${escapeHtml(g)}</option>`).join('')
           }</select></td>`;
         }
         const roStyle = editable ? '' : 'background:#f5f6f7;color:#888;border-color:#e0e0e0;cursor:default';
@@ -3080,6 +3090,7 @@ Remark = ${remark}`;
     document.getElementById('dashLegend').style.display = view === 'map' ? '' : 'none';
     document.getElementById('dashGraph').style.display = view === 'graph' ? 'block' : 'none';
     document.getElementById('dashTable').style.display = view === 'table' ? 'block' : 'none';
+    document.getElementById('dashTableBar').style.display = view === 'table' ? 'flex' : 'none';
     document.getElementById('dashFilterPanel').style.display = view === 'table' ? 'none' : '';
     if(view === 'map'){
       setTimeout(()=> dashMap && dashMap.invalidateSize(), 50);
@@ -3313,111 +3324,6 @@ Remark = ${remark}`;
     if(e.key === 'Enter') document.getElementById('dashPwSubmit').click();
   });
 
-  // ---------------- Excel upload (debug mode, bypasses the live server) ----------------
-  function findHeaderColClient(headerRow, label){
-    for(let i=0;i<headerRow.length;i++){
-      if(String(headerRow[i] || '').trim().toLowerCase() === label.toLowerCase()) return i;
-    }
-    return -1;
-  }
-
-  function parseExcelToTrackerData(rows){
-    if(!rows.length) return [];
-    const header = rows[0];
-    const cols = {
-      duId: findHeaderColClient(header, 'DU ID'),
-      siteName: findHeaderColClient(header, 'Site name'),
-      subcontPlan: findHeaderColClient(header, 'Subcont Plan'),
-      gap: findHeaderColClient(header, 'GAP Analysis'),
-      remark: findHeaderColClient(header, 'Remark'),
-      team: findHeaderColClient(header, 'Team'),
-      ring: findHeaderColClient(header, 'RING'),
-      seq: findHeaderColClient(header, 'Seq'),
-      lat: findHeaderColClient(header, 'Latitude'),
-      lng: findHeaderColClient(header, 'Longitude'),
-      batchRfi: findHeaderColClient(header, 'Batch RFI'),
-      tpId: Math.max(findHeaderColClient(header, 'TP ID'), findHeaderColClient(header, 'TP Site ID')),
-      city: findHeaderColClient(header, 'City')
-    };
-    const get = (row, idx)=> idx >= 0 ? row[idx] : '';
-    return rows.slice(1)
-      .filter(row=> get(row, cols.duId))
-      .map(row=>({
-        duId: get(row, cols.duId),
-        siteName: get(row, cols.siteName),
-        subcontPlan: get(row, cols.subcontPlan),
-        gap: get(row, cols.gap),
-        remark: get(row, cols.remark),
-        team: get(row, cols.team),
-        ring: get(row, cols.ring),
-        seq: get(row, cols.seq),
-        lat: get(row, cols.lat),
-        lng: get(row, cols.lng),
-        batchRfi: get(row, cols.batchRfi),
-        tpId: get(row, cols.tpId),
-        city: get(row, cols.city)
-      }));
-  }
-
-  document.getElementById('dashUploadBtn').addEventListener('click', ()=>{
-    document.getElementById('dashFileInput').click();
-  });
-
-  document.getElementById('dashFileInput').addEventListener('change', (e)=>{
-    const file = e.target.files[0];
-    if(!file) return;
-
-    if(typeof XLSX === 'undefined'){
-      document.getElementById('dashStatus').textContent =
-        'Excel library failed to load â€” check your internet connection (needs unpkg.com reachable)';
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onerror = ()=>{
-      document.getElementById('dashStatus').textContent = 'Could not read the file from disk';
-    };
-    reader.onload = (evt)=>{
-      try{
-        const data = new Uint8Array(evt.target.result);
-        const wb = XLSX.read(data, { type:'array' });
-
-        if(!wb.SheetNames || !wb.SheetNames.length){
-          document.getElementById('dashStatus').textContent = 'No sheets found in that file';
-          return;
-        }
-
-        const firstSheetName = wb.SheetNames[0];
-        const ws = wb.Sheets[firstSheetName];
-        const rows = XLSX.utils.sheet_to_json(ws, { header:1, raw:false, defval:'' });
-
-        if(!rows.length){
-          document.getElementById('dashStatus').textContent = `Sheet "${firstSheetName}" appears empty`;
-          return;
-        }
-
-        dashTrackerData = parseExcelToTrackerData(rows);
-
-        if(!dashTrackerData.length){
-          document.getElementById('dashStatus').textContent =
-            `Read ${rows.length} rows from "${firstSheetName}" but found no "DU ID" column â€” check the header row text matches exactly`;
-          return;
-        }
-
-        document.getElementById('dashStatus').textContent =
-          `${dashTrackerData.length} sites loaded from "${file.name}" â†’ sheet "${firstSheetName}" (debug, not live)`;
-        populateBatchOptions();
-        dashSelectedSubconts = null;
-        dashSelectedGaps = null;
-        renderChecklistFilters();
-        if(dashView === 'map') drawDashboardMap(); else renderGraphView();
-      }catch(err){
-        document.getElementById('dashStatus').textContent = 'Error reading file: ' + (err && err.message ? err.message : String(err));
-      }
-    };
-    reader.readAsArrayBuffer(file);
-    e.target.value = ''; // allow re-selecting the same file later
-  });
   document.getElementById('dashBackBtn').addEventListener('click', closeDashboard);
 
   document.getElementById('dashMinimizeBtn').addEventListener('click', ()=>{
