@@ -3607,10 +3607,6 @@ Remark = ${remark}`;
   });
   console.log('[APP] Script initialized successfully');
   document.getElementById('loginDebugLog').innerHTML += '<div style="color:#7ee787; margin-bottom:2px;">[APP] Script OK - waiting for login...</div>';
-  } catch(err) {
-    var el = document.getElementById('loginDebugLog');
-    if(el) el.innerHTML += '<div style="color:#f85149; margin-bottom:2px;">[IIFE ERROR] ' + (err.message || String(err)) + '</div>';
-  }
 })();
 </script>
 
