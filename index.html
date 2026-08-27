@@ -3278,22 +3278,34 @@ Remark = ${remark}`;
       }
       setTimeout(()=> dashMap.invalidateSize(), 50);
 
+      // Always force a timeout so dashboard never hangs waiting for server data
+      const FALLBACK_DELAY = 15000;
+      let timedOut = false;
+      let statusText = document.getElementById('dashStatus');
+
       try {
         console.log('[initDashboard] Starting...');
-        document.getElementById('dashStatus').textContent = 'Loading sites from spreadsheet…';
-        // Add timeout to prevent hanging
+        statusText.textContent = 'Loading sites from spreadsheet…';
+        const dataPromise = Promise.all([fetchTrackerForMap(), buildMessageLookup()]);
         const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Timeout (15s). Check internet connection.')), 15000)
+          setTimeout(() => {
+            timedOut = true;
+            reject(new Error('Server timeout — showing empty map (upload Excel or check connection)'));
+          }, FALLBACK_DELAY)
         );
-        const [tracker, msgLookup] = await Promise.race([
-          Promise.all([fetchTrackerForMap(), buildMessageLookup()]),
-          timeoutPromise
-        ]).catch(e => { throw e; });
-        dashTrackerData = tracker;
-        dashMessageLookup = msgLookup;
+        try {
+          const [tracker, msgLookup] = await Promise.race([dataPromise, timeoutPromise]);
+          dashTrackerData = tracker || [];
+          dashMessageLookup = msgLookup || {};
+        } catch(e) {
+          console.warn('[initDashboard] Data fetch result:', e.message);
+          dashTrackerData = [];
+          dashMessageLookup = {};
+          statusText.textContent = timedOut ? 'Map loaded (no data — check server connection)' : ('Error: ' + e.message);
+        }
       } catch(e) {
         console.warn('Failed to load sites from server:', e);
-        document.getElementById('dashStatus').textContent = 'Error: ' + e.message;
+        statusText.textContent = 'Error: ' + e.message;
         dashTrackerData = [];
         dashMessageLookup = {};
       }
