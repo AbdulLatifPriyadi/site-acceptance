@@ -487,8 +487,8 @@
     <div class="login-title">Site Dashboard</div>
     <div class="login-sub">Site Acceptance Tracking</div>
     <div class="login-box">
-      <div class="login-label">Password</div>
-      <input type="password" id="loginInput" class="login-input" placeholder="Enter password" autocomplete="off">
+      <div class="login-label">Token</div>
+      <input type="text" id="loginInput" class="login-input" placeholder="Enter token" autocomplete="off" spellcheck="false">
       <div class="login-error" id="loginError"></div>
       <button type="button" class="login-btn" id="loginBtn">Enter Dashboard</button>
     </div>
@@ -618,6 +618,13 @@
   </div>
 
 <script>
+window.addEventListener('error', function(e){
+  console.error('[JS ERROR]', e.message, 'at', e.filename, 'line', e.lineno, 'col', e.colno);
+});
+window.addEventListener('unhandledrejection', function(e){
+  console.error('[UNHANDLED PROMISE REJECTION]', e.reason);
+});
+(function(){
   const COLORS = {
     ant1:'var(--antenna1)', ant2:'var(--antenna2)', ant3:'var(--antenna3)',
     rru1:'var(--rru1)', rru2:'var(--rru2)', rru3:'var(--rru3)',
@@ -3277,36 +3284,43 @@ Remark = ${remark}`;
 
   // ----- Login screen -----
   document.getElementById('loginBtn').addEventListener('click', async ()=>{
+    console.log('[LOGIN] Button clicked');
     const val = document.getElementById('loginInput').value.trim();
-    if(!val){ document.getElementById('loginError').textContent = 'Enter a password'; document.getElementById('loginError').style.display = 'block'; return; }
+    console.log('[LOGIN] Value:', val);
+    if(!val){ document.getElementById('loginError').textContent = 'Enter a token'; document.getElementById('loginError').style.display = 'block'; return; }
 
     // Validate password BEFORE switching to dashboard
     let isValid = false;
     let errorMsg = '';
+    console.log('[LOGIN] DASHBOARD_PASSWORD:', DASHBOARD_PASSWORD);
     if(val.toLowerCase() === DASHBOARD_PASSWORD.toLowerCase()){
+      console.log('[LOGIN] Dashboard password match!');
       dashboardUnlocked = true;
       mySubcont = '';
       isValid = true;
     } else {
+      console.log('[LOGIN] Dashboard password NO match, trying subcont pattern');
       const scMatch = val.match(/^([A-Za-z]+)(\d+)$/);
+      console.log('[LOGIN] Subcont match:', scMatch);
       if(scMatch && scMatch[2] === '123'){
         mySubcont = normalizeSubcontKey(scMatch[1]);
         unlockedSubconts = {};
         unlockedSubconts[mySubcont] = true;
         isValid = true;
       } else {
-        errorMsg = 'Wrong password';
+        errorMsg = 'Wrong token';
       }
     }
 
     if(!isValid){
+      console.log('[LOGIN] Invalid:', errorMsg);
       document.getElementById('loginError').textContent = errorMsg;
       document.getElementById('loginError').style.display = 'block';
       return;
     }
 
     // Password OK — switch to dashboard
-    console.log('[LOGIN] Password OK — switching to dashboard');
+    console.log('[LOGIN] Valid! Switching to dashboard...');
     document.body.classList.add('dashboard-mode');
     document.getElementById('loginScreen').style.display = 'none';
     document.getElementById('loginScreen').style.visibility = 'hidden';
@@ -3316,11 +3330,14 @@ Remark = ${remark}`;
     document.getElementById('dashboardScreen').style.zIndex = '60';
     document.getElementById('dashboardScreen').style.background = '#eef1f3';
 
+    console.log('[LOGIN] Calling initDashboard...');
     try {
       await initDashboard();
+      console.log('[LOGIN] initDashboard completed!');
     } catch(e) {
       console.error('[LOGIN] initDashboard error:', e);
-      document.getElementById('dashStatus').textContent = 'Error: ' + (e.message || String(e));
+      const status = document.getElementById('dashStatus');
+      if(status) status.textContent = 'Error: ' + (e.message || String(e));
     }
   });
 
@@ -3411,6 +3428,8 @@ Remark = ${remark}`;
     renderChecklistFilters();
     drawDashboardMap();
   });
+  console.log('[APP] Script initialized successfully');
+})(); // end IIFE
 </script>
 
 </body>
