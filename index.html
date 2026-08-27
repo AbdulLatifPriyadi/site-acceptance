@@ -87,7 +87,7 @@
   .dash-status{ font-size:11px; color:#b7c0c9; flex-shrink:0; margin-left:auto; }
 
   .dash-body{ flex:1; position:relative; min-height:0; }
-  #dashMap{ position:absolute; inset:0; }
+  #dashMap{ position:absolute; inset:0; min-height:400px; }
   /* darken the basemap tiles only, so colored points/lines stay vivid */
   #dashMap .leaflet-tile-pane{ filter: brightness(0.5); }
 
@@ -1773,6 +1773,7 @@ Remark = ${remark}`;
   }
 
   function drawDashboardMap(){
+    if (!dashMap) return; // guard: map not ready
     dashMarkersLayer.clearLayers();
     dashLinesLayer.clearLayers();
 
@@ -3277,6 +3278,7 @@ Remark = ${remark}`;
         dashMarkersLayer = L.layerGroup().addTo(dashMap);
       }
       setTimeout(()=> dashMap.invalidateSize(), 50);
+      setTimeout(()=>{ if(dashMap) dashMap.invalidateSize({ panConstraint: false }); }, 200);
 
       // Always force a timeout so dashboard never hangs waiting for server data
       const FALLBACK_DELAY = 15000;
@@ -3295,13 +3297,16 @@ Remark = ${remark}`;
         );
         try {
           const [tracker, msgLookup] = await Promise.race([dataPromise, timeoutPromise]);
-          dashTrackerData = tracker || [];
-          dashMessageLookup = msgLookup || {};
+          dashTrackerData = tracker;
+          dashMessageLookup = msgLookup;
         } catch(e) {
-          console.warn('[initDashboard] Data fetch result:', e.message);
-          dashTrackerData = [];
-          dashMessageLookup = {};
-          statusText.textContent = timedOut ? 'Map loaded (no data — check server connection)' : ('Error: ' + e.message);
+          if(timedOut){
+            console.warn('[initDashboard] Server timeout after ' + FALLBACK_DELAY + 'ms — using empty data');
+            dashTrackerData = [];
+            dashMessageLookup = {};
+          } else {
+            throw e;
+          }
         }
       } catch(e) {
         console.warn('Failed to load sites from server:', e);
