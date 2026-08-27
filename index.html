@@ -1365,7 +1365,13 @@ Remark = ${remark}`;
   // Expose initDashboard to window early (before the function body runs)
   window.initDashboard = function initDashboardWrapper(){
     if(initDashboardRunning){ console.log('[initDashboard] Already running, skipping'); return Promise.resolve(); }
-    return initDashboard();
+    initDashboardRunning = true;
+    // Hard timeout: force-reset guard after 30s to prevent permanent block
+    setTimeout(() => { console.log('[initDashboard] Hard timeout reset'); initDashboardRunning = false; }, 30000);
+    const p = initDashboard();
+    p.then(() => { console.log('[initDashboard] Promise resolved, guard reset'); initDashboardRunning = false; })
+      .catch(e => { console.log('[initDashboard] Promise rejected:', e.message); initDashboardRunning = false; });
+    return p;
   };
   // Expose to global scope so inline onclick handler can set these before calling initDashboard
   Object.defineProperty(window, 'mySubcont', { get: () => mySubcont, set: v => { mySubcont = v; }, configurable: true, enumerable: true });
@@ -3218,9 +3224,8 @@ Remark = ${remark}`;
   let dashFilterPanelMinimized = false;
 
   async function initDashboard(){
-    // Guard: prevent double-call
+    // Guard: prevent double-call (wrapper handles this, but keep as safety)
     if(initDashboardRunning){ console.log('[initDashboard] Already running, skipping'); return; }
-    initDashboardRunning = true;
     try {
       // Switch to map view first
       setDashView('map');
