@@ -510,15 +510,15 @@
     <div class="dash-body">
       <div id="dashMap"></div>
       <div id="dashGraph"></div>
-      <div id="dashTableBar" style="display:none; position:absolute; top:0; left:0; right:0; z-index:100; background:#f5f7f8; border-bottom:1px solid #e2e5e8; padding:8px 14px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-        <span style="font-size:13px; font-weight:800; color:var(--ink);" id="tableBarTitle">All Sites</span>
-        <span style="font-size:11.5px; color:#7a828a;" id="tableBarCount"></span>
-        <span id="tableSelInfo" style="font-size:11px; color:#2f6bc4; font-weight:700; display:none;"></span>
-        <span style="margin-left:auto; font-size:10px; color:#9aa0a6;">Click header to sort &nbsp;·&nbsp; Click &amp; drag to select &nbsp;·&nbsp; Ctrl+C to copy</span>
-        <input type="search" id="tableSearchInput" placeholder="Search..."
-          style="padding:6px 10px; border:1.2px solid #d8dce0; border-radius:8px; font-size:12px; min-width:200px; outline:none;">
+      <div id="dashTableBar" style="display:none; position:absolute; top:0; left:0; right:0; z-index:100; background:#1c2530; border-bottom:1px solid rgba(255,255,255,.1); padding:6px 14px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+        <span style="font-size:13px; font-weight:800; color:#fff;" id="tableBarTitle">All Sites</span>
+        <span style="font-size:11.5px; color:#b7c0c9;" id="tableBarCount"></span>
+        <span id="tableSelInfo" style="font-size:11px; color:#a8d4f0; font-weight:700; display:none;"></span>
+        <span style="margin-left:auto; font-size:10px; color:#6b7688;">Click header to sort &nbsp;·&nbsp; Ctrl+C to copy</span>
+        <input type="search" id="tableSearchInput" placeholder="Search or paste multiple DU IDs..."
+          style="padding:5px 9px; border:1px solid rgba(255,255,255,.2); border-radius:6px; background:#0d1117; color:#e6edf3; font-size:11.5px; min-width:240px; outline:none;">
       </div>
-      <div id="dashTable" style="display:none; position:absolute; inset:0; overflow:auto; background:#fff; padding-top:50px;"></div>
+      <div id="dashTable" style="display:none; position:absolute; inset:0; overflow:auto; background:#fff; padding-top:46px;"></div>
       <button class="dash-var-toggle" id="dashVarToggle" title="Toggle variable reference" style="display:none;">_vars</button>
       <div class="dash-var-overlay" id="dashVarOverlay"></div>
       <div class="dash-legend" id="dashLegend"></div>
@@ -1782,68 +1782,104 @@ Remark = ${remark}`;
 
   let tableBatchColors = {};
 
-  // ---- Table view persistent state (moved outside renderTableView to avoid closure bugs) ----
+  // ---- Table view persistent state ----
   let tableSelStart = null;
   let tableSelEnd = null;
   let tableIsSelecting = false;
   let tableSelInfoEl = null;
   let tableInitialized = false;
+  let tableColFilters = {}; // { colKey: 'selected filter value' }
+
+  // Build unique sorted values for a column
+  function getUniqueColValues(sites, key) {
+    const seen = {};
+    sites.forEach(s => { const v = String(s[key] || '').trim(); if (v) seen[v] = true; });
+    return Object.keys(seen).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  }
 
   function renderTableView(){
     const container = document.getElementById('dashTable');
     const sites = getFilteredSites();
+    const allCols = ["batchRfi","tpId","duId","siteName","subcontPlan","gap","remark","city","lat","lng"];
+    const colLabels = {"batchRfi":"Batch RFI","tpId":"TP Site ID","duId":"DU ID","siteName":"Site Name","subcontPlan":"Subcont Plan","gap":"GAP Analysis","remark":"Remark","city":"City","lat":"Latitude","lng":"Longitude"};
+    const colWidths = { batchRfi:90, tpId:115, duId:155, siteName:165, subcontPlan:105, gap:125, remark:145, city:95, lat:100, lng:100 };
 
-    // Sort — treat empty/blank as last in desc, first in asc
-    const sorted = [...sites].sort((a, b) => {
-      const va = (a[tableSortKey] || '').toString().trim();
-      const vb = (b[tableSortKey] || '').toString().trim();
-      const aEmpty = !va;
-      const bEmpty = !vb;
-      if(aEmpty && bEmpty) return 0;
-      if(aEmpty) return tableSortDir === 'asc' ? 1 : -1;
-      if(bEmpty) return tableSortDir === 'asc' ? -1 : 1;
-      const cmp = va.toLowerCase().localeCompare(vb.toLowerCase());
-      return tableSortDir === 'asc' ? cmp : -cmp;
+    // Apply per-column filters
+    const colFiltered = sites.filter(s => {
+      return allCols.every(col => {
+        const filterVal = tableColFilters[col];
+        if (!filterVal) return true;
+        const cellVal = String(s[col] || '').trim();
+        return cellVal === filterVal;
+      });
     });
 
-    // Filter by search
-    const filtered = tableSearch
-      ? sorted.filter(s => {
-          const s2 = tableSearch.toLowerCase();
-          return (
-            (s.duId || '').toLowerCase().includes(s2) ||
-            (s.siteName || '').toLowerCase().includes(s2) ||
-            (s.subcontPlan || '').toLowerCase().includes(s2) ||
-            (s.gap || '').toLowerCase().includes(s2) ||
-            (s.remark || '').toLowerCase().includes(s2) ||
-            (s.city || '').toLowerCase().includes(s2) ||
-            (s.batchRfi || '').toLowerCase().includes(s2) ||
-            (s.tpId || '').toLowerCase().includes(s2) ||
-            (s.lat || '').toLowerCase().includes(s2) ||
-            (s.lng || '').toLowerCase().includes(s2)
-          );
-        })
-      : sorted;
+    // Apply search (supports multi-line paste — one DU ID per line)
+    let filtered = colFiltered;
+    if (tableSearch.trim()) {
+      const lines = tableSearch.split('\n').map(l => l.trim()).filter(Boolean);
+      if (lines.length === 1) {
+        // Single-line search: search across all columns
+        const s2 = lines[0].toLowerCase();
+        filtered = colFiltered.filter(s =>
+          (s.duId || '').toLowerCase().includes(s2) ||
+          (s.siteName || '').toLowerCase().includes(s2) ||
+          (s.subcontPlan || '').toLowerCase().includes(s2) ||
+          (s.gap || '').toLowerCase().includes(s2) ||
+          (s.remark || '').toLowerCase().includes(s2) ||
+          (s.city || '').toLowerCase().includes(s2) ||
+          (s.batchRfi || '').toLowerCase().includes(s2) ||
+          (s.tpId || '').toLowerCase().includes(s2) ||
+          (s.lat || '').toLowerCase().includes(s2) ||
+          (s.lng || '').toLowerCase().includes(s2)
+        );
+      } else {
+        // Multi-line: match DU IDs (each line = one DU ID to find)
+        const duSet = new Set(lines.map(l => l.trim().toUpperCase()));
+        filtered = colFiltered.filter(s => duSet.has(String(s.duId || '').trim().toUpperCase()));
+      }
+    }
 
     // Update persistent count bar
     document.getElementById('tableBarTitle').textContent = (mySubcont ? mySubcont + ' Sites' : 'All Sites');
     document.getElementById('tableBarCount').textContent = filtered.length + ' / ' + sites.length + ' sites';
 
-    const cols = ["batchRfi","tpId","duId","siteName","subcontPlan","gap","remark","city","lat","lng"];
-    const colLabels = {"batchRfi":"Batch RFI","tpId":"TP Site ID","duId":"DU ID","siteName":"Site Name","subcontPlan":"Subcont Plan","gap":"GAP Analysis","remark":"Remark","city":"City","lat":"Latitude","lng":"Longitude"};
-    const colWidths = { batchRfi:90, tpId:115, duId:155, siteName:165, subcontPlan:105, gap:125, remark:145, city:95, lat:100, lng:100 };
+    // Sort
+    const sorted = [...filtered].sort((a, b) => {
+      const va = (a[tableSortKey] || '').toString().trim();
+      const vb = (b[tableSortKey] || '').toString().trim();
+      const aEmpty = !va;
+      const bEmpty = !vb;
+      if (aEmpty && bEmpty) return 0;
+      if (aEmpty) return tableSortDir === 'asc' ? 1 : -1;
+      if (bEmpty) return tableSortDir === 'asc' ? -1 : 1;
+      const cmp = va.toLowerCase().localeCompare(vb.toLowerCase());
+      return tableSortDir === 'asc' ? cmp : -cmp;
+    });
 
-    const th = (key) => {
-      const active = tableSortKey === key;
-      const arrow = active ? (tableSortDir === 'asc' ? ' &#9650;' : ' &#9660;') : '';
-      return `<th data-key="${key}" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;user-select:none;">${colLabels[key]}${arrow}</th>`;
-    };
+    // Build filter dropdowns per column
+    const filterRow = allCols.map(col => {
+      const uniq = getUniqueColValues(sites, col);
+      const cur = tableColFilters[col] || '';
+      const hasFilter = !!cur;
+      return `<th style="padding:0;white-space:nowrap;background:#0d1117;user-select:none;">
+        <div style="display:flex;align-items:center;gap:2px;padding:0 4px;">
+          <span data-key="${col}" class="tbl-sort-btn" style="cursor:pointer;padding:4px 3px;font-weight:${tableSortKey===col?'700':'400'};color:${tableSortKey===col?'#58a6ff':'#8b949e'};white-space:nowrap;">
+            ${colLabels[col]}${tableSortKey===col?(tableSortDir==='asc'?' &#9650;':' &#9660;'):''}
+          </span>
+          <select data-filter-col="${col}" style="background:${hasFilter?'#1f4b6e':'#161b22'};color:${hasFilter?'#58a6ff':'#484f58'};border:1px solid ${hasFilter?'#388bfd':'#30363d'};border-radius:3px;font-size:9px;padding:1px 2px;cursor:pointer;max-width:${colWidths[col]}px;outline:none;">
+            <option value="">${hasFilter?'✗ Clear':'(All)'}</option>
+            ${uniq.map(v => `<option value="${escapeHtml(v)}" ${v===cur?'selected':''}>${escapeHtml(v.length > 25 ? v.slice(0,25)+'…' : v}</option>`).join('')}
+          </select>
+        </div>
+      </th>`;
+    }).join('');
 
     const row = (site) => {
       const bg = batchRowBg(site.batchRfi);
-      return cols.map(c => {
+      return allCols.map(c => {
         let val = site[c] || '';
-        if(c === 'gap'){
+        if (c === 'gap') {
           const color = dashGapColor(val);
           return `<td data-val="${escapeHtml(val)}" style="background:${bg};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(val || '-')}"><span style="display:inline-block;padding:2px 7px;border-radius:999px;font-size:10.5px;font-weight:700;color:#fff;background:${color};white-space:nowrap;">${escapeHtml(val || '-')}</span></td>`;
         }
@@ -1852,32 +1888,32 @@ Remark = ${remark}`;
     };
 
     container.innerHTML = `
-      <div id="tableWrap" style="overflow:auto;position:absolute;top:50px;left:0;right:0;bottom:0;user-select:none;-webkit-user-select:none;" tabindex="0">
+      <div id="tableWrap" style="overflow:auto;position:absolute;top:46px;left:0;right:0;bottom:0;user-select:none;-webkit-user-select:none;" tabindex="0">
         <table id="tableData" style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:11.5px;min-width:1200px;cursor:cell;user-select:none;-webkit-user-select:none;">
           <colgroup>
-            ${cols.map(c => `<col style="width:${colWidths[c]}px;min-width:${colWidths[c]}px;">`).join('')}
+            ${allCols.map(c => `<col style="width:${colWidths[c]}px;min-width:${colWidths[c]}px;">`).join('')}
           </colgroup>
-          <thead style="position:sticky;top:0;z-index:2;background:#1c2530;">
-            <tr style="background:#1c2530;color:#fff;">
-              ${cols.map(c => th(c)).join('')}
+          <thead style="position:sticky;top:0;z-index:3;">
+            <tr style="background:#1c2530;color:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);">
+              ${filterRow}
             </tr>
           </thead>
           <tbody>
-            ${filtered.length === 0
-              ? `<tr><td colspan="${cols.length}" style="text-align:center;color:#9aa0a6;padding:30px;">No sites found</td></tr>`
-              : filtered.map((s, idx) => `<tr data-idx="${idx}" style="border-bottom:1px solid #eef1f3;">${row(s)}</tr>`).join('')
+            ${sorted.length === 0
+              ? `<tr><td colspan="${allCols.length}" style="text-align:center;color:#9aa0a6;padding:40px 0;font-size:13px;">No sites found</td></tr>`
+              : sorted.map((s, idx) => `<tr style="border-bottom:1px solid #eef1f3;">${row(s)}</tr>`).join('')
             }
           </tbody>
         </table>
       </div>
     `;
 
-    // Re-wire sort on ALL column headers (now that DOM is rebuilt)
-    container.querySelectorAll('th[data-key]').forEach(thEl => {
-      thEl.addEventListener('click', (e) => {
+    // Wire sort buttons
+    container.querySelectorAll('.tbl-sort-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
         e.stopPropagation();
-        const key = thEl.dataset.key;
-        if(tableSortKey === key){
+        const key = btn.dataset.key;
+        if (tableSortKey === key) {
           tableSortDir = tableSortDir === 'asc' ? 'desc' : 'asc';
         } else {
           tableSortKey = key;
@@ -1887,15 +1923,31 @@ Remark = ${remark}`;
       });
     });
 
-    // Wire table mouse events (only once — guard with flag)
-    if(!tableInitialized){
+    // Wire filter dropdowns
+    container.querySelectorAll('select[data-filter-col]').forEach(sel => {
+      sel.addEventListener('change', (e) => {
+        e.stopPropagation();
+        const col = sel.dataset.filterCol;
+        const val = sel.value;
+        if (val) {
+          tableColFilters[col] = val;
+        } else {
+          delete tableColFilters[col];
+        }
+        renderTableView();
+      });
+      sel.addEventListener('click', (e) => e.stopPropagation();
+    });
+
+    // Wire table mouse events (only once)
+    if (!tableInitialized) {
       tableInitialized = true;
       const wrap = container.querySelector('#tableWrap');
 
       wrap.addEventListener('mousedown', (e) => {
-        if(e.target.closest('#tableSearchInput')) return;
+        if (e.target.closest('#tableSearchInput')) return;
         const td = e.target.closest('td');
-        if(td){
+        if (td) {
           tableIsSelecting = true;
           tableSelStart = getTableCellCoords(td);
           tableSelEnd = tableSelStart;
@@ -1907,25 +1959,18 @@ Remark = ${remark}`;
       });
 
       wrap.addEventListener('mousemove', (e) => {
-        if(!tableIsSelecting) return;
+        if (!tableIsSelecting) return;
         const td = e.target.closest('td');
-        if(td){
+        if (td) {
           tableSelEnd = getTableCellCoords(td);
           applyTableSelection();
         }
       });
 
-      document.addEventListener('mouseup', () => {
-        tableIsSelecting = false;
-      });
-
-      wrap.addEventListener('selectstart', (e) => { if(tableIsSelecting) e.preventDefault(); });
-
-      // Click on empty area clears selection
+      document.addEventListener('mouseup', () => { tableIsSelecting = false; });
+      wrap.addEventListener('selectstart', (e) => { if (tableIsSelecting) e.preventDefault(); });
       wrap.addEventListener('click', (e) => {
-        if(!e.target.closest('td') && !e.target.closest('th')){
-          clearTableSelection();
-        }
+        if (!e.target.closest('td') && !e.target.closest('th')) clearTableSelection();
       });
     }
   }
@@ -2830,7 +2875,21 @@ Remark = ${remark}`;
 
 
   function requestSubcontAccess(name){
-    openSubcontTable(name);
+    // Redirect to Table view with subcont filter instead of opening popup
+    const norm = normalizeSubcontKey(name);
+    mySubcont = norm;
+    document.getElementById('tableBarTitle').textContent = norm + ' Sites';
+    // Reset table view state
+    tableSearch = '';
+    tableSortKey = 'batchRfi';
+    tableSortDir = 'desc';
+    document.getElementById('tableSearchInput').value = '';
+    document.getElementById('subTableOverlay').classList.remove('show');
+    setDashView('table');
+    // Refresh the filter checklist to reflect mySubcont
+    dashSelectedSubconts = null;
+    dashSelectedGaps = null;
+    renderChecklistFilters();
   }
 
   function openSubcontTable(name){
@@ -3092,10 +3151,16 @@ Remark = ${remark}`;
     document.getElementById('dashTable').style.display = view === 'table' ? 'block' : 'none';
     document.getElementById('dashTableBar').style.display = view === 'table' ? 'flex' : 'none';
     document.getElementById('dashFilterPanel').style.display = view === 'table' ? 'none' : '';
-    if(view === 'map'){
-      setTimeout(()=> dashMap && dashMap.invalidateSize(), 50);
-      if(dashMarkersLayer) drawDashboardMap();
-    } else if(view === 'graph') {
+    if (view === 'table') {
+      // Reset table state when switching to table view
+      tableSearch = '';
+      tableSortKey = 'batchRfi';
+      tableSortDir = 'desc';
+      tableColFilters = {};
+      const si = document.getElementById('tableSearchInput');
+      if (si) si.value = '';
+      renderTableView();
+    }
       renderGraphView();
     } else if(view === 'table') {
       renderTableView();
@@ -3309,8 +3374,14 @@ Remark = ${remark}`;
         unlockedSubconts[normalizeSubcontKey(pendingSubcontName)] = true;
         mySubcont = normalizeSubcontKey(pendingSubcontName);
         document.getElementById('dashPwOverlay').classList.remove('show');
-        setDashView('graph');
-        openSubcontTable(pendingSubcontName);
+        const norm = normalizeSubcontKey(pendingSubcontName);
+        mySubcont = norm;
+        document.getElementById('tableBarTitle').textContent = norm + ' Sites';
+        tableSearch = '';
+        tableSortKey = 'batchRfi';
+        tableSortDir = 'desc';
+        document.getElementById('tableSearchInput').value = '';
+        setDashView('table');
         renderChecklistFilters();
         return;
       }
