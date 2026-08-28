@@ -539,6 +539,33 @@
     content:''; position:absolute; bottom:-5px; left:50%; transform:translateX(-50%);
     border:5px solid transparent; border-top-color:#fff; border-bottom:none;
   }
+
+  /* ---- Clockin person + fire icon ---- */
+  .clockin-icon-wrap{
+    position:relative; width:28px; height:28px; display:flex; align-items:center; justify-content:center;
+  }
+  .clockin-person{
+    position:relative; z-index:2; width:18px; height:18px;
+  }
+  .clockin-fire{
+    position:absolute; top:-10px; right:-6px; z-index:3;
+    width:16px; height:16px;
+    animation: fireFlicker .6s ease-in-out infinite alternate;
+    filter: drop-shadow(0 0 3px #ff6600);
+    pointer-events:none;
+  }
+  @keyframes fireFlicker{
+    0%   { transform:scale(1)    rotate(-5deg); opacity:.85; }
+    25%  { transform:scale(1.1)  rotate(3deg);  opacity:1;   }
+    50%  { transform:scale(.95)  rotate(-2deg); opacity:.9;  }
+    75%  { transform:scale(1.08) rotate(4deg);  opacity:1;   }
+    100% { transform:scale(1.05)  rotate(-3deg); opacity:.95; }
+  }
+  .clockin-label{
+    position:absolute; top:-18px; left:50%; transform:translateX(-50%);
+    background:rgba(0,0,0,.75); color:#fff; font-size:8px; font-weight:700;
+    padding:1px 4px; border-radius:3px; white-space:nowrap; pointer-events:none;
+  }
 </style>
 </head>
 <body>
@@ -563,7 +590,7 @@
         </button>
       </div>
       <div id="loginDebugLog" style="margin-top:12px; background:#0d1117; border:1px solid #30363d; border-radius:8px; padding:8px 10px; font-family:monospace; font-size:10px; color:#7ee787; max-height:120px; overflow:auto;"><div style="color:#8b949e; margin-bottom:4px;">System log:</div></div>
-      <div id="appVersion" style="position:fixed; bottom:8px; right:12px; font-size:9.5px; color:rgba(255,255,255,.25); font-family:monospace;">v2026.08.28-dbg23</div>
+      <div id="appVersion" style="position:fixed; bottom:8px; right:12px; font-size:9.5px; color:rgba(255,255,255,.25); font-family:monospace;">v2026.08.28-dbg24</div>
     </div>
     <div class="walk-peeps">
       <div class="walk-peep-wrap walk-right" style="animation-name:walkRight;animation-duration:18s;animation-delay:0s;animation-timing-function:linear;animation-iteration-count:infinite;"><div class="walk-bubble" id="wB1"></div><img class="walk-peep" src="walk.gif"></div>
@@ -982,6 +1009,36 @@ Remark = ${remark}`;
   }
   function saveMessageCache(data){
     try { localStorage.setItem(MESSAGE_CACHE_KEY, JSON.stringify(data)); } catch(e){}
+  }
+
+  const CLOCKIN_CACHE_KEY = 'dashClockinCache_v1';
+  function getClockinCacheLocal(){
+    try { const raw = localStorage.getItem(CLOCKIN_CACHE_KEY); return raw ? JSON.parse(raw) : null; }
+    catch(e){ return null; }
+  }
+  function saveClockinCache(data){
+    try { localStorage.setItem(CLOCKIN_CACHE_KEY, JSON.stringify(data)); } catch(e){}
+  }
+
+  // Clockin data: { [duId]: { name, team, clockIn, clockOut } }
+  // clockOut === null or empty means still clocked in
+  async function fetchClockinData(){
+    if(!_forceRefresh){
+      const cached = getClockinCacheLocal();
+      if(cached) return cached;
+    }
+    if(!SCRIPT_URL || SCRIPT_URL.includes('PASTE_YOUR')) return {};
+    try{
+      const res = await fetchWithTimeout(SCRIPT_URL + '?type=clockin', 10000);
+      if(!res.ok) throw new Error('Clockin fetch failed: ' + res.status);
+      const data = await res.json();
+      saveClockinCache(data);
+      return data;
+    }catch(e){
+      console.warn('[fetchClockinData] Error:', e.name, e.message);
+      const fallback = getClockinCacheLocal();
+      return fallback || {};
+    }
   }
 
   // Paste your Apps Script Web App URL here (ends in /exec). Leave as-is to run local-only.
@@ -1455,6 +1512,8 @@ Remark = ${remark}`;
   let dashLinesLayer = null;
   let dashColorMode = 'gap';
   let dashTrackerData = [];
+  let dashMessageLookup = {};
+  let dashClockinData = {};  // { [duId]: { name, team, clockIn, clockOut } } — clockOut null/empty = still working
   let dashSubcontColors = {};
   let dashSelectedBatch = '';
   let dashSelectedSubconts = null;
@@ -1945,10 +2004,32 @@ Remark = ${remark}`;
     });
 
     withCoords.forEach(site=>{
+      const duId = normalizeDuIdClient(site.duId);
+      const clockin = dashClockinData && dashClockinData[duId];
+      const isWorking = clockin && !clockin.clockOut;
+
+      // Build person+fire divIcon for clocked-in sites
+      if(isWorking){
+        const personSvg = `<svg viewBox="0 0 24 24" fill="currentColor" style="color:#fff"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg>`;
+        const fireSvg = `<svg viewBox="0 0 24 24" fill="#ff6600"><path d="M12 2C9 6 5 9.5 5 14c0 3.9 3.1 7 7 7s7-3.1 7-7c0-4.5-4-8-7-12zm0 16c-2.2 0-4-1.8-4-4 0-2 1.5-3.8 4-6.5 2.5 2.7 4 4.5 4 6.5 0 2.2-1.8 4-4 4z"/></svg>`;
+        const name = escapeHtml(clockin.name || '');
+        const label = name ? `<div class="clockin-label">${name}</div>` : '';
+        const iconHtml = `<div class="clockin-icon-wrap">${fireSvg}<div class="clockin-person">${personSvg}</div>${label}</div>`;
+        const personIcon = L.divIcon({
+          html: iconHtml,
+          className: '',
+          iconSize: [28, 28],
+          iconAnchor: [14, 14],
+          popupAnchor: [0, -14]
+        });
+        const personMarker = L.marker([site._lat, site._lng], { icon: personIcon, interactive: false });
+        personMarker.addTo(dashMarkersLayer);
+      }
+
       const marker = L.circleMarker([site._lat, site._lng], {
         radius:7, weight:2, color:'#fff', fillColor: dashPointColor(site), fillOpacity:.95
       });
-      const fullMessage = formatTooltipMessage(dashMessageLookup[normalizeDuIdClient(site.duId)]);
+      const fullMessage = formatTooltipMessage(dashMessageLookup[duId]);
       const tooltipHtml = fullMessage
         ? fullMessage
         : `Remark: ${escapeHtml(site.remark || '-')}`;
@@ -3464,9 +3545,10 @@ Remark = ${remark}`;
     const btn = document.getElementById('dashRefreshBtn');
     if(btn) btn.classList.add('refreshing');
     try{
-      const [tracker, msgLookup] = await Promise.all([fetchTrackerForMap(), buildMessageLookup()]);
+      const [tracker, msgLookup, clockin] = await Promise.all([fetchTrackerForMap(), buildMessageLookup(), fetchClockinData()]);
       dashTrackerData = tracker;
       dashMessageLookup = msgLookup;
+      dashClockinData = clockin || {};
       _renderDashboard();
     }catch(e){ console.warn('Refresh failed:', e); }
     _forceRefresh = false;
@@ -3511,38 +3593,41 @@ Remark = ${remark}`;
       // Cache-first load
       const cachedTracker = getTrackerCacheLocal();
       const cachedMsg = getMessageCacheLocal();
+      const cachedClockin = getClockinCacheLocal();
 
       if(cachedTracker && cachedTracker.length > 0){
         // Show cached data immediately — no spinner needed, just a note in status
         console.log('[initDashboard] Rendering from cache:', cachedTracker.length, 'sites');
         dashTrackerData = cachedTracker;
         dashMessageLookup = cachedMsg || {};
+        dashClockinData = cachedClockin || {};
         document.getElementById('dashStatus').textContent = `Showing cached data — refreshing... (${cachedTracker.length} sites)`;
         _renderDashboard();
 
         // Fetch fresh data in background
         _forceRefresh = false;
-        fetchTrackerForMap().then(tracker=>{
-          buildMessageLookup().then(msg=>{
-            dashTrackerData = tracker;
-            dashMessageLookup = msg;
-            _renderDashboard();
-            console.log('[initDashboard] Background refresh done:', dashTrackerData.length, 'sites');
-          });
+        Promise.all([fetchTrackerForMap(), buildMessageLookup(), fetchClockinData()]).then(([tracker, msg, clockin])=>{
+          dashTrackerData = tracker;
+          dashMessageLookup = msg;
+          dashClockinData = clockin || {};
+          _renderDashboard();
+          console.log('[initDashboard] Background refresh done:', dashTrackerData.length, 'sites');
         }).catch(e=>{ console.warn('[initDashboard] Background refresh failed:', e); });
       } else {
         // No cache — must wait for fresh data
         document.getElementById('dashStatus').textContent = 'Loading...';
         _forceRefresh = false;
         try {
-          const [tracker, msgLookup] = await Promise.all([fetchTrackerForMap(), buildMessageLookup()]);
+          const [tracker, msgLookup, clockin] = await Promise.all([fetchTrackerForMap(), buildMessageLookup(), fetchClockinData()]);
           dashTrackerData = tracker;
           dashMessageLookup = msgLookup;
+          dashClockinData = clockin || {};
           console.log('[initDashboard] Data loaded:', dashTrackerData ? dashTrackerData.length : 0, 'sites');
         } catch(e) {
           console.warn('Failed to load sites from server:', e);
           dashTrackerData = [];
           dashMessageLookup = {};
+          dashClockinData = {};
         }
         _renderDashboard();
       }
