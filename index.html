@@ -92,7 +92,18 @@
     background:transparent; color:#fff; font-size:11.5px; font-weight:700; cursor:pointer;
   }
   .dash-mode-btn.active{ background:#fff; color:var(--ink); border-color:#fff; }
-  .dash-status{ font-size:11px; color:#b7c0c9; flex-shrink:0; margin-left:auto; }
+  .dash-status{ font-size:11px; color:#b7c0c9; flex-shrink:0; }
+  .dash-refresh-btn{
+    flex-shrink:0; width:28px; height:28px; border:none; border-radius:7px;
+    background:rgba(255,255,255,.12); color:rgba(255,255,255,.7); cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    transition:background .15s, color .15s;
+  }
+  .dash-refresh-btn:hover{ background:rgba(255,255,255,.2); color:#fff; }
+  .dash-refresh-btn:active{ filter:brightness(.9); }
+  .dash-refresh-btn svg{ width:14px; height:14px; }
+  .dash-refresh-btn.refreshing svg{ animation:spin .8s linear infinite; }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
 
   .dash-body{ flex:1; position:relative; min-height:0; }
   #dashStatsBar{ flex-shrink:0; background:#1c2530; color:#fff; display:flex; align-items:center; gap:8px; padding:6px 16px; font-size:11px; overflow-x:auto; white-space:nowrap; }
@@ -551,7 +562,7 @@
         </button>
       </div>
       <div id="loginDebugLog" style="margin-top:12px; background:#0d1117; border:1px solid #30363d; border-radius:8px; padding:8px 10px; font-family:monospace; font-size:10px; color:#7ee787; max-height:120px; overflow:auto;"><div style="color:#8b949e; margin-bottom:4px;">System log:</div></div>
-      <div id="appVersion" style="position:fixed; bottom:8px; right:12px; font-size:9.5px; color:rgba(255,255,255,.25); font-family:monospace;">v2026.08.28-dbg19</div>
+      <div id="appVersion" style="position:fixed; bottom:8px; right:12px; font-size:9.5px; color:rgba(255,255,255,.25); font-family:monospace;">v2026.08.28-dbg20</div>
     </div>
     <div class="walk-peeps">
       <div class="walk-peep-wrap walk-right" style="animation-name:walkRight;animation-duration:18s;animation-delay:0s;animation-timing-function:linear;animation-iteration-count:infinite;"><div class="walk-bubble" id="wB1"></div><img class="walk-peep" src="walk.gif"></div>
@@ -571,6 +582,9 @@
         <button class="dash-view-btn" id="viewGraphBtn">Dashboard</button>
         <button class="dash-view-btn" id="viewTableBtn">Table</button>
       </div>
+      <button class="dash-refresh-btn" id="dashRefreshBtn" title="Refresh data">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+      </button>
       <div class="dash-status" id="dashStatus"></div>
     </div>
     <div class="dash-body">
@@ -946,6 +960,26 @@ Remark = ${remark}`;
   const FORWARD_SHARED_CACHE_KEY = 'forward_shared_cache_v1';   // cached copy of the full shared log (for History)
   const FORWARD_SUMMARY_CACHE_KEY = 'forward_summary_cache_v1'; // cached lightweight log (for Leaderboard, no message/state)
   const SAVED_TOKEN_KEY = 'savedToken';
+  const TRACKER_CACHE_KEY = 'dashTrackerCache_v1';
+  const MESSAGE_CACHE_KEY = 'dashMessageCache_v1';
+
+  // Get cached tracker data — returns null when no cache (caller can distinguish from empty array)
+  function getTrackerCacheLocal(){
+    try { const raw = localStorage.getItem(TRACKER_CACHE_KEY); return raw ? JSON.parse(raw) : null; }
+    catch(e){ return null; }
+  }
+  function saveTrackerCache(data){
+    try { localStorage.setItem(TRACKER_CACHE_KEY, JSON.stringify(data)); } catch(e){}
+  }
+
+  // Get cached message lookup — returns null when no cache
+  function getMessageCacheLocal(){
+    try { const raw = localStorage.getItem(MESSAGE_CACHE_KEY); return raw ? JSON.parse(raw) : null; }
+    catch(e){ return null; }
+  }
+  function saveMessageCache(data){
+    try { localStorage.setItem(MESSAGE_CACHE_KEY, JSON.stringify(data)); } catch(e){}
+  }
 
   // Paste your Apps Script Web App URL here (ends in /exec). Leave as-is to run local-only.
   // This Web App should fetch from the Google Sheets URL below.
@@ -1521,34 +1555,46 @@ Remark = ${remark}`;
   }
 
   async function fetchTrackerForMap(){
+    // Cache-first: return cached data immediately if available (skip if _forceRefresh)
+    if(!_forceRefresh){
+      const cached = getTrackerCacheLocal();
+      if(cached && cached.length > 0) return cached;
+    }
+
     // Use Apps Script as primary source — it reads ALL rows without filter restrictions
+    let data = null;
     if(SCRIPT_URL && !SCRIPT_URL.includes('PASTE_YOUR')){
       try{
         console.log('[fetchTrackerForMap] Fetching from Apps Script...');
         const res = await fetchWithTimeout(SCRIPT_URL + '?type=tracker', 10000);
         console.log('[fetchTrackerForMap] Response received, status:', res.status);
         if(!res.ok) throw new Error('Tracker fetch failed: ' + res.status);
-        const data = await res.json();
+        data = await res.json();
         console.log('[fetchTrackerForMap] JSON parsed, items:', data ? data.length : 0);
-        if(data && data.length > 0) return data;
-        console.warn('[fetchTrackerForMap] Apps Script returned empty array');
       }catch(e){
         console.warn('[fetchTrackerForMap] Apps Script error:', e.name, e.message);
-        console.warn('[fetchTrackerForMap] This likely means: CORS blocked, network error, or redirect to login page.');
-        return [];
+        console.warn('[fetchTrackerForMap] Falling back to cache or CSV...');
       }
     }
     // Fallback: Google Sheets CSV export (may be affected by filters)
-    if(SHEETS_CSV_URL && SHEETS_CSV_URL.includes('docs.google.com')){
-      try{
-        const res = await fetchWithTimeout(SHEETS_CSV_URL, 10000);
-        if(!res.ok) throw new Error('CSV fetch failed: ' + res.status);
-        const text = await res.text();
-        const data = parseSheetsCSV(text);
-        if(data && data.length > 0) return data;
-      }catch(e){ console.warn('Sheets CSV fetch error:', e); return []; }
+    if(!data || data.length === 0){
+      if(SHEETS_CSV_URL && SHEETS_CSV_URL.includes('docs.google.com')){
+        try{
+          const res = await fetchWithTimeout(SHEETS_CSV_URL, 10000);
+          if(!res.ok) throw new Error('CSV fetch failed: ' + res.status);
+          const text = await res.text();
+          data = parseSheetsCSV(text);
+        }catch(e){ console.warn('Sheets CSV fetch error:', e); }
+      }
     }
-    return [];
+
+    // Save cache after successful fetch; fall back to any existing cache on complete failure
+    if(data && data.length > 0){
+      saveTrackerCache(data);
+      return data;
+    }
+    const fallback = getTrackerCacheLocal();
+    return fallback || [];
   }
 
   function parseSheetsCSV(text){
@@ -1719,21 +1765,32 @@ Remark = ${remark}`;
   }
 
     async function buildMessageLookup(){
+    // Cache-first: return cached data immediately if available (skip if _forceRefresh)
+    if(!_forceRefresh){
+      const cached = getMessageCacheLocal();
+      if(cached) return cached;
+    }
+
     const lookup = {};
     // buildMessageLookup fetches the full forward log from Apps Script
     // for tooltip message display on the dashboard map
     if(SCRIPT_URL && !SCRIPT_URL.includes('PASTE_YOUR')){
       try{
         const res = await fetchWithTimeout(SCRIPT_URL, 10000);  // GET = full log (no ?type param)
-        if(!res.ok) return lookup;
+        if(!res.ok) throw new Error('Message fetch failed: ' + res.status);
         const log = await res.json();
         (log || []).forEach(entry=>{
           if(entry.isLatest === false) return;
           const key = normalizeDuIdClient(entry.duId);
           if(key) lookup[key] = entry.message;
         });
-      }catch(e){}
+      }catch(e){
+        console.warn('[buildMessageLookup] Error:', e.name, e.message);
+        const fallback = getMessageCacheLocal();
+        return fallback || {};
+      }
     }
+    saveMessageCache(lookup);
     return lookup;
   }
 
@@ -3346,13 +3403,47 @@ Remark = ${remark}`;
 
   let dashFilterPanelMinimized = false;
 
+  let _forceRefresh = false;   // when true, fetchers skip cache and save fresh data
+
+  function _renderDashboard(){
+    // Render current dashTrackerData and update status
+    dashSelectedSubconts = null;
+    dashSelectedGaps = null;
+    populateBatchOptions();
+    renderChecklistFilters();
+    renderStatsBar();
+    const count = dashTrackerData ? dashTrackerData.length : 0;
+    const cached = getTrackerCacheLocal();
+    if(count > 0 && cached && count === cached.length){
+      // This is the cached render (no fresh data arrived yet)
+      document.getElementById('dashStatus').textContent = `Showing cached data — refreshing... (${count} sites)`;
+    } else {
+      document.getElementById('dashStatus').textContent = count > 0 ? `${count} sites loaded` : 'No sites (upload Excel or check server)';
+    }
+    try { refreshDashboardView(); } catch(e){ console.warn('renderDashboard view error:', e); }
+  }
+
+  async function _doRefresh(){
+    // Force fresh fetch, show spinner, then re-render
+    _forceRefresh = true;
+    const btn = document.getElementById('dashRefreshBtn');
+    if(btn) btn.classList.add('refreshing');
+    try{
+      const [tracker, msgLookup] = await Promise.all([fetchTrackerForMap(), buildMessageLookup()]);
+      dashTrackerData = tracker;
+      dashMessageLookup = msgLookup;
+      _renderDashboard();
+    }catch(e){ console.warn('Refresh failed:', e); }
+    _forceRefresh = false;
+    if(btn) btn.classList.remove('refreshing');
+  }
+
   async function initDashboard(){
     // Guard: prevent double-call (wrapper handles this, but keep as safety)
     if(initDashboardRunning){ console.log('[initDashboard] Already running, skipping'); return; }
     try {
       // Switch to map view first
       setDashView('map');
-      document.getElementById('dashStatus').textContent = 'Loading...';
 
       // Wait for Leaflet to be available (CDN might still be loading)
       let leafletReady = !!window.L;
@@ -3382,29 +3473,43 @@ Remark = ${remark}`;
       setTimeout(()=> dashMap.invalidateSize(), 50);
       setTimeout(()=>{ if(dashMap) dashMap.invalidateSize({ panConstraint: false }); }, 200);
 
-      try {
-        console.log('[initDashboard] Starting...');
-        const [tracker, msgLookup] = await Promise.all([fetchTrackerForMap(), buildMessageLookup()]);
-        dashTrackerData = tracker;
-        dashMessageLookup = msgLookup;
-        console.log('[initDashboard] Data loaded:', dashTrackerData ? dashTrackerData.length : 0, 'sites');
-      } catch(e) {
-        console.warn('Failed to load sites from server:', e);
-        dashTrackerData = [];
-        dashMessageLookup = {};
-      }
-      dashSelectedSubconts = null;
-      dashSelectedGaps = null;
-      populateBatchOptions();
-      renderChecklistFilters();
-      renderStatsBar();
-      const count = dashTrackerData.length || 0;
-      document.getElementById('dashStatus').textContent = count > 0 ? `${count} sites loaded` : 'No sites (upload Excel or check server)';
-      console.log('[initDashboard] Status set to:', document.getElementById('dashStatus').textContent);
-      if(dashView === 'map') {
-        try { drawDashboardMap(); console.log('[initDashboard] drawDashboardMap done'); } catch(e) { console.warn('Failed to draw map:', e); }
+      // Cache-first load
+      const cachedTracker = getTrackerCacheLocal();
+      const cachedMsg = getMessageCacheLocal();
+
+      if(cachedTracker && cachedTracker.length > 0){
+        // Show cached data immediately — no spinner needed, just a note in status
+        console.log('[initDashboard] Rendering from cache:', cachedTracker.length, 'sites');
+        dashTrackerData = cachedTracker;
+        dashMessageLookup = cachedMsg || {};
+        document.getElementById('dashStatus').textContent = `Showing cached data — refreshing... (${cachedTracker.length} sites)`;
+        _renderDashboard();
+
+        // Fetch fresh data in background
+        _forceRefresh = false;
+        fetchTrackerForMap().then(tracker=>{
+          buildMessageLookup().then(msg=>{
+            dashTrackerData = tracker;
+            dashMessageLookup = msg;
+            _renderDashboard();
+            console.log('[initDashboard] Background refresh done:', dashTrackerData.length, 'sites');
+          });
+        }).catch(e=>{ console.warn('[initDashboard] Background refresh failed:', e); });
       } else {
-        try { renderGraphView(); console.log('[initDashboard] renderGraphView done'); } catch(e) { console.warn('Failed to render graph:', e); }
+        // No cache — must wait for fresh data
+        document.getElementById('dashStatus').textContent = 'Loading...';
+        _forceRefresh = false;
+        try {
+          const [tracker, msgLookup] = await Promise.all([fetchTrackerForMap(), buildMessageLookup()]);
+          dashTrackerData = tracker;
+          dashMessageLookup = msgLookup;
+          console.log('[initDashboard] Data loaded:', dashTrackerData ? dashTrackerData.length : 0, 'sites');
+        } catch(e) {
+          console.warn('Failed to load sites from server:', e);
+          dashTrackerData = [];
+          dashMessageLookup = {};
+        }
+        _renderDashboard();
       }
       console.log('[initDashboard] Complete');
     } finally {
@@ -3423,6 +3528,8 @@ Remark = ${remark}`;
   document.getElementById('viewMapBtn').addEventListener('click', ()=> setDashView('map'));
   document.getElementById('viewGraphBtn').addEventListener('click', ()=> setDashView('graph'));
   document.getElementById('viewTableBtn').addEventListener('click', ()=> setDashView('table'));
+
+  document.getElementById('dashRefreshBtn').addEventListener('click', _doRefresh);
 
   document.getElementById('dashBatchSelect').addEventListener('change', (e)=>{
     dashSelectedBatch = e.target.value;
