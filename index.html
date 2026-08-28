@@ -551,7 +551,7 @@
         </button>
       </div>
       <div id="loginDebugLog" style="margin-top:12px; background:#0d1117; border:1px solid #30363d; border-radius:8px; padding:8px 10px; font-family:monospace; font-size:10px; color:#7ee787; max-height:120px; overflow:auto;"><div style="color:#8b949e; margin-bottom:4px;">System log:</div></div>
-      <div id="appVersion" style="position:fixed; bottom:8px; right:12px; font-size:9.5px; color:rgba(255,255,255,.25); font-family:monospace;">v2026.08.27-dbg18</div>
+      <div id="appVersion" style="position:fixed; bottom:8px; right:12px; font-size:9.5px; color:rgba(255,255,255,.25); font-family:monospace;">v2026.08.28-dbg19</div>
     </div>
     <div class="walk-peeps">
       <div class="walk-peep-wrap walk-right" style="animation-name:walkRight;animation-duration:18s;animation-delay:0s;animation-timing-function:linear;animation-iteration-count:infinite;"><div class="walk-bubble" id="wB1"></div><img class="walk-peep" src="walk.gif"></div>
@@ -3466,13 +3466,11 @@ Remark = ${remark}`;
     document.getElementById('dashboardScreen').style.background = '';
     document.getElementById('loginScreen').style.display = '';
     document.getElementById('loginScreen').style.visibility = '';
-    // Clear password fields
-    document.getElementById('loginInput').value = '';
-    document.getElementById('loginError').textContent = '';
-    document.getElementById('loginError').style.display = 'none';
     // Restore saved token to input
     const saved = getSavedToken();
     if(saved) document.getElementById('loginInput').value = saved;
+    else document.getElementById('loginInput').value = '';
+    document.getElementById('loginError').textContent = '';
   }
 
   // ----- Login screen -----
