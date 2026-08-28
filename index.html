@@ -112,7 +112,9 @@
   .dash-stat-chip .dot{ width:7px; height:7px; border-radius:50%; flex-shrink:0; }
   .dash-stat-chip .count{ font-size:12px; }
   .dash-stat-chip .label{ opacity:.7; font-size:10px; }
-  #dashMap{ position:absolute; top:36px; left:0; right:0; bottom:0; min-height:400px; }
+  .dash-stat-chip#dashWorkOnlyToggle.active{ background:rgba(255,102,0,.2); border:1px solid rgba(255,102,0,.5); }
+  .dash-stat-chip#dashWorkOnlyToggle{ border:1px solid transparent; }
+  #dashMap{ position:absolute; inset:0; }
   /* darken the basemap tiles only, so colored points/lines stay vivid */
   #dashMap .leaflet-tile-pane{ filter: brightness(0.5); }
 
@@ -1516,6 +1518,7 @@ Remark = ${remark}`;
   let dashSelectedBatch = '';
   let dashSelectedSubconts = null;
   let dashSelectedGaps = null;
+  let dashWorkOnly = false;
   let dashView = 'map';
   let dashPivotMode = 'subcont-gap';
   let pivotSortKey = 'total';
@@ -1810,7 +1813,11 @@ Remark = ${remark}`;
         <span class="count">${counts[c.key]}</span>
         <span class="label">${c.label}</span>
       </span>`).join('') +
-      `<span style="margin-left:auto;font-size:10px;opacity:.5;">Total: ${sites.length}</span>`;
+      `<span style="margin-left:auto;font-size:10px;opacity:.5;">Total: ${sites.length}</span>` +
+      `<span class="dash-stat-chip ${dashWorkOnly ? 'active' : ''}" style="cursor:pointer;" id="dashWorkOnlyToggle">
+        <svg viewBox="0 0 24 24" fill="#ff6600" width="11" height="11"><path d="M12 2C9 6 5 9.5 5 14c0 3.9 3.1 7 7 7s7-3.1 7-7c0-4.5-4-8-7-12zm0 16c-2.2 0-4-1.8-4-4 0-2 1.5-3.8 4-6.5 2.5 2.7 4 4.5 4 6.5 0 2.2-1.8 4-4 4z"/></svg>
+        <span style="font-size:10px;">Work Only</span>
+      </span>`;
   }
 
   function normalizeDuIdClient(id){
@@ -1972,6 +1979,13 @@ Remark = ${remark}`;
       }
       const gap = matchGapStatus(site.gap);
       if(gap !== 'Other' && dashSelectedGaps && dashSelectedGaps.size && !dashSelectedGaps.has(gap)) return false;
+      // Work only filter: show sites that have a clockin entry
+      if(dashWorkOnly){
+        const duIdNorm = normalizeDuIdClient(site.duId);
+        const duIdRaw = String(site.duId || '').trim().toUpperCase();
+        const clockin = dashClockinData && (dashClockinData[duIdNorm] || dashClockinData[duIdRaw]);
+        if(!clockin || !clockin.name) return false;
+      }
       return true;
     });
   }
@@ -3675,6 +3689,11 @@ Remark = ${remark}`;
   document.getElementById('dashGapNone').addEventListener('click', ()=>{
     dashSelectedGaps = new Set();
     renderChecklistFilters();
+    refreshDashboardView();
+  });
+  document.getElementById('dashWorkOnlyToggle').addEventListener('click', ()=>{
+    dashWorkOnly = !dashWorkOnly;
+    renderStatsBar();
     refreshDashboardView();
   });
   document.getElementById('subTableSearch').addEventListener('input', (e)=> renderSubEditTable(e.target.value));
