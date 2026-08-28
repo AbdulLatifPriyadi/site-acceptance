@@ -1798,13 +1798,18 @@ Remark = ${remark}`;
   function renderStatsBar(){
     const el = document.getElementById('dashStatsBar');
     const sites = getFilteredSites();
-    const counts = { ATP:0, 'ON AIR':0, Install:0, Commcase:0, Other:0 };
+    const gapValues = {};
+    sites.forEach(s => { const g = String(s.gap || '').trim(); gapValues[g] = (gapValues[g] || 0) + 1; });
+    console.log('[renderStatsBar] unique gap values:', gapValues);
+    const counts = { ATP:0, 'ON AIR':0, Install:0, Commcase:0, 'DN Requested':0, 'PO Requested':0, Other:0 };
     sites.forEach(s => { counts[matchGapStatus(s.gap)]++; });
     const chips = [
       { color:'#4caf7d', label:'ATP', key:'ATP' },
       { color:'#2f6bc4', label:'ON AIR', key:'ON AIR' },
       { color:'#e8a33d', label:'Install', key:'Install' },
       { color:'#e0574f', label:'Commcase', key:'Commcase' },
+      { color:'#9a4de8', label:'DN Req', key:'DN Requested' },
+      { color:'#4dd6e8', label:'PO Req', key:'PO Requested' },
       { color:'#9aa0a6', label:'Other', key:'Other' },
     ];
     el.innerHTML = chips.map(c => `
