@@ -2044,6 +2044,8 @@ Remark = ${remark}`;
         L.marker([site._lat, site._lng], { icon: personIcon, interactive: false }).addTo(dashMarkersLayer);
       }
 
+    });
+
     renderLegend(withCoords);
     renderStatsBar();
     if(withCoords.length){
