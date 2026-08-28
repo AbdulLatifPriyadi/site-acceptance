@@ -2510,15 +2510,13 @@ Remark = ${remark}`;
       s.subcontPlan || '', s.gap || '', s.remark || '',
       s.city || '', s.lat || '', s.lng || ''
     ]);
-    const csv = [headers, ...rows].map(r => r.map(v => '"' + String(v).replace(/"/g,'""') + '"').join(',')).join('\n');
-    const blob = new Blob([csv], {type:'text/csv'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const aoa = [headers, ...rows];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Sites');
     const d = new Date();
-    a.href = url;
-    a.download = 'site-acceptance-' + d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0') + '.csv';
-    a.click();
-    URL.revokeObjectURL(url);
+    const fname = 'site-acceptance-' + d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0') + '.xlsx';
+    XLSX.writeFile(wb, fname);
   });
   function renderPivotTable(){
     const container = document.getElementById('dashGraph');
@@ -3825,15 +3823,13 @@ Remark = ${remark}`;
       s.subcontPlan || '', s.gap || '', s.remark || '',
       s.city || '', s.lat || '', s.lng || ''
     ]);
-    const csv = [headers, ...csvRows].map(r => r.map(v => '"' + String(v).replace(/"/g,'""') + '"').join(',')).join('\n');
-    const blob = new Blob([csv], {type:'text/csv'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const aoa = [headers, ...csvRows];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Sites');
     const d = new Date();
-    a.href = url;
-    a.download = 'site-acceptance-' + d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0') + '.csv';
-    a.click();
-    URL.revokeObjectURL(url);
+    const fname = 'site-acceptance-' + d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0') + '.xlsx';
+    XLSX.writeFile(wb, fname);
   });
   document.getElementById('subTableClose').addEventListener('click', ()=> document.getElementById('subTableOverlay').classList.remove('show'));
   document.getElementById('subTableSave').addEventListener('click', saveSubcontTable);
