@@ -2191,6 +2191,9 @@ Remark = ${remark}`;
     if (_tableMouseMove) wrap.removeEventListener('mousemove', _tableMouseMove);
     if (_tableSelectStart) wrap.removeEventListener('selectstart', _tableSelectStart);
 
+    // _justSelected tracks that we just finished a drag — prevents click from clearing selection
+    let _justSelected = false;
+
     _tableMouseDown = (e) => {
       if (e.target.closest('#tableSearchInput')) return;
       const td = e.target.closest('td');
@@ -2199,6 +2202,7 @@ Remark = ${remark}`;
         tableSelStart = getTableCellCoords(td);
         tableSelEnd = tableSelStart;
         tableIsSelecting = true;
+        _justSelected = false;
         applyTableSelection();
         e.preventDefault();
       } else {
@@ -2219,9 +2223,15 @@ Remark = ${remark}`;
 
     wrap.addEventListener('mousedown', _tableMouseDown);
     wrap.addEventListener('mousemove', _tableMouseMove);
-    document.addEventListener('mouseup', () => { tableIsSelecting = false; });
+    document.addEventListener('mouseup', () => {
+      tableIsSelecting = false;
+      if (tableSelStart && tableSelEnd) _justSelected = true;
+    });
     wrap.addEventListener('selectstart', _tableSelectStart);
     wrap.addEventListener('click', (e) => {
+      // Don't clear if we just finished a drag-select
+      if (_justSelected) { _justSelected = false; return; }
+      // Only clear if clicking completely outside the table
       if (!e.target.closest('td') && !e.target.closest('th')) clearTableSelection();
     });
   }
@@ -2238,10 +2248,14 @@ Remark = ${remark}`;
     return { row: rowIdx, col: colIdx };
   }
 
-  function clearTableSelection(){
+  function _clearTableVisuals(){
     const tbl = document.getElementById('tableData');
     if(!tbl) return;
     tbl.querySelectorAll('td.selected, th.selected').forEach(el => el.classList.remove('selected'));
+  }
+
+  function clearTableSelection(){
+    _clearTableVisuals();
     tableSelStart = null;
     tableSelEnd = null;
     tableSelInfoEl = document.getElementById('tableSelInfo');
@@ -2251,7 +2265,7 @@ Remark = ${remark}`;
   function applyTableSelection(){
     const tbl = document.getElementById('tableData');
     if(!tbl) return;
-    if(!tableSelStart || !tableSelEnd){ clearTableSelection(); return; }
+    if(!tableSelStart || !tableSelEnd){ _clearTableVisuals(); return; }
     tbl.querySelectorAll('td.selected, th.selected').forEach(el => el.classList.remove('selected'));
 
     const bodyRows = tbl.tBodies[0].rows;
