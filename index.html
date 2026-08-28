@@ -3696,10 +3696,13 @@ Remark = ${remark}`;
     renderChecklistFilters();
     refreshDashboardView();
   });
-  document.getElementById('dashWorkOnlyToggle').addEventListener('click', ()=>{
-    dashWorkOnly = !dashWorkOnly;
-    renderStatsBar();
-    refreshDashboardView();
+  // Delegated click for Work Only toggle (created dynamically in renderStatsBar)
+  document.getElementById('dashStatsBar').addEventListener('click', (e)=>{
+    if(e.target.closest('#dashWorkOnlyToggle')){
+      dashWorkOnly = !dashWorkOnly;
+      renderStatsBar();
+      refreshDashboardView();
+    }
   });
   document.getElementById('subTableSearch').addEventListener('input', (e)=> renderSubEditTable(e.target.value));
   document.getElementById('subTableBatchFilter').addEventListener('change', (e)=>{ subTableBatchFilter = e.target.value; renderSubEditTable(document.getElementById('subTableSearch').value); });
