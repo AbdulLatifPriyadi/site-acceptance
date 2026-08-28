@@ -2191,11 +2191,12 @@ Remark = ${remark}`;
         if (e.target.closest('#tableSearchInput')) return;
         const td = e.target.closest('td');
         if (td) {
-          // Ctrl+Click: toggle individual cell multi-select
+          const coord = getTableCellCoords(td);
+          const key = coord.row + ',' + coord.col;
+
+          // Ctrl+Click: add/remove individual cell from multi-select
           if (e.ctrlKey || e.metaKey) {
             e.stopPropagation();
-            const coord = getTableCellCoords(td);
-            const key = coord.row + ',' + coord.col;
             if (tableClickedCells.has(key)) {
               tableClickedCells.delete(key);
             } else {
@@ -2204,13 +2205,17 @@ Remark = ${remark}`;
             applyTableSelection();
             return;
           }
-          // Normal click+drag: start range selection
+
+          // Normal click: clear all selection first, then start new drag from this cell
+          // This means: clicking a new cell replaces selection; selection persists on mouse release
+          clearTableSelection();
+          tableSelStart = coord;
+          tableSelEnd = coord;
           tableIsSelecting = true;
-          tableSelStart = getTableCellCoords(td);
-          tableSelEnd = tableSelStart;
           applyTableSelection();
           e.preventDefault();
         } else {
+          // Clicked outside the table — clear selection
           clearTableSelection();
         }
       });
