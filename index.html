@@ -590,7 +590,7 @@
         </button>
       </div>
       <div id="loginDebugLog" style="margin-top:12px; background:#0d1117; border:1px solid #30363d; border-radius:8px; padding:8px 10px; font-family:monospace; font-size:10px; color:#7ee787; max-height:120px; overflow:auto;"><div style="color:#8b949e; margin-bottom:4px;">System log:</div></div>
-      <div id="appVersion" style="position:fixed; bottom:8px; right:12px; font-size:9.5px; color:rgba(255,255,255,.25); font-family:monospace;">v2026.08.28-dbg24</div>
+      <div id="appVersion" style="position:fixed; bottom:8px; right:12px; font-size:9.5px; color:rgba(255,255,255,.25); font-family:monospace;">v2026.08.28-dbg25</div>
     </div>
     <div class="walk-peeps">
       <div class="walk-peep-wrap walk-right" style="animation-name:walkRight;animation-duration:18s;animation-delay:0s;animation-timing-function:linear;animation-iteration-count:infinite;"><div class="walk-bubble" id="wB1"></div><img class="walk-peep" src="walk.gif"></div>
@@ -628,6 +628,13 @@
         <span style="margin-left:auto; font-size:10px; color:#6b7688;">Click header to sort &nbsp;·&nbsp; Drag to select &nbsp;·&nbsp; Ctrl+C = copy</span>
         <input type="search" id="tableSearchInput" placeholder="Search or paste multiple DU IDs..."
           style="padding:5px 9px; border:1px solid rgba(255,255,255,.2); border-radius:6px; background:#0d1117; color:#e6edf3; font-size:11.5px; min-width:240px; outline:none;">
+        <button id="tableWorkOnlyBtn" title="Show only sites with clock-in"
+          style="padding:5px 9px;border:1px solid rgba(255,255,255,.2);border-radius:6px;background:#0d1117;color:#e6edf3;font-size:11.5px;cursor:pointer;display:flex;align-items:center;gap:4px;">
+          <svg viewBox="0 0 24 24" fill="#ff6600" width="11" height="11"><path d="M12 2C9 6 5 9.5 5 14c0 3.9 3.1 7 7 7s7-3.1 7-7c0-4.5-4-8-7-12zm0 16c-2.2 0-4-1.8-4-4 0-2 1.5-3.8 4-6.5 2.5 2.7 4 4.5 4 6.5 0 2.2-1.8 4-4 4z"/></svg>
+          <span>Work Only</span>
+        </button>
+        <button id="tableExportBtn" title="Export to CSV"
+          style="padding:5px 9px;border:1px solid #2f6bc4;border-radius:6px;background:#2f6bc4;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;">Export</button>
       </div>
       <div id="dashTable" style="display:none; position:absolute; inset:0; overflow:auto; background:#fff; padding-top:46px;"></div>
       <button class="dash-var-toggle" id="dashVarToggle" title="Toggle variable reference" style="display:none;">_vars</button>
@@ -708,9 +715,12 @@
           <select id="subTableBatchFilter"><option value="">All</option></select>
           <label>GAP</label>
           <select id="subTableGapFilter"><option value="">All</option></select>
+          <label>Work</label>
+          <select id="subWorkFilter"><option value="">All</option><option value="clocked">Clocked In</option></select>
         </div>
         <input type="search" id="subTableSearch" class="sub-table-search" placeholder="Searchâ€¦">
         <span class="spacer"></span>
+        <button id="subExportBtn" style="padding:3px 8px;border:1px solid #2f6bc4;border-radius:4px;background:#2f6bc4;color:#fff;font-size:10.5px;cursor:pointer;font-weight:600;">Export</button>
         <span class="sub-hint" id="subTableHint">Click &amp; drag to select · Ctrl+C to copy · Double-click GAP to change</span>
         <button class="sub-table-save" id="subTableSave">Save</button>
         <button class="sub-table-close" id="subTableClose">Close</button>
@@ -2113,6 +2123,7 @@ Remark = ${remark}`;
   let tableIsSelecting = false;
   let tableSelInfoEl = null;
   let tableColFilters = {}; // { colKey: 'selected filter value' }
+  let tableWorkOnly = false;
   // Stored handlers for drag-select so we can remove them before re-adding
   let _tableMouseDown, _tableMouseMove, _tableSelectStart;
 
@@ -2140,8 +2151,18 @@ Remark = ${remark}`;
       });
     });
 
+    // Apply Work Only filter
+    const workOnlyFiltered = tableWorkOnly
+      ? colFiltered.filter(s => {
+          const duIdNorm = normalizeDuIdClient(s.duId);
+          const duIdRaw = String(s.duId || '').trim().toUpperCase();
+          const clockin = dashClockinData && (dashClockinData[duIdNorm] || dashClockinData[duIdRaw]);
+          return !!(clockin && clockin.name);
+        })
+      : colFiltered;
+
     // Apply search (supports multi-line paste — one DU ID per line)
-    let filtered = colFiltered;
+    let filtered = workOnlyFiltered;
     if (tableSearch.trim()) {
       const lines = tableSearch.split('\n').map(l => l.trim()).filter(Boolean);
       if (lines.length === 1) {
@@ -2200,8 +2221,8 @@ Remark = ${remark}`;
       const hasFilter = !!cur;
       const arrow = tableSortKey === col ? (tableSortDir === 'asc' ? '&#9650;' : '&#9660;') : '';
       const filterOptions = buildFilterOptions(uniq, cur);
-      return '<th style="padding:0;white-space:nowrap;background:#f6f8fa;user-select:none;border-bottom:2px solid #d0d7de;">' +
-        '<div style="display:flex;align-items:center;gap:2px;padding:0 4px;">' +
+      return '<th style="padding:2px 4px;white-space:nowrap;background:#f6f8fa;user-select:none;border-bottom:2px solid #d0d7de;">' +
+        '<div style="display:flex;align-items:center;gap:2px;padding:2px 2px;">' +
         '<span data-key="' + col + '" class="tbl-sort-btn" style="cursor:pointer;padding:4px 3px;font-weight:' + (tableSortKey === col ? '700' : '400') + ';color:' + (tableSortKey === col ? '#0969da' : '#24292f') + ';white-space:nowrap;">' +
         (colLabels[col] || col) + arrow +
         '</span>' +
@@ -2227,6 +2248,14 @@ Remark = ${remark}`;
           const tc = contrastText(sc);
           const lbl = escapeHtml(val || '-');
           return '<td data-val="' + lbl + '" style="background:' + sc + ';color:' + tc + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;" title="' + lbl + '">' + lbl + '</td>';
+        }
+        if (c === 'duId') {
+          const duIdNorm = normalizeDuIdClient(site.duId);
+          const duIdRaw = String(site.duId || '').trim().toUpperCase();
+          const clockin = dashClockinData && (dashClockinData[duIdNorm] || dashClockinData[duIdRaw]);
+          const hasClockin = !!(clockin && clockin.name);
+          const lbl2 = escapeHtml(val);
+          return '<td data-val="' + lbl2 + '" style="background:' + bg + ';' + (hasClockin ? 'outline:2px solid #ff6600;' : '') + 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + lbl2 + '">' + lbl2 + '</td>';
         }
         const lbl2 = escapeHtml(val);
         return '<td data-val="' + lbl2 + '" style="background:' + bg + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + lbl2 + '">' + lbl2 + '</td>';
@@ -2427,7 +2456,7 @@ Remark = ${remark}`;
   // Global Ctrl+C for table
   document.addEventListener('keydown', (e) => {
     if(!(e.ctrlKey || e.metaKey) || e.key !== 'c') return;
-    if(document.body.classList.contains('dashboard-mode') && dashView === 'table' && tableSelStart && tableSelEnd){
+    if(document.body.classList.contains('dashboard-mode') && dashView === 'table' && !!document.querySelector('#tableData .selected')){
       copyTableSelection();
       e.preventDefault();
     }
@@ -2437,6 +2466,59 @@ Remark = ${remark}`;
   document.getElementById('tableSearchInput').addEventListener('input', (e) => {
     tableSearch = e.target.value;
     renderTableView();
+  });
+
+  document.getElementById('tableWorkOnlyBtn').addEventListener('click', () => {
+    tableWorkOnly = !tableWorkOnly;
+    // Update button active state styling
+    const btn = document.getElementById('tableWorkOnlyBtn');
+    if (tableWorkOnly) {
+      btn.style.border = '1px solid rgba(255,102,0,.5)';
+      btn.style.background = 'rgba(255,102,0,.15)';
+      btn.style.color = '#ff6600';
+    } else {
+      btn.style.border = '1px solid rgba(255,255,255,.2)';
+      btn.style.background = '#0d1117';
+      btn.style.color = '#e6edf3';
+    }
+    renderTableView();
+  });
+
+  document.getElementById('tableExportBtn').addEventListener('click', () => {
+    const sites = getFilteredSites();
+    const allCols = ["batchRfi","tpId","duId","siteName","subcontPlan","gap","remark","city","lat","lng"];
+    const colFiltered2 = sites.filter(s => {
+      return allCols.every(col => {
+        const filterVal = tableColFilters[col];
+        if (!filterVal) return true;
+        const cellVal = String(s[col] || '').trim();
+        return cellVal === filterVal;
+      });
+    });
+    let exportSites = colFiltered2;
+    if (tableWorkOnly) {
+      exportSites = colFiltered2.filter(s => {
+        const duIdNorm = normalizeDuIdClient(s.duId);
+        const duIdRaw = String(s.duId || '').trim().toUpperCase();
+        const clockin = dashClockinData && (dashClockinData[duIdNorm] || dashClockinData[duIdRaw]);
+        return !!(clockin && clockin.name);
+      });
+    }
+    const headers = ['Batch RFI','TP Site ID','DU ID','Site Name','Subcont Plan','GAP','Remark','City','Latitude','Longitude'];
+    const rows = exportSites.map(s => [
+      s.batchRfi || '', s.tpId || '', s.duId || '', s.siteName || '',
+      s.subcontPlan || '', s.gap || '', s.remark || '',
+      s.city || '', s.lat || '', s.lng || ''
+    ]);
+    const csv = [headers, ...rows].map(r => r.map(v => '"' + String(v).replace(/"/g,'""') + '"').join(',')).join('\n');
+    const blob = new Blob([csv], {type:'text/csv'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const d = new Date();
+    a.href = url;
+    a.download = 'site-acceptance-' + d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0') + '.csv';
+    a.click();
+    URL.revokeObjectURL(url);
   });
   function renderPivotTable(){
     const container = document.getElementById('dashGraph');
@@ -3307,15 +3389,23 @@ Remark = ${remark}`;
   let subTableBatchFilter = '';
   let subTableGapFilter = '';
   let subTableColFilters = {}; // { key: '' }
+  let subWorkFilter = ''; // '' = All, 'clocked' = Clocked In
 
   function renderSubEditTable(q){
     const query = String(q || '').toLowerCase();
     const batchF = document.getElementById('subTableBatchFilter').value;
     const gapF = document.getElementById('subTableGapFilter').value;
+    const workF = document.getElementById('subWorkFilter').value;
     const visible = [];
     subTableRows.forEach((row, i)=>{
       if(batchF && row.batchRfi !== batchF) return;
       if(gapF && matchGapStatus(row.gap) !== gapF) return;
+      if(workF === 'clocked'){
+        const duIdNorm = normalizeDuIdClient(row.duId);
+        const duIdRaw = String(row.duId || '').trim().toUpperCase();
+        const clockin = dashClockinData && (dashClockinData[duIdNorm] || dashClockinData[duIdRaw]);
+        if(!clockin || !clockin.name) return;
+      }
       if(query && !SUB_TABLE_FIELDS.some(f=> String(row[f.key] || '').toLowerCase().includes(query))) return;
       // column filter
       for(const [k, v] of Object.entries(subTableColFilters)){
@@ -3707,6 +3797,44 @@ Remark = ${remark}`;
   document.getElementById('subTableSearch').addEventListener('input', (e)=> renderSubEditTable(e.target.value));
   document.getElementById('subTableBatchFilter').addEventListener('change', (e)=>{ subTableBatchFilter = e.target.value; renderSubEditTable(document.getElementById('subTableSearch').value); });
   document.getElementById('subTableGapFilter').addEventListener('change', (e)=>{ subTableGapFilter = e.target.value; renderSubEditTable(document.getElementById('subTableSearch').value); });
+  document.getElementById('subWorkFilter').addEventListener('change', (e)=>{ subWorkFilter = e.target.value; renderSubEditTable(document.getElementById('subTableSearch').value); });
+  document.getElementById('subExportBtn').addEventListener('click', () => {
+    const batchF = document.getElementById('subTableBatchFilter').value;
+    const gapF = document.getElementById('subTableGapFilter').value;
+    const workF = document.getElementById('subWorkFilter').value;
+    const query = String(document.getElementById('subTableSearch').value || '').toLowerCase();
+    const exportRows = [];
+    subTableRows.forEach((row) => {
+      if (batchF && row.batchRfi !== batchF) return;
+      if (gapF && matchGapStatus(row.gap) !== gapF) return;
+      if (workF === 'clocked') {
+        const duIdNorm = normalizeDuIdClient(row.duId);
+        const duIdRaw = String(row.duId || '').trim().toUpperCase();
+        const clockin = dashClockinData && (dashClockinData[duIdNorm] || dashClockinData[duIdRaw]);
+        if (!clockin || !clockin.name) return;
+      }
+      if (query && !SUB_TABLE_FIELDS.some(f => String(row[f.key] || '').toLowerCase().includes(query))) return;
+      for (const [k, v] of Object.entries(subTableColFilters)) {
+        if (v && String(row[k] || '').toLowerCase() !== v.toLowerCase()) return;
+      }
+      exportRows.push(row);
+    });
+    const headers = ['Batch RFI','TP Site ID','DU ID','Site Name','Subcont Plan','GAP','Remark','City','Latitude','Longitude'];
+    const csvRows = exportRows.map(s => [
+      s.batchRfi || '', s.tpId || '', s.duId || '', s.siteName || '',
+      s.subcontPlan || '', s.gap || '', s.remark || '',
+      s.city || '', s.lat || '', s.lng || ''
+    ]);
+    const csv = [headers, ...csvRows].map(r => r.map(v => '"' + String(v).replace(/"/g,'""') + '"').join(',')).join('\n');
+    const blob = new Blob([csv], {type:'text/csv'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const d = new Date();
+    a.href = url;
+    a.download = 'site-acceptance-' + d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0') + '.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  });
   document.getElementById('subTableClose').addEventListener('click', ()=> document.getElementById('subTableOverlay').classList.remove('show'));
   document.getElementById('subTableSave').addEventListener('click', saveSubcontTable);
 
