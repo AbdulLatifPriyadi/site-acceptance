@@ -2013,6 +2013,8 @@ Remark = ${remark}`;
   let tableIsSelecting = false;
   let tableSelInfoEl = null;
   let tableColFilters = {}; // { colKey: 'selected filter value' }
+  // Stored handlers for drag-select so we can remove them before re-adding
+  let _tableMouseDown, _tableMouseMove, _tableSelectStart;
 
   // Build unique sorted values for a column
   function getUniqueColValues(sites, key) {
@@ -2184,15 +2186,15 @@ Remark = ${remark}`;
     const wrap = container.querySelector('#tableWrap');
     if (!wrap) return;
 
-    // Remove old listeners by cloning
-    const newWrap = wrap.cloneNode(false);
-    wrap.parentNode.replaceChild(newWrap, wrap);
+    // Remove old handlers to prevent accumulation
+    if (_tableMouseDown) wrap.removeEventListener('mousedown', _tableMouseDown);
+    if (_tableMouseMove) wrap.removeEventListener('mousemove', _tableMouseMove);
+    if (_tableSelectStart) wrap.removeEventListener('selectstart', _tableSelectStart);
 
-    newWrap.addEventListener('mousedown', (e) => {
+    _tableMouseDown = (e) => {
       if (e.target.closest('#tableSearchInput')) return;
       const td = e.target.closest('td');
       if (td) {
-        // Normal drag-select: clear and start fresh
         clearTableSelection();
         tableSelStart = getTableCellCoords(td);
         tableSelEnd = tableSelStart;
@@ -2200,23 +2202,26 @@ Remark = ${remark}`;
         applyTableSelection();
         e.preventDefault();
       } else {
-        // Clicked outside the table — clear selection
         clearTableSelection();
       }
-    });
+    };
 
-    newWrap.addEventListener('mousemove', (e) => {
+    _tableMouseMove = (e) => {
       if (!tableIsSelecting) return;
       const td = e.target.closest('td');
       if (td) {
         tableSelEnd = getTableCellCoords(td);
         applyTableSelection();
       }
-    });
+    };
 
+    _tableSelectStart = (e) => { if (tableIsSelecting) e.preventDefault(); };
+
+    wrap.addEventListener('mousedown', _tableMouseDown);
+    wrap.addEventListener('mousemove', _tableMouseMove);
     document.addEventListener('mouseup', () => { tableIsSelecting = false; });
-    newWrap.addEventListener('selectstart', (e) => { if (tableIsSelecting) e.preventDefault(); });
-    newWrap.addEventListener('click', (e) => {
+    wrap.addEventListener('selectstart', _tableSelectStart);
+    wrap.addEventListener('click', (e) => {
       if (!e.target.closest('td') && !e.target.closest('th')) clearTableSelection();
     });
   }
