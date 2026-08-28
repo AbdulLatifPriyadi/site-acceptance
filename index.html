@@ -1541,6 +1541,27 @@ Remark = ${remark}`;
   let mySubcont = ''; // set to subcont name when logged in as subcont user
   const VALID_TOKENS = ['surge123'];
   function isValidToken(v) { return VALID_TOKENS.some(t => v.toLowerCase() === t.toLowerCase()); }
+  // Per-subcont access tokens (typed at dashboard password prompt)
+  const SUBCONT_TOKENS = {
+    'INTISEL': 'doser199',
+    'NIM':     'gery12345',
+    'PAB':     'arief567',
+    'POCA':    'tetep555',
+    'CAA':     'joko111',
+    'YPIT':    'doni999',
+    'TRITAMA': 'iyan100',
+    'ZMG':     'yana566',
+    'INDOHR':  'dani788',
+    'INNOVIS': 'iman5998',
+    'CCSI':    'lukman776'
+  };
+  function subcontNameFromToken(token){
+    const t = String(token || '').trim().toLowerCase();
+    for(const k in SUBCONT_TOKENS){
+      if(SUBCONT_TOKENS[k].toLowerCase() === t) return k;
+    }
+    return '';
+  }
   window.isValidToken = isValidToken;
   // Expose initDashboard to window early (before the function body runs)
   window.initDashboard = function initDashboardWrapper(){
@@ -3237,7 +3258,7 @@ Remark = ${remark}`;
   }
 
   // ----- Utilities -----
-  function subcontPassword(name){ return normalizeSubcontKey(name)+'123'; }
+  function subcontPassword(name){ return SUBCONT_TOKENS[normalizeSubcontKey(name)] || ''; }
 
 
   function renderSubcontCards(){
@@ -3907,11 +3928,12 @@ Remark = ${remark}`;
         unlockedSubconts = { 'SUBCONT': true };
         dashboardUnlocked = true;
       } else {
-        const m = val.match(/^([A-Za-z]+)(\d+)$/);
-        if(m && m[2] === '123'){
-          mySubcont = m[1].toUpperCase();
+        // Try explicit per-subcont token lookup
+        const matched = subcontNameFromToken(val);
+        if(matched){
+          mySubcont = matched;
           unlockedSubconts = {};
-          unlockedSubconts[mySubcont] = true;
+          unlockedSubconts[matched] = true;
           dashboardUnlocked = true;
         } else {
           throw new Error('Wrong token');
@@ -3988,13 +4010,12 @@ Remark = ${remark}`;
       return;
     }
 
-    // [SUBCONT]123 â†’ subcont-only access (e.g. intisel123, tritama123, nim123)
-    const scMatch = val.match(/^([A-Za-z]+)(\d+)$/);
-    if(scMatch && scMatch[2] === '123'){
-      const subcontKey = normalizeSubcontKey(scMatch[1]);
-      // Check if this subcont exists in the data (or allow any name pattern)
-      mySubcont = subcontKey;
-      unlockedSubconts[mySubcont] = true;
+    // Explicit per-subcont token (typed at dashboard prompt)
+    const matchedName = subcontNameFromToken(val);
+    if(matchedName){
+      mySubcont = matchedName;
+      unlockedSubconts = {};
+      unlockedSubconts[matchedName] = true;
       document.getElementById('dashPwOverlay').classList.remove('show');
       openDashboard();
       return;
