@@ -2022,26 +2022,24 @@ Remark = ${remark}`;
       marker.on('mouseout', ()=>{ setTimeout(()=>{ if(!dashHoverBox.matches(':hover')) hideHoverBox(); }, 80); });
       marker.addTo(dashMarkersLayer);
 
-      // Add person+fire icon on TOP of the circleMarker for clocked-in sites
-      if(isWorking){
-        const name = escapeHtml(clockin.name || '');
-        const label = name ? `<div class="clockin-label">${name}</div>` : '';
-        const fireColor = '#999';
-        const fireClass = 'clockedout';
-        const iconHtml =
-          `<div class="clockin-icon-wrap">` +
-            `<svg class="clockin-fire ${fireClass}" viewBox="0 0 24 24" fill="${fireColor}"><path d="M12 2C9 6 5 9.5 5 14c0 3.9 3.1 7 7 7s7-3.1 7-7c0-4.5-4-8-7-12zm0 16c-2.2 0-4-1.8-4-4 0-2 1.5-3.8 4-6.5 2.5 2.7 4 4.5 4 6.5 0 2.2-1.8 4-4 4z"/></svg>` +
-            label +
-          `</div>`;
-        const fireIcon = L.divIcon({
-          html: iconHtml,
-          className: '',
-          iconSize: [32, 32],
-          iconAnchor: [16, 16],
-          popupAnchor: [0, -40]
-        });
-        L.marker([site._lat, site._lng], { icon: fireIcon, interactive: false }).addTo(dashMarkersLayer);
-      }
+      // Add fire icon on TOP of the circleMarker for all clocked sites
+      const name = escapeHtml(clockin.name || '');
+      const label = name ? `<div class="clockin-label">${name}</div>` : '';
+      const fireColor = isWorking ? '#ff6600' : '#999';
+      const fireClass = isWorking ? '' : 'clockedout';
+      const iconHtml =
+        `<div class="clockin-icon-wrap">` +
+          `<svg class="clockin-fire ${fireClass}" viewBox="0 0 24 24" fill="${fireColor}"><path d="M12 2C9 6 5 9.5 5 14c0 3.9 3.1 7 7 7s7-3.1 7-7c0-4.5-4-8-7-12zm0 16c-2.2 0-4-1.8-4-4 0-2 1.5-3.8 4-6.5 2.5 2.7 4 4.5 4 6.5 0 2.2-1.8 4-4 4z"/></svg>` +
+          label +
+        `</div>`;
+      const fireIcon = L.divIcon({
+        html: iconHtml,
+        className: '',
+        iconSize: [32, 32],
+        iconAnchor: [16, 16],
+        popupAnchor: [0, -40]
+      });
+      L.marker([site._lat, site._lng], { icon: fireIcon, interactive: false }).addTo(dashMarkersLayer);
 
     });
 
