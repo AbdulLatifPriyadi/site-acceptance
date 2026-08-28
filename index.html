@@ -2019,7 +2019,7 @@ Remark = ${remark}`;
       marker.addTo(dashMarkersLayer);
 
       // Add fire icon on TOP of the circleMarker if site has a clockin name
-      if(clockin.name){
+      if(clockin && clockin.name){
         const label = `<div class="clockin-label">${escapeHtml(clockin.name)}</div>`;
         const iconHtml =
           `<div class="clockin-icon-wrap">` +
