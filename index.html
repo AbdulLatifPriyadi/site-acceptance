@@ -93,6 +93,7 @@
   }
   .dash-mode-btn.active{ background:#fff; color:var(--ink); border-color:#fff; }
   .dash-status{ font-size:11px; color:#b7c0c9; flex-shrink:0; }
+  .dash-topbar-right{ margin-left:auto; display:flex; align-items:center; gap:8px; }
   .dash-refresh-btn{
     flex-shrink:0; width:28px; height:28px; border:none; border-radius:7px;
     background:rgba(255,255,255,.12); color:rgba(255,255,255,.7); cursor:pointer;
@@ -582,10 +583,12 @@
         <button class="dash-view-btn" id="viewGraphBtn">Dashboard</button>
         <button class="dash-view-btn" id="viewTableBtn">Table</button>
       </div>
-      <button class="dash-refresh-btn" id="dashRefreshBtn" title="Refresh data">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-      </button>
-      <div class="dash-status" id="dashStatus"></div>
+      <div class="dash-topbar-right">
+        <div class="dash-status" id="dashStatus"></div>
+        <button class="dash-refresh-btn" id="dashRefreshBtn" title="Refresh data">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        </button>
+      </div>
     </div>
     <div class="dash-body">
       <div id="dashStatsBar"></div>
