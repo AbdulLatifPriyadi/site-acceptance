@@ -542,16 +542,17 @@
 
   /* ---- Clockin person + fire icon ---- */
   .clockin-icon-wrap{
-    position:relative; width:28px; height:28px; display:flex; align-items:center; justify-content:center;
+    position:relative; width:36px; height:44px;
+    display:flex; flex-direction:column; align-items:center;
   }
   .clockin-person{
-    position:relative; z-index:2; width:18px; height:18px;
+    position:relative; z-index:2; width:24px; height:24px; margin-top:-2px;
   }
   .clockin-fire{
-    position:absolute; top:-10px; right:-6px; z-index:3;
-    width:16px; height:16px;
+    position:absolute; top:-4px; right:-4px; z-index:3;
+    width:18px; height:18px;
     animation: fireFlicker .6s ease-in-out infinite alternate;
-    filter: drop-shadow(0 0 3px #ff6600);
+    filter: drop-shadow(0 0 4px #ff6600);
     pointer-events:none;
   }
   @keyframes fireFlicker{
@@ -562,9 +563,10 @@
     100% { transform:scale(1.05)  rotate(-3deg); opacity:.95; }
   }
   .clockin-label{
-    position:absolute; top:-18px; left:50%; transform:translateX(-50%);
-    background:rgba(0,0,0,.75); color:#fff; font-size:8px; font-weight:700;
+    position:absolute; top:-20px; left:50%; transform:translateX(-50%);
+    background:rgba(0,0,0,.8); color:#fff; font-size:8px; font-weight:700;
     padding:1px 4px; border-radius:3px; white-space:nowrap; pointer-events:none;
+    max-width:80px; overflow:hidden; text-overflow:ellipsis;
   }
 </style>
 </head>
@@ -2003,39 +2005,44 @@ Remark = ${remark}`;
     });
 
     withCoords.forEach(site=>{
-      const duId = normalizeDuIdClient(site.duId);
-      const clockin = dashClockinData && dashClockinData[duId];
+      // Try both normalized and raw DU ID to match clockin data
+      const duIdNorm = normalizeDuIdClient(site.duId);
+      const duIdRaw = String(site.duId || '').trim().toUpperCase();
+      const clockin = dashClockinData && (dashClockinData[duIdNorm] || dashClockinData[duIdRaw]);
       const isWorking = clockin && !clockin.clockOut;
-
-      // Build person+fire divIcon for clocked-in sites
-      if(isWorking){
-        const personSvg = `<svg viewBox="0 0 24 24" fill="currentColor" style="color:#fff"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg>`;
-        const fireSvg = `<svg viewBox="0 0 24 24" fill="#ff6600"><path d="M12 2C9 6 5 9.5 5 14c0 3.9 3.1 7 7 7s7-3.1 7-7c0-4.5-4-8-7-12zm0 16c-2.2 0-4-1.8-4-4 0-2 1.5-3.8 4-6.5 2.5 2.7 4 4.5 4 6.5 0 2.2-1.8 4-4 4z"/></svg>`;
-        const name = escapeHtml(clockin.name || '');
-        const label = name ? `<div class="clockin-label">${name}</div>` : '';
-        const iconHtml = `<div class="clockin-icon-wrap">${fireSvg}<div class="clockin-person">${personSvg}</div>${label}</div>`;
-        const personIcon = L.divIcon({
-          html: iconHtml,
-          className: '',
-          iconSize: [28, 28],
-          iconAnchor: [14, 14],
-          popupAnchor: [0, -14]
-        });
-        const personMarker = L.marker([site._lat, site._lng], { icon: personIcon, interactive: false });
-        personMarker.addTo(dashMarkersLayer);
-      }
 
       const marker = L.circleMarker([site._lat, site._lng], {
         radius:7, weight:2, color:'#fff', fillColor: dashPointColor(site), fillOpacity:.95
       });
-      const fullMessage = formatTooltipMessage(dashMessageLookup[duId]);
+      const fullMessage = formatTooltipMessage(dashMessageLookup[duIdNorm]);
       const tooltipHtml = fullMessage
         ? fullMessage
         : `Remark: ${escapeHtml(site.remark || '-')}`;
       marker.on('mouseover', (e)=> showHoverBox(tooltipHtml, site, e.originalEvent));
       marker.on('mouseout', ()=>{ setTimeout(()=>{ if(!dashHoverBox.matches(':hover')) hideHoverBox(); }, 80); });
       marker.addTo(dashMarkersLayer);
-    });
+
+      // Add person+fire icon on TOP of the circleMarker for clocked-in sites
+      if(isWorking){
+        const name = escapeHtml(clockin.name || '');
+        const label = name ? `<div class="clockin-label">${name}</div>` : '';
+        const iconHtml =
+          `<div class="clockin-icon-wrap">` +
+            `<svg class="clockin-fire" viewBox="0 0 24 24" fill="#ff6600"><path d="M12 2C9 6 5 9.5 5 14c0 3.9 3.1 7 7 7s7-3.1 7-7c0-4.5-4-8-7-12zm0 16c-2.2 0-4-1.8-4-4 0-2 1.5-3.8 4-6.5 2.5 2.7 4 4.5 4 6.5 0 2.2-1.8 4-4 4z"/></svg>` +
+            `<div class="clockin-person">` +
+              `<svg viewBox="0 0 24 24" fill="white"><path d="M12 2C9.69 2 8 3.69 8 6c0 1.66 1.01 3.08 2.44 3.66L10 14h4l-.44-4.34C14.99 9.08 16 7.66 16 6c0-2.31-1.69-4-4-4zm0 2c1.1 0 2 .9 2 2s-.9 2-2 2-2-.9-2-2 .9-2 2-2zM6 20v-2c0-3.31 2.69-6 6-6s6 2.69 6 6v2H6z"/></svg>` +
+            `</div>` +
+            label +
+          `</div>`;
+        const personIcon = L.divIcon({
+          html: iconHtml,
+          className: '',
+          iconSize: [36, 44],
+          iconAnchor: [18, 22],
+          popupAnchor: [0, -22]
+        });
+        L.marker([site._lat, site._lng], { icon: personIcon, interactive: false }).addTo(dashMarkersLayer);
+      }
 
     renderLegend(withCoords);
     renderStatsBar();
