@@ -546,11 +546,14 @@
     display:flex; flex-direction:column; align-items:center;
   }
   .clockin-person{
-    position:relative; z-index:2; width:24px; height:24px; margin-top:-2px;
+    position:relative; z-index:2; width:28px; height:36px;
+    margin-top:-4px; margin-left:6px;
+    background:url('https://abdulatifpriyadi.github.io/site-acceptance/worker.webp') center/contain no-repeat;
+    image-rendering:-webkit-optimize-contrast;
   }
   .clockin-fire{
-    position:absolute; top:-4px; right:-4px; z-index:3;
-    width:18px; height:18px;
+    position:absolute; top:-6px; left:-6px; z-index:1;
+    width:22px; height:22px;
     animation: fireFlicker .6s ease-in-out infinite alternate;
     filter: drop-shadow(0 0 4px #ff6600);
     pointer-events:none;
@@ -2029,17 +2032,15 @@ Remark = ${remark}`;
         const iconHtml =
           `<div class="clockin-icon-wrap">` +
             `<svg class="clockin-fire" viewBox="0 0 24 24" fill="#ff6600"><path d="M12 2C9 6 5 9.5 5 14c0 3.9 3.1 7 7 7s7-3.1 7-7c0-4.5-4-8-7-12zm0 16c-2.2 0-4-1.8-4-4 0-2 1.5-3.8 4-6.5 2.5 2.7 4 4.5 4 6.5 0 2.2-1.8 4-4 4z"/></svg>` +
-            `<div class="clockin-person">` +
-              `<svg viewBox="0 0 24 24" fill="white"><path d="M12 2C9.69 2 8 3.69 8 6c0 1.66 1.01 3.08 2.44 3.66L10 14h4l-.44-4.34C14.99 9.08 16 7.66 16 6c0-2.31-1.69-4-4-4zm0 2c1.1 0 2 .9 2 2s-.9 2-2 2-2-.9-2-2 .9-2 2-2zM6 20v-2c0-3.31 2.69-6 6-6s6 2.69 6 6v2H6z"/></svg>` +
-            `</div>` +
+            `<div class="clockin-person"></div>` +
             label +
           `</div>`;
         const personIcon = L.divIcon({
           html: iconHtml,
           className: '',
-          iconSize: [36, 44],
-          iconAnchor: [18, 22],
-          popupAnchor: [0, -22]
+          iconSize: [40, 48],
+          iconAnchor: [20, 24],
+          popupAnchor: [0, -24]
         });
         L.marker([site._lat, site._lng], { icon: personIcon, interactive: false }).addTo(dashMarkersLayer);
       }
