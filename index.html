@@ -563,7 +563,7 @@
         </button>
       </div>
       <div id="loginDebugLog" style="margin-top:12px; background:#0d1117; border:1px solid #30363d; border-radius:8px; padding:8px 10px; font-family:monospace; font-size:10px; color:#7ee787; max-height:120px; overflow:auto;"><div style="color:#8b949e; margin-bottom:4px;">System log:</div></div>
-      <div id="appVersion" style="position:fixed; bottom:8px; right:12px; font-size:9.5px; color:rgba(255,255,255,.25); font-family:monospace;">v2026.08.28-dbg20</div>
+      <div id="appVersion" style="position:fixed; bottom:8px; right:12px; font-size:9.5px; color:rgba(255,255,255,.25); font-family:monospace;">v2026.08.28-dbg22</div>
     </div>
     <div class="walk-peeps">
       <div class="walk-peep-wrap walk-right" style="animation-name:walkRight;animation-duration:18s;animation-delay:0s;animation-timing-function:linear;animation-iteration-count:infinite;"><div class="walk-bubble" id="wB1"></div><img class="walk-peep" src="walk.gif"></div>
@@ -598,7 +598,7 @@
         <span style="font-size:13px; font-weight:800; color:#fff;" id="tableBarTitle">All Sites</span>
         <span style="font-size:11.5px; color:#b7c0c9;" id="tableBarCount"></span>
         <span id="tableSelInfo" style="font-size:11px; color:#a8d4f0; font-weight:700; display:none;"></span>
-        <span style="margin-left:auto; font-size:10px; color:#6b7688;">Click header to sort &nbsp;·&nbsp; Ctrl+C to copy</span>
+        <span style="margin-left:auto; font-size:10px; color:#6b7688;">Click header to sort &nbsp;·&nbsp; Ctrl+Click = multi-select &nbsp;·&nbsp; Ctrl+C = copy</span>
         <input type="search" id="tableSearchInput" placeholder="Search or paste multiple DU IDs..."
           style="padding:5px 9px; border:1px solid rgba(255,255,255,.2); border-radius:6px; background:#0d1117; color:#e6edf3; font-size:11.5px; min-width:240px; outline:none;">
       </div>
@@ -2014,6 +2014,7 @@ Remark = ${remark}`;
   let tableSelInfoEl = null;
   let tableInitialized = false;
   let tableColFilters = {}; // { colKey: 'selected filter value' }
+  let tableClickedCells = new Set(); // {"row,col"} for Ctrl+click multi-select
 
   // Build unique sorted values for a column
   function getUniqueColValues(sites, key) {
@@ -2099,12 +2100,12 @@ Remark = ${remark}`;
       const hasFilter = !!cur;
       const arrow = tableSortKey === col ? (tableSortDir === 'asc' ? '&#9650;' : '&#9660;') : '';
       const filterOptions = buildFilterOptions(uniq, cur);
-      return '<th style="padding:0;white-space:nowrap;background:#0d1117;user-select:none;">' +
+      return '<th style="padding:0;white-space:nowrap;background:#f6f8fa;user-select:none;border-bottom:2px solid #d0d7de;">' +
         '<div style="display:flex;align-items:center;gap:2px;padding:0 4px;">' +
-        '<span data-key="' + col + '" class="tbl-sort-btn" style="cursor:pointer;padding:4px 3px;font-weight:' + (tableSortKey === col ? '700' : '400') + ';color:' + (tableSortKey === col ? '#58a6ff' : '#8b949e') + ';white-space:nowrap;">' +
+        '<span data-key="' + col + '" class="tbl-sort-btn" style="cursor:pointer;padding:4px 3px;font-weight:' + (tableSortKey === col ? '700' : '400') + ';color:' + (tableSortKey === col ? '#0969da' : '#24292f') + ';white-space:nowrap;">' +
         (colLabels[col] || col) + arrow +
         '</span>' +
-        '<select data-filter-col="' + col + '" style="background:' + (hasFilter ? '#1f4b6e' : '#161b22') + ';color:' + (hasFilter ? '#58a6ff' : '#484f58') + ';border:1px solid ' + (hasFilter ? '#388bfd' : '#30363d') + ';border-radius:3px;font-size:9px;padding:1px 2px;cursor:pointer;max-width:' + (colWidths[col] || 120) + 'px;outline:none;">' +
+        '<select data-filter-col="' + col + '" style="background:' + (hasFilter ? '#ddf4ff' : '#f6f8fa') + ';color:' + (hasFilter ? '#0969da' : '#57606a') + ';border:1px solid ' + (hasFilter ? '#54aeff' : '#d0d7de') + ';border-radius:3px;font-size:9px;padding:1px 2px;cursor:pointer;max-width:' + (colWidths[col] || 120) + 'px;outline:none;">' +
         '<option value="">' + (hasFilter ? '&#10005; Clear' : '(All)') + '</option>' +
         filterOptions +
         '</select>' +
@@ -2121,6 +2122,12 @@ Remark = ${remark}`;
           const lbl = escapeHtml(val || '-');
           return '<td data-val="' + lbl + '" style="background:' + bg + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + lbl + '"><span style="display:inline-block;padding:2px 7px;border-radius:999px;font-size:10.5px;font-weight:700;color:#fff;background:' + color + ';white-space:nowrap;">' + lbl + '</span></td>';
         }
+        if (c === 'subcontPlan') {
+          const sc = dashSubcontColor(site);
+          const tc = contrastText(sc);
+          const lbl = escapeHtml(val || '-');
+          return '<td data-val="' + lbl + '" style="background:' + sc + ';color:' + tc + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;" title="' + lbl + '">' + lbl + '</td>';
+        }
         const lbl2 = escapeHtml(val);
         return '<td data-val="' + lbl2 + '" style="background:' + bg + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + lbl2 + '">' + lbl2 + '</td>';
       }).join('');
@@ -2135,8 +2142,8 @@ Remark = ${remark}`;
       '<div id="tableWrap" style="overflow:auto;position:absolute;top:46px;left:0;right:0;bottom:0;user-select:none;-webkit-user-select:none;" tabindex="0">' +
         '<table id="tableData" style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:11.5px;min-width:1200px;cursor:cell;user-select:none;-webkit-user-select:none;">' +
           '<colgroup>' + colgroupHtml + '</colgroup>' +
-          '<thead style="position:sticky;top:0;z-index:3;">' +
-            '<tr style="background:#1c2530;color:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);">' +
+          '<thead style="position:sticky;top:0;z-index:3;background:#f6f8fa;">' +
+            '<tr style="background:#f6f8fa;color:#24292f;">' +
               filterRow +
             '</tr>' +
           '</thead>' +
@@ -2184,6 +2191,20 @@ Remark = ${remark}`;
         if (e.target.closest('#tableSearchInput')) return;
         const td = e.target.closest('td');
         if (td) {
+          // Ctrl+Click: toggle individual cell multi-select
+          if (e.ctrlKey || e.metaKey) {
+            e.stopPropagation();
+            const coord = getTableCellCoords(td);
+            const key = coord.row + ',' + coord.col;
+            if (tableClickedCells.has(key)) {
+              tableClickedCells.delete(key);
+            } else {
+              tableClickedCells.add(key);
+            }
+            applyTableSelection();
+            return;
+          }
+          // Normal click+drag: start range selection
           tableIsSelecting = true;
           tableSelStart = getTableCellCoords(td);
           tableSelEnd = tableSelStart;
@@ -2229,61 +2250,105 @@ Remark = ${remark}`;
     tbl.querySelectorAll('td.selected, th.selected').forEach(el => el.classList.remove('selected'));
     tableSelStart = null;
     tableSelEnd = null;
+    tableClickedCells.clear();
     tableSelInfoEl = document.getElementById('tableSelInfo');
     if(tableSelInfoEl) tableSelInfoEl.style.display = 'none';
   }
 
   function applyTableSelection(){
     const tbl = document.getElementById('tableData');
-    if(!tbl || !tableSelStart || !tableSelEnd) return;
+    if(!tbl) return;
     tbl.querySelectorAll('td.selected, th.selected').forEach(el => el.classList.remove('selected'));
-    const minRow = Math.min(tableSelStart.row, tableSelEnd.row);
-    const maxRow = Math.max(tableSelStart.row, tableSelEnd.row);
-    const minCol = Math.min(tableSelStart.col, tableSelEnd.col);
-    const maxCol = Math.max(tableSelStart.col, tableSelEnd.col);
+
     const bodyRows = tbl.tBodies[0].rows;
     const headRow = tbl.tHead.rows[0];
-    for(let r = minRow; r <= maxRow; r++){
-      if(bodyRows[r]){
-        for(let c = minCol; c <= maxCol; c++){
-          if(bodyRows[r].cells[c]) bodyRows[r].cells[c].classList.add('selected');
+    const allSelectedKeys = new Set(tableClickedCells);
+    let count = 0;
+
+    // Ctrl+clicked cells
+    tableClickedCells.forEach(key => {
+      const [r, c] = key.split(',').map(Number);
+      if(bodyRows[r] && bodyRows[r].cells[c]){
+        bodyRows[r].cells[c].classList.add('selected');
+        count++;
+      }
+    });
+
+    // Drag range (only if start/end are set)
+    if(tableSelStart && tableSelEnd){
+      const minRow = Math.min(tableSelStart.row, tableSelEnd.row);
+      const maxRow = Math.max(tableSelStart.row, tableSelEnd.row);
+      const minCol = Math.min(tableSelStart.col, tableSelEnd.col);
+      const maxCol = Math.max(tableSelStart.col, tableSelEnd.col);
+      for(let r = minRow; r <= maxRow; r++){
+        if(bodyRows[r]){
+          for(let c = minCol; c <= maxCol; c++){
+            if(bodyRows[r].cells[c]){
+              const key = r + ',' + c;
+              if(!allSelectedKeys.has(key)){
+                bodyRows[r].cells[c].classList.add('selected');
+                count++;
+              }
+            }
+          }
         }
       }
+      for(let c = minCol; c <= maxCol; c++){
+        if(headRow.cells[c]) headRow.cells[c].classList.add('selected');
+      }
     }
-    for(let c = minCol; c <= maxCol; c++){
-      if(headRow.cells[c]) headRow.cells[c].classList.add('selected');
-    }
-    const count = (maxRow - minRow + 1) * (maxCol - minCol + 1);
+
     tableSelInfoEl = document.getElementById('tableSelInfo');
     if(tableSelInfoEl){
-      tableSelInfoEl.textContent = count + ' cell' + (count > 1 ? 's' : '') + ' selected';
-      tableSelInfoEl.style.display = 'inline';
+      tableSelInfoEl.textContent = count + ' cell' + (count !== 1 ? 's' : '') + ' selected';
+      tableSelInfoEl.style.display = count > 0 ? 'inline' : 'none';
     }
   }
 
   function copyTableSelection(){
     const tbl = document.getElementById('tableData');
-    if(!tbl || !tableSelStart || !tableSelEnd) return;
-    const minRow = Math.min(tableSelStart.row, tableSelEnd.row);
-    const maxRow = Math.max(tableSelStart.row, tableSelEnd.row);
-    const minCol = Math.min(tableSelStart.col, tableSelEnd.col);
-    const maxCol = Math.max(tableSelStart.col, tableSelEnd.col);
-    const bodyRows = tbl.tBodies[0].rows;
-    let text = '';
-    for(let r = minRow; r <= maxRow; r++){
-      const rowData = [];
-      for(let c = minCol; c <= maxCol; c++){
-        if(bodyRows[r] && bodyRows[r].cells[c]){
-          rowData.push((bodyRows[r].cells[c].getAttribute('data-val') || '').replace(/\t/g,' '));
+    if(!tbl) return;
+
+    // Collect all selected cells: drag range + Ctrl+clicked
+    const allKeys = new Set();
+
+    // Drag range
+    if(tableSelStart && tableSelEnd){
+      const minRow = Math.min(tableSelStart.row, tableSelEnd.row);
+      const maxRow = Math.max(tableSelStart.row, tableSelEnd.row);
+      const minCol = Math.min(tableSelStart.col, tableSelEnd.col);
+      const maxCol = Math.max(tableSelStart.col, tableSelEnd.col);
+      for(let r = minRow; r <= maxRow; r++){
+        for(let c = minCol; c <= maxCol; c++){
+          allKeys.add(r + ',' + c);
         }
       }
-      text += rowData.join('\t') + '\n';
+    }
+
+    // Ctrl+clicked cells
+    tableClickedCells.forEach(k => allKeys.add(k));
+
+    if(allKeys.size === 0) return;
+
+    const bodyRows = tbl.tBodies[0].rows;
+    // Sort by row then col for clean output
+    const sorted = [...allKeys].map(k => { const [r,c] = k.split(',').map(Number); return {r,c}; })
+      .sort((a,b) => a.r - b.r || a.c - b.c);
+
+    let text = '';
+    let curRow = -1;
+    for(const {r,c} of sorted){
+      if(r !== curRow){ if(curRow >= 0) text += '\n'; curRow = r; }
+      if(bodyRows[r] && bodyRows[r].cells[c]){
+        text += (bodyRows[r].cells[c].getAttribute('data-val') || '').replace(/\t/g,' ');
+      }
+      if(c !== sorted[sorted.length-1].c) text += '\t';
     }
     navigator.clipboard.writeText(text).catch(() => {});
     const info = document.getElementById('tableSelInfo');
     if(info){
       const prev = info.textContent;
-      info.textContent = 'Copied!';
+      info.textContent = 'Copied ' + allKeys.size + ' cell' + (allKeys.size !== 1 ? 's' : '') + '!';
       info.style.color = '#4caf7d';
       setTimeout(() => { info.textContent = prev; info.style.color = ''; }, 1200);
     }
@@ -2292,12 +2357,10 @@ Remark = ${remark}`;
   // Global Ctrl+C for table
   document.addEventListener('keydown', (e) => {
     if(!(e.ctrlKey || e.metaKey) || e.key !== 'c') return;
-    const active = document.activeElement;
-    if(active && (active.closest('#dashTable') || active.id === 'tableSearchInput')){
-      if(tableSelStart && tableSelEnd){
-        copyTableSelection();
-        e.preventDefault();
-      }
+    // Works anywhere when dashboard is open and a selection exists
+    if(document.body.classList.contains('dashboard-mode') && dashView === 'table' && (tableSelStart || tableClickedCells.size > 0)){
+      copyTableSelection();
+      e.preventDefault();
     }
   });
 
