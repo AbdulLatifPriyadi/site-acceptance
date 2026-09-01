@@ -120,6 +120,8 @@ function doGet(e) {
       return servePlan(param.date);
     } else if (type === 'planDates') {
       return servePlanDates();
+    } else if (type === 'activeDate') {
+      return serveActiveDate();
     } else {
       // Default: return full forward log
       return serveForwardLog();
@@ -374,6 +376,11 @@ function doPost(e) {
     // Handle daily plan save (per-date replace)
     if (body.type === 'planSave') {
       return handlePlanSave(body);
+    }
+
+    // Handle setting the surge's active date (broadcast to subcont clients)
+    if (body.type === 'setActiveDate') {
+      return handleSetActiveDate(body);
     }
 
     // Handle forward/submission
@@ -659,5 +666,29 @@ function handlePlanSave(body) {
 
   return ContentService
     .createTextOutput(JSON.stringify({ status: 'ok', written: written }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+// Serve the surge's active plan date (script-wide shared property).
+// Returns { date: 'YYYY-MM-DD' } or { date: '' } if unset.
+function serveActiveDate() {
+  var d = PropertiesService.getScriptProperties().getProperty('planActiveDate') || '';
+  return ContentService
+    .createTextOutput(JSON.stringify({ date: d }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+// Set the surge's active plan date. Stored in script properties (survives redeploys).
+// No auth — matches the existing trust model (surge check is client-side).
+function handleSetActiveDate(body) {
+  var date = String(body.date || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ status: 'error', message: 'Invalid date (YYYY-MM-DD)' }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  PropertiesService.getScriptProperties().setProperty('planActiveDate', date);
+  return ContentService
+    .createTextOutput(JSON.stringify({ status: 'ok', date: date }))
     .setMimeType(ContentService.MimeType.JSON);
 }

@@ -295,6 +295,7 @@
   #tableData th{ user-select:none; -webkit-user-select:none; cursor:pointer; }
   #planData td.selected{ background:#b3d4fc !important; }
   #planData th.selected{ background:#7aacdf !important; }
+  #planDateInput:disabled{ background:#0d1117; color:#8b949e; cursor:not-allowed; }
   .sub-edit-table input, .sub-edit-table select{
     width:100%; min-width:70px; padding:4px 5px; border:1px solid #d8dce0; border-radius:4px; font-size:10.5px; white-space:nowrap;
     user-select: none;
@@ -1554,7 +1555,11 @@ Remark = ${remark}`;
   let planSelStart = null;
   let planSelEnd = null;
   let planIsSelecting = false;
-  let _planMouseDown, _planMouseMove, _planSelectStart, _planClick;
+  let _planMouseDown, _planMouseMove, _planSelectStart, _planClick, _planDblClick, _planPaste;
+  // Active date broadcast (surge sets it, subcont users follow it via 5s polling)
+  let planActiveDate = '';
+  let planDatePollTimer = null;
+  const PLAN_DATE_POLL_MS = 5000;
   // ---------------------------
   let pivotSortKey = 'total';
   let pivotSortDir = 'desc';
@@ -3690,6 +3695,7 @@ Remark = ${remark}`;
       }
       planDirty = false;
     }
+    const wasPlan = (dashView === 'plan');
     dashView = view;
     hideHoverBox();
     document.getElementById('viewMapBtn').classList.toggle('active', view === 'map');
@@ -3705,6 +3711,8 @@ Remark = ${remark}`;
     document.getElementById('dashPlan').style.display = view === 'plan' ? 'block' : 'none';
     document.getElementById('dashPlanBar').style.display = view === 'plan' ? 'flex' : 'none';
     document.getElementById('dashFilterPanel').style.display = (view === 'table' || view === 'plan') ? 'none' : '';
+    // Leaving plan view: stop polling so the active-date fetcher doesn't run in the background.
+    if (wasPlan && view !== 'plan') stopPlanDatePolling();
     if (view === 'table') {
       // Reset table state when switching to table view
       tableSearch = '';
@@ -3719,11 +3727,35 @@ Remark = ${remark}`;
     } else if (view === 'plan') {
       // Initialize date input only on first entry — subsequent toggles reuse current date.
       if (!planCurrentDate) {
-        planCurrentDate = todayISO();
         const di = document.getElementById('planDateInput');
-        if (di) di.value = planCurrentDate;
+        if (mySubcont) {
+          // Subcont must follow surge's active date. Kick off fetch without awaiting —
+          // renderPlanView() below uses todayISO() as a temporary fallback so the UI
+          // isn't blocked; the real date is applied once the fetch resolves.
+          planCurrentDate = todayISO();
+          if (di) di.value = planCurrentDate;
+          fetchActiveDate().then(function(active){
+            if (!active || active === planCurrentDate) return;
+            if (dashView !== 'plan') return; // user navigated away mid-fetch
+            if (planDirty && !confirm('Surge changed the active date to ' + active + '. Discard unsaved changes and switch?')) return;
+            planCurrentDate = active;
+            planDirty = false;
+            setPlanStatus('');
+            if (di) di.value = active;
+            renderPlanView();
+          });
+        } else {
+          planCurrentDate = todayISO();
+          if (di) di.value = planCurrentDate;
+        }
       }
+      // Disable the date input for non-surge users (visible, read-only)
+      const di = document.getElementById('planDateInput');
+      if (di) di.disabled = !!mySubcont;
       renderPlanView();
+      // Start polling for active-date changes if subcont, stop if surge
+      if (mySubcont) startPlanDatePolling();
+      else stopPlanDatePolling();
     } else {
       // map view — handled above
     }
@@ -3855,6 +3887,51 @@ Remark = ${remark}`;
     }
   }
 
+  // ----- Active-date broadcast (surge -> subcont) -----
+  async function fetchActiveDate(){
+    if (!serverConfigured()) return '';
+    try {
+      const res = await fetchWithTimeout(SCRIPT_URL + '?type=activeDate', 10000);
+      if (!res.ok) return '';
+      const json = await res.json();
+      return (json && json.date) || '';
+    } catch (e) { return ''; }
+  }
+
+  async function postSetActiveDate(date){
+    if (!serverConfigured()) return false;
+    try {
+      const res = await fetch(SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ type: 'setActiveDate', date: date })
+      });
+      return res.ok;
+    } catch (e) { return false; }
+  }
+
+  function startPlanDatePolling(){
+    stopPlanDatePolling();
+    planDatePollTimer = setInterval(async function() {
+      if (dashView !== 'plan' || !mySubcont) return;
+      const active = await fetchActiveDate();
+      if (!active || active === planCurrentDate) return;
+      // Surge changed the date. Auto-switch (with discard-changes guard).
+      if (planDirty && !confirm('Surge changed the active date to ' + active + '. Discard unsaved changes and switch?')) return;
+      planCurrentDate = active;
+      planDirty = false;
+      setPlanStatus('');
+      const di = document.getElementById('planDateInput');
+      if (di) di.value = active;
+      renderPlanView();
+    }, PLAN_DATE_POLL_MS);
+  }
+
+  function stopPlanDatePolling(){
+    if (planDatePollTimer) { clearInterval(planDatePollTimer); planDatePollTimer = null; }
+  }
+  // ---------------------------------------------------
+
   async function renderPlanView(){
     const container = document.getElementById('dashPlan');
     if (!container) return;
@@ -3895,6 +3972,8 @@ Remark = ${remark}`;
       if (_planMouseMove)   wrap.removeEventListener('mousemove',   _planMouseMove);
       if (_planSelectStart) wrap.removeEventListener('selectstart', _planSelectStart);
       if (_planClick)       wrap.removeEventListener('click',       _planClick);
+      if (_planDblClick)    wrap.removeEventListener('dblclick',    _planDblClick);
+      if (_planPaste)       wrap.removeEventListener('paste',       _planPaste);
 
       // _planJustSelected flag: suppresses the click-clears-selection behaviour
       // immediately after a drag-select finishes. Closure-local; recreated each wire.
@@ -3928,11 +4007,85 @@ Remark = ${remark}`;
         if (_planJustSelected) { _planJustSelected = false; return; }
         if (!e.target.closest('td') && !e.target.closest('th')) clearPlanSelection();
       };
+      // Double-click enters edit mode (Google-Sheets-style): focuses the cell's
+      // input/select without disturbing the highlight from the first click.
+      _planDblClick = function(e){
+        const td = e.target.closest('td');
+        if (!td) return;
+        const cell = td.querySelector('input.plan-cell, select.plan-cell');
+        if (cell) {
+          cell.focus();
+          if (typeof cell.select === 'function') {
+            try { cell.select(); } catch(_) {}
+          }
+        }
+      };
+      // Paste-as-table: parse tab/newline-delimited clipboard text and fill cells
+      // starting at the current selection's top-left, or the focused cell.
+      _planPaste = function(e){
+        const active = document.activeElement;
+        if (!active || !active.classList.contains('plan-cell')) return;   // only when a plan cell is focused
+        const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+        if (!text) return;
+        e.preventDefault();
+        // Determine starting cell from current selection (top-left), or from focused cell
+        let startRow, startCol;
+        if (planSelStart && planSelEnd) {
+          startRow = Math.min(planSelStart.row, planSelEnd.row);
+          startCol = Math.min(planSelStart.col, planSelEnd.col);
+        } else {
+          const td = active.closest('td');
+          const coords = getPlanCellCoords(td);
+          if (!coords) return;
+          startRow = coords.row; startCol = coords.col;
+        }
+        // Parse paste payload: lines = rows, tabs = cols
+        const lines = text.replace(/\r\n?/g, '\n').split('\n');
+        if (lines[lines.length - 1] === '') lines.pop();
+        const tbl = document.getElementById('planData');
+        if (!tbl) return;
+        const bodyRows = tbl.tBodies[0] ? tbl.tBodies[0].rows : [];
+        // Track whether the paste wrote anything (so we only mark dirty + status on actual writes)
+        let wrote = false;
+        for (let r = 0; r < lines.length; r++) {
+          const cols = lines[r].split('\t');
+          for (let c = 0; c < cols.length; c++) {
+            const tr = startRow + r;
+            const tc = startCol + c;
+            if (!bodyRows[tr] || !bodyRows[tr].cells[tc]) continue;       // truncate beyond visible grid
+            const td = bodyRows[tr].cells[tc];
+            const input = td.querySelector('input.plan-cell, select.plan-cell');
+            if (!input) continue;
+            const val = cols[c];
+            // For select inputs, only set the value if it matches an existing option
+            if (input.tagName === 'SELECT') {
+              const optExists = Array.from(input.options).some(function(o){ return o.value === val; });
+              input.value = optExists ? val : '';
+            } else {
+              input.value = val;
+            }
+            // Mirror into planRows + data-val
+            const rowIdx = Number(td.dataset.row);
+            const colKey = td.dataset.col;
+            if (planRows[rowIdx] && colKey) {
+              planRows[rowIdx][colKey] = input.value;
+              td.setAttribute('data-val', input.value);
+              wrote = true;
+            }
+          }
+        }
+        if (wrote) {
+          planDirty = true;
+          setPlanStatus('Unsaved changes');
+        }
+      };
 
       wrap.addEventListener('mousedown',   _planMouseDown);
       wrap.addEventListener('mousemove',   _planMouseMove);
       wrap.addEventListener('selectstart', _planSelectStart);
       wrap.addEventListener('click',       _planClick);
+      wrap.addEventListener('dblclick',    _planDblClick);
+      wrap.addEventListener('paste',       _planPaste);
 
       // Finalize the drag on mouseup (mirrors Table view pattern)
       document.addEventListener('mouseup', function _planUpHandler(){
@@ -4212,7 +4365,12 @@ Remark = ${remark}`;
     }
   });
 
-  document.getElementById('planDateInput').addEventListener('change', function(e){
+  document.getElementById('planDateInput').addEventListener('change', async function(e){
+    // Defensive: subcont users can't change the active date (input is disabled).
+    if (mySubcont) {
+      e.target.value = planCurrentDate || '';
+      return;
+    }
     const newDate = e.target.value;
     if (!newDate) return;
     if (planDirty && !confirm('Discard unsaved changes for ' + (planCurrentDate || 'this date') + '?')) {
@@ -4222,6 +4380,8 @@ Remark = ${remark}`;
     planCurrentDate = newDate;
     planDirty = false;
     setPlanStatus('');
+    // Broadcast the new active date so subcont clients pick it up on their next poll.
+    postSetActiveDate(newDate);
     renderPlanView();
   });
 
@@ -4442,6 +4602,7 @@ Remark = ${remark}`;
   document.getElementById('subTableSave').addEventListener('click', saveSubcontTable);
 
   function closeDashboard(){
+    stopPlanDatePolling();
     hideHoverBox();
     document.body.classList.remove('dashboard-mode');
     document.getElementById('dashboardScreen').style.display = 'none';
