@@ -609,6 +609,7 @@
         <button class="dash-view-btn active" id="viewMapBtn">Map</button>
         <button class="dash-view-btn" id="viewGraphBtn">Dashboard</button>
         <button class="dash-view-btn" id="viewTableBtn">Table</button>
+        <button class="dash-view-btn" id="viewPlanBtn">Plan</button>
       </div>
       <div class="dash-topbar-right">
         <div class="dash-status" id="dashStatus"></div>
@@ -637,6 +638,17 @@
           style="padding:5px 9px;border:1px solid #2f6bc4;border-radius:6px;background:#2f6bc4;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;">Export</button>
       </div>
       <div id="dashTable" style="display:none; position:absolute; inset:0; overflow:auto; background:#fff; padding-top:46px;"></div>
+      <div id="dashPlanBar" style="display:none; position:absolute; top:0; left:0; right:0; z-index:100; background:#1c2530; border-bottom:1px solid rgba(255,255,255,.1); padding:6px 14px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+        <span style="font-size:13px; font-weight:800; color:#fff;">Daily Plan</span>
+        <input type="date" id="planDateInput"
+          style="padding:5px 9px; border:1px solid rgba(255,255,255,.2); border-radius:6px; background:#0d1117; color:#e6edf3; font-size:11.5px; outline:none;">
+        <button id="planCopyLastBtn"
+          style="padding:5px 9px;border:1px solid #2f6bc4;border-radius:6px;background:#2f6bc4;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;">Copy from last date</button>
+        <button id="planSaveBtn"
+          style="padding:5px 9px;border:1px solid #4caf7d;border-radius:6px;background:#4caf7d;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;">Save</button>
+        <span id="planStatus" style="margin-left:auto; font-size:11px; color:#b7c0c9;"></span>
+      </div>
+      <div id="dashPlan" style="display:none; position:absolute; inset:0; overflow:auto; background:#fff; padding-top:46px;"></div>
       <button class="dash-var-toggle" id="dashVarToggle" title="Toggle variable reference" style="display:none;">_vars</button>
       <div class="dash-var-overlay" id="dashVarOverlay"></div>
       <div class="dash-legend" id="dashLegend"></div>
@@ -1531,6 +1543,11 @@ Remark = ${remark}`;
   let dashWorkOnly = false;
   let dashView = 'map';
   let dashPivotMode = 'subcont-gap';
+  // ----- Plan tab state -----
+  let planCurrentDate = '';   // ISO YYYY-MM-DD currently being edited
+  let planRows = [];          // in-memory mirror; index aligns with PLAN_ROSTER
+  let planDirty = false;      // true after any cell edit, cleared on save / date switch (after confirm)
+  // ---------------------------
   let pivotSortKey = 'total';
   let pivotSortDir = 'desc';
   let pwMode = 'dashboard';
@@ -1555,6 +1572,36 @@ Remark = ${remark}`;
     'INNOVIS': 'iman5998398',
     'CCSI':    'lukman776380'
   };
+  // ----- Plan tab: fixed roster (single source of truth — keep in sync with site-acceptance team) -----
+  const PLAN_ROSTER = [
+    { account:'intisel_tl_rahmat_32051919',     subcon:'Intisel',  teamType:'WL',  resourceRemark:'Dedicated/Shared' },
+    { account:'intisel_tl_deni_32053528',       subcon:'Intisel',  teamType:'WL',  resourceRemark:'Dedicated/Shared' },
+    { account:'intisel_tl_kusuma_32170422',     subcon:'Intisel',  teamType:'WL',  resourceRemark:'Dedicated/Shared' },
+    { account:'nim_tl_gustira_32053405',        subcon:'NIM',      teamType:'WL',  resourceRemark:'Dedicated/Shared' },
+    { account:'tal_tl_acep_32044619',           subcon:'TRITAMA',  teamType:'WL',  resourceRemark:'Dedicated/Shared' },
+    { account:'intisel_tl_mulyana_32732321',    subcon:'Intisel',  teamType:'WL',  resourceRemark:'Dedicated/Shared' },
+    { account:'andri_poca_wj',                  subcon:'Poca',     teamType:'WL',  resourceRemark:'Dedicated/Shared' },
+    { account:'tal_tl_cahya_32041711',          subcon:'TRITAMA',  teamType:'WL',  resourceRemark:'Dedicated/Shared' },
+    { account:'pab_tl_fajarfm_33091410',        subcon:'PAB',      teamType:'WL',  resourceRemark:'Dedicated/Shared' },
+    { account:'intisel_tl_nazar_32780821',      subcon:'Intisel',  teamType:'WL',  resourceRemark:'Dedicated/Shared' },
+    { account:'nim_tl_dindin_32043209',         subcon:'NIM',      teamType:'WL',  resourceRemark:'Dedicated/Shared' },
+    { account:'pab_tl_ricky_32062430',          subcon:'PAB',      teamType:'WL',  resourceRemark:'Dedicated/Shared' },
+    { account:'pab_tl_fajar_31720219',          subcon:'PAB',      teamType:'WL',  resourceRemark:'Dedicated/Shared' },
+    { account:'pab_mb_zhonaade_35191211',       subcon:'PAB',      teamType:'WL',  resourceRemark:'Dedicated/Shared' },
+    { account:'pab_tl_agusferdi_33091450',      subcon:'PAB',      teamType:'WL',  resourceRemark:'Dedicated/Shared' },
+    { account:'dedi_samsudin',                  subcon:'ZMG',      teamType:'WL',  resourceRemark:'Dedicated/Shared' },
+    { account:'adw_tl_agung_32092512',          subcon:'ADW',      teamType:'CSG', resourceRemark:'Dedicated/Shared' },
+    { account:'adw_tl_yudi_32092712',           subcon:'ADW',      teamType:'CSG', resourceRemark:'Dedicated/Shared' },
+    { account:'pab_mb_perridarmawan_32731619',  subcon:'PAB',      teamType:'CSG', resourceRemark:'Dedicated/Shared' },
+    { account:'poca_tl_yadi_32042903',          subcon:'Poca',     teamType:'WL',  resourceRemark:'Dedicated/Shared' },
+    { account:'chr_jabo_yanaoktaviana',         subcon:'INDOHR',   teamType:'WL',  resourceRemark:'Dedicated/Shared' },
+    { account:'inv_tl_sandi_32042901',          subcon:'INNOVIS',  teamType:'WL',  resourceRemark:'Dedicated/Shared' },
+    { account:'caa_tl_reza.r_32020226',         subcon:'CAA',      teamType:'WL',  resourceRemark:'Dedicated/Shared' }
+  ];
+  const PLAN_RESOURCE_REMARK_OPTS  = ['Dedicated','Shared','Dedicated/Shared'];
+  const PLAN_ACTIVITY_REMARK_OPTS  = ['WORK','IDLE','ON LEAVE','OTHER PROJECT','WAITING MATERIAL'];
+  const PLAN_DAILY_PLAN_OPTS       = ['MOS','MOS+Install','Install','Integration','ATP'];
+  // -----------------------------------------------------------------------------------------------
   function subcontNameFromToken(token){
     const t = String(token || '').trim().toLowerCase();
     for(const k in SUBCONT_TOKENS){
@@ -1997,6 +2044,7 @@ Remark = ${remark}`;
     if(dashView === 'map') drawDashboardMap();
     else if(dashView === 'graph') renderGraphView();
     else if(dashView === 'table') renderTableView();
+    else if(dashView === 'plan') renderPlanView();
     renderStatsBar();
   }
 
@@ -3617,18 +3665,29 @@ Remark = ${remark}`;
   }
 
   function setDashView(view){
+    // Guard: switching away from plan with unsaved changes prompts the user.
+    // The view-plan path is exempt — switching TO plan doesn't discard anything.
+    if (dashView === 'plan' && view !== 'plan' && planDirty) {
+      if (!confirm('Discard unsaved changes for ' + (planCurrentDate || 'this date') + '?')) {
+        return; // user cancelled — keep plan view
+      }
+      planDirty = false;
+    }
     dashView = view;
     hideHoverBox();
     document.getElementById('viewMapBtn').classList.toggle('active', view === 'map');
     document.getElementById('viewGraphBtn').classList.toggle('active', view === 'graph');
     document.getElementById('viewTableBtn').classList.toggle('active', view === 'table');
+    document.getElementById('viewPlanBtn').classList.toggle('active', view === 'plan');
     document.getElementById('dashMap').style.display = view === 'map' ? '' : 'none';
     document.getElementById('dashLegend').style.display = view === 'map' ? '' : 'none';
     document.getElementById('dashStatsBar').style.display = '';
     document.getElementById('dashGraph').style.display = view === 'graph' ? 'block' : 'none';
     document.getElementById('dashTable').style.display = view === 'table' ? 'block' : 'none';
     document.getElementById('dashTableBar').style.display = view === 'table' ? 'flex' : 'none';
-    document.getElementById('dashFilterPanel').style.display = view === 'table' ? 'none' : '';
+    document.getElementById('dashPlan').style.display = view === 'plan' ? 'block' : 'none';
+    document.getElementById('dashPlanBar').style.display = view === 'plan' ? 'flex' : 'none';
+    document.getElementById('dashFilterPanel').style.display = (view === 'table' || view === 'plan') ? 'none' : '';
     if (view === 'table') {
       // Reset table state when switching to table view
       tableSearch = '';
@@ -3640,6 +3699,14 @@ Remark = ${remark}`;
       renderTableView();
     } else if (view === 'graph') {
       renderGraphView();
+    } else if (view === 'plan') {
+      // Initialize date input only on first entry — subsequent toggles reuse current date.
+      if (!planCurrentDate) {
+        planCurrentDate = todayISO();
+        const di = document.getElementById('planDateInput');
+        if (di) di.value = planCurrentDate;
+      }
+      renderPlanView();
     } else {
       // map view — handled above
     }
@@ -3682,6 +3749,296 @@ Remark = ${remark}`;
     _forceRefresh = false;
     if(btn) btn.classList.remove('refreshing');
   }
+
+  // ============================================================
+  // DAILY PLAN TAB
+  //   Renders 23 roster rows × 8 editable cells. Edits live in
+  //   `planRows` until the user clicks Save; on Save the client
+  //   POSTs `{ type:'planSave', date, rows }` to Apps Script, which
+  //   replaces all rows for that date server-side.
+  // ============================================================
+
+  function todayISO(){
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return y + '-' + m + '-' + day;
+  }
+
+  function defaultPlanRows(){
+    return PLAN_ROSTER.map(function(r){
+      return {
+        account:           r.account,
+        subcon:            r.subcon,
+        teamType:          r.teamType,
+        resourceRemark:    r.resourceRemark,
+        duId:              '',
+        siteName:          '',
+        activityRemark:    '',
+        dailyPlanActivity: ''
+      };
+    });
+  }
+
+  // Map a fetched row to its roster slot. Prefers explicit `rowIdx`,
+  // falls back to roster-position-in-order.
+  function _assignSavedRows(roster, saved){
+    // Build by rowIdx
+    const byIdx = {};
+    saved.forEach(function(r){
+      if (typeof r.rowIdx === 'number' && r.rowIdx >= 0 && r.rowIdx < roster.length) {
+        byIdx[r.rowIdx] = r;
+      }
+    });
+    let cursor = 0;
+    return roster.map(function(r, i){
+      const src = byIdx[i] || saved[cursor++];
+      if (!src) {
+        return {
+          account: r.account, subcon: r.subcon, teamType: r.teamType,
+          resourceRemark: r.resourceRemark,
+          duId: '', siteName: '', activityRemark: '', dailyPlanActivity: ''
+        };
+      }
+      return {
+        account:           src.account           != null ? String(src.account)           : r.account,
+        subcon:            src.subcon            != null ? String(src.subcon)            : r.subcon,
+        teamType:          src.teamType          != null ? String(src.teamType)          : r.teamType,
+        resourceRemark:    src.resourceRemark    != null ? String(src.resourceRemark)    : r.resourceRemark,
+        duId:              src.duId              != null ? String(src.duId)              : '',
+        siteName:          src.siteName          != null ? String(src.siteName)          : '',
+        activityRemark:    src.activityRemark    != null ? String(src.activityRemark)    : '',
+        dailyPlanActivity: src.dailyPlanActivity != null ? String(src.dailyPlanActivity) : ''
+      };
+    });
+  }
+
+  async function fetchPlanData(date){
+    if (!serverConfigured()) return [];
+    try {
+      const res = await fetchWithTimeout(SCRIPT_URL + '?type=plan&date=' + encodeURIComponent(date), 10000);
+      if (!res.ok) return [];
+      return await res.json();
+    } catch (e) {
+      console.warn('[plan] fetch failed', e);
+      return [];
+    }
+  }
+
+  async function fetchPlanDates(){
+    if (!serverConfigured()) return [];
+    try {
+      const res = await fetchWithTimeout(SCRIPT_URL + '?type=planDates', 10000);
+      if (!res.ok) return [];
+      return await res.json();
+    } catch (e) {
+      console.warn('[plan] dates fetch failed', e);
+      return [];
+    }
+  }
+
+  async function renderPlanView(){
+    const container = document.getElementById('dashPlan');
+    if (!container) return;
+    // Sync date from the input
+    const dateInput = document.getElementById('planDateInput');
+    let date = (dateInput && dateInput.value) ? dateInput.value : (planCurrentDate || todayISO());
+    planCurrentDate = date;
+    if (dateInput && dateInput.value !== date) dateInput.value = date;
+
+    // Pull saved rows (best-effort; offline / 404 falls back to roster defaults)
+    let saved = [];
+    try {
+      saved = await fetchPlanData(date);
+    } catch (e) {
+      saved = [];
+    }
+    planRows = _assignSavedRows(PLAN_ROSTER, Array.isArray(saved) ? saved : []);
+    planDirty = false;
+    setPlanStatus('');
+
+    container.innerHTML = _planTableHtml();
+
+    // Wire cell edits: any change sets planDirty and mirrors into planRows[i][col].
+    container.querySelectorAll('input.plan-cell, select.plan-cell').forEach(function(el){
+      el.addEventListener('input', _onPlanCellEdit);
+      el.addEventListener('change', _onPlanCellEdit);
+    });
+  }
+
+  function _onPlanCellEdit(e){
+    const el = e.target;
+    const rowIdx = Number(el.dataset.row);
+    const col    = el.dataset.col;
+    if (!Number.isFinite(rowIdx) || !col || !planRows[rowIdx]) return;
+    planRows[rowIdx][col] = String(el.value || '');
+    planDirty = true;
+    setPlanStatus('Unsaved changes');
+  }
+
+  function setPlanStatus(text){
+    const el = document.getElementById('planStatus');
+    if (el) el.textContent = text || '';
+  }
+
+  function _planTableHtml(){
+    // Column widths tuned for plan view (Account longest).
+    const colW = {
+      account: 200, subcon: 130, teamType: 110, resourceRemark: 140,
+      duId: 150, siteName: 170, activityRemark: 160, dailyPlanActivity: 160
+    };
+    const headers = [
+      ['account',           'Account'],
+      ['subcon',            'Subcon'],
+      ['teamType',          'Team Type'],
+      ['resourceRemark',    'Resource Remark'],
+      ['duId',              'DU ID'],
+      ['siteName',          'Site Name'],
+      ['activityRemark',    'Activity Remark'],
+      ['dailyPlanActivity', 'Daily Plan Activity']
+    ];
+    const inputBaseStyle = 'width:100%; box-sizing:border-box; padding:5px 7px; border:1px solid #cfd7df; border-radius:5px; background:#fff; color:#24292f; font-size:11.5px; outline:none;';
+    const selectBaseStyle = inputBaseStyle + ' cursor:pointer;';
+
+    const rowsHtml = planRows.map(function(row, i){
+      // Roster slot index — used to mark which roster position this row is.
+      const rosterRow = PLAN_ROSTER[i] || {};
+
+      const acctInput = '<input type="text" class="plan-cell" data-row="' + i + '" data-col="account" value="' + escAttr(row.account) + '" style="' + inputBaseStyle + '">';
+      const subInput  = '<input type="text" class="plan-cell" data-row="' + i + '" data-col="subcon"  value="' + escAttr(row.subcon)  + '" style="' + inputBaseStyle + '">';
+      const teamSel   = '<select class="plan-cell" data-row="' + i + '" data-col="teamType" style="' + selectBaseStyle + '">' +
+        ['WL','CSG'].map(function(o){ return '<option value="' + o + '"' + (row.teamType === o ? ' selected' : '') + '>' + o + '</option>'; }).join('') +
+        '</select>';
+      const resSel    = '<select class="plan-cell" data-row="' + i + '" data-col="resourceRemark" style="' + selectBaseStyle + '">' +
+        PLAN_RESOURCE_REMARK_OPTS.map(function(o){ return '<option value="' + o + '"' + (row.resourceRemark === o ? ' selected' : '') + '>' + o + '</option>'; }).join('') +
+        '</select>';
+      const duIdInput = '<input type="text" class="plan-cell" data-row="' + i + '" data-col="duId" value="' + escAttr(row.duId) + '" style="' + inputBaseStyle + '">';
+      const siteInput = '<input type="text" class="plan-cell" data-row="' + i + '" data-col="siteName" value="' + escAttr(row.siteName) + '" style="' + inputBaseStyle + '">';
+      const actSel    = '<select class="plan-cell" data-row="' + i + '" data-col="activityRemark" style="' + selectBaseStyle + '">' +
+        '<option value="">—</option>' +
+        PLAN_ACTIVITY_REMARK_OPTS.map(function(o){ return '<option value="' + o + '"' + (row.activityRemark === o ? ' selected' : '') + '>' + o + '</option>'; }).join('') +
+        '</select>';
+      const planSel   = '<select class="plan-cell" data-row="' + i + '" data-col="dailyPlanActivity" style="' + selectBaseStyle + '">' +
+        '<option value="">—</option>' +
+        PLAN_DAILY_PLAN_OPTS.map(function(o){ return '<option value="' + o + '"' + (row.dailyPlanActivity === o ? ' selected' : '') + '>' + o + '</option>'; }).join('') +
+        '</select>';
+
+      return '<tr style="border-bottom:1px solid #eef1f3;">' +
+        '<td style="padding:6px 8px;">' + acctInput + '</td>' +
+        '<td style="padding:6px 8px;">' + subInput  + '</td>' +
+        '<td style="padding:6px 8px;">' + teamSel   + '</td>' +
+        '<td style="padding:6px 8px;">' + resSel    + '</td>' +
+        '<td style="padding:6px 8px;">' + duIdInput + '</td>' +
+        '<td style="padding:6px 8px;">' + siteInput + '</td>' +
+        '<td style="padding:6px 8px;">' + actSel    + '</td>' +
+        '<td style="padding:6px 8px;">' + planSel   + '</td>' +
+        '</tr>';
+    }).join('');
+
+    const colgroup = headers.map(function(h){ return '<col style="width:' + colW[h[0]] + 'px; min-width:' + colW[h[0]] + 'px;">'; }).join('');
+    const thead    = '<tr style="background:#f6f8fa; color:#24292f;">' +
+      headers.map(function(h){ return '<th style="padding:8px 8px; text-align:left; font-weight:700; font-size:11.5px; border-bottom:2px solid #d0d7de;">' + h[1] + '</th>'; }).join('') +
+      '</tr>';
+
+    return '<table id="planData" style="width:100%; table-layout:fixed; border-collapse:collapse; font-size:11.5px; min-width:1280px;">' +
+      '<colgroup>' + colgroup + '</colgroup>' +
+      '<thead style="position:sticky; top:0; z-index:3; background:#f6f8fa;">' + thead + '</thead>' +
+      '<tbody>' + rowsHtml + '</tbody>' +
+      '</table>';
+  }
+
+  function escAttr(s){
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  // ----- Plan button handlers -----
+
+  document.getElementById('planSaveBtn').addEventListener('click', async function(){
+    if (!serverConfigured()) { setPlanStatus('Server not configured'); return; }
+    if (!planCurrentDate) { setPlanStatus('Pick a date first'); return; }
+    setPlanStatus('Saving…');
+    try {
+      const payload = {
+        type: 'planSave',
+        date: planCurrentDate,
+        rows: planRows.map(function(r, i){
+          return Object.assign({ rowIdx: i }, r);
+        })
+      };
+      const res = await fetch(SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      planDirty = false;
+      setPlanStatus('Saved');
+    } catch (e) {
+      console.warn('[plan] save failed', e);
+      setPlanStatus('Save failed: ' + (e && e.message ? e.message : String(e)));
+    }
+  });
+
+  document.getElementById('planDateInput').addEventListener('change', function(e){
+    const newDate = e.target.value;
+    if (!newDate) return;
+    if (planDirty && !confirm('Discard unsaved changes for ' + (planCurrentDate || 'this date') + '?')) {
+      e.target.value = planCurrentDate || '';
+      return;
+    }
+    planCurrentDate = newDate;
+    planDirty = false;
+    setPlanStatus('');
+    renderPlanView();
+  });
+
+  document.getElementById('planCopyLastBtn').addEventListener('click', async function(){
+    if (!planCurrentDate) { setPlanStatus('Pick a date first'); return; }
+    if (planDirty && !confirm('Discard unsaved changes and copy from prior date?')) return;
+    setPlanStatus('Finding prior date…');
+    const allDates = await fetchPlanDates();
+    const prior = (allDates || []).find(function(d){ return d < planCurrentDate; });
+    if (!prior) { setPlanStatus('No previous data to copy'); return; }
+    if (!confirm('Copy plan from ' + prior + ' into ' + planCurrentDate + '? This will overwrite current rows.')) return;
+    const priorRows = await fetchPlanData(prior);
+    // priorRows preserves save order — sort by rowIdx if present, else assume in-order
+    const byIdx = {};
+    (priorRows || []).forEach(function(r){
+      if (typeof r.rowIdx === 'number' && r.rowIdx >= 0 && r.rowIdx < PLAN_ROSTER.length) {
+        byIdx[r.rowIdx] = r;
+      }
+    });
+    let cursor = 0;
+    for (let i = 0; i < planRows.length; i++) {
+      const src = byIdx[i] || (priorRows || [])[cursor++];
+      if (src) {
+        planRows[i] = {
+          account:           src.account           != null ? String(src.account)           : (PLAN_ROSTER[i] ? PLAN_ROSTER[i].account : ''),
+          subcon:            src.subcon            != null ? String(src.subcon)            : (PLAN_ROSTER[i] ? PLAN_ROSTER[i].subcon  : ''),
+          teamType:          src.teamType          != null ? String(src.teamType)          : (PLAN_ROSTER[i] ? PLAN_ROSTER[i].teamType: ''),
+          resourceRemark:    src.resourceRemark    != null ? String(src.resourceRemark)    : (PLAN_ROSTER[i] ? PLAN_ROSTER[i].resourceRemark : ''),
+          duId:              src.duId              != null ? String(src.duId)              : '',
+          siteName:          src.siteName          != null ? String(src.siteName)          : '',
+          activityRemark:    src.activityRemark    != null ? String(src.activityRemark)    : '',
+          dailyPlanActivity: src.dailyPlanActivity != null ? String(src.dailyPlanActivity) : ''
+        };
+      }
+    }
+    planDirty = true;
+    setPlanStatus('Copied from ' + prior + ' (unsaved)');
+    // Re-render so the inputs reflect the new planRows.
+    const container = document.getElementById('dashPlan');
+    if (container) container.innerHTML = _planTableHtml();
+    container.querySelectorAll('input.plan-cell, select.plan-cell').forEach(function(el){
+      el.addEventListener('input', _onPlanCellEdit);
+      el.addEventListener('change', _onPlanCellEdit);
+    });
+  });
 
   async function initDashboard(){
     // Guard: prevent double-call (wrapper handles this, but keep as safety)
@@ -3776,6 +4133,7 @@ Remark = ${remark}`;
   document.getElementById('viewMapBtn').addEventListener('click', ()=> setDashView('map'));
   document.getElementById('viewGraphBtn').addEventListener('click', ()=> setDashView('graph'));
   document.getElementById('viewTableBtn').addEventListener('click', ()=> setDashView('table'));
+  document.getElementById('viewPlanBtn').addEventListener('click', ()=> setDashView('plan'));
 
   document.getElementById('dashRefreshBtn').addEventListener('click', _doRefresh);
 

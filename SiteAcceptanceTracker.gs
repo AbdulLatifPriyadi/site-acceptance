@@ -116,6 +116,10 @@ function doGet(e) {
       return serveSummary();
     } else if (type === 'clockin') {
       return serveClockin();
+    } else if (type === 'plan') {
+      return servePlan(param.date);
+    } else if (type === 'planDates') {
+      return servePlanDates();
     } else {
       // Default: return full forward log
       return serveForwardLog();
@@ -367,6 +371,11 @@ function doPost(e) {
       return handleBulkEdit(body);
     }
 
+    // Handle daily plan save (per-date replace)
+    if (body.type === 'planSave') {
+      return handlePlanSave(body);
+    }
+
     // Handle forward/submission
     return handleForward(body);
 
@@ -520,5 +529,135 @@ function handleBulkEdit(body) {
 
   return ContentService
     .createTextOutput(JSON.stringify({ status: 'ok', updated: updatedCount }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+// ============================================================
+// DAILY PLAN TAB
+// Sheet name: "plan"
+// Columns: date, account, subcon, teamType, resourceRemark,
+//          duId, siteName, activityRemark, dailyPlanActivity, rowIdx
+// rowIdx is the 10th column (0-based index 9) — it preserves the
+// client-side roster position so copy-from-last-date matches
+// correctly even after a user reorders or duplicates rows.
+// ============================================================
+
+// --- HELPER: get or create the Plan sheet ---
+function getOrCreatePlanSheet() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName('plan');
+  if (!sheet) {
+    sheet = ss.insertSheet('plan');
+    sheet.getRange(1, 1, 1, 10).setValues([[
+      'date', 'account', 'subcon', 'teamType', 'resourceRemark',
+      'duId', 'siteName', 'activityRemark', 'dailyPlanActivity', 'rowIdx'
+    ]]);
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+// Serve rows for a single date from the plan sheet.
+// date is YYYY-MM-DD; if blank, returns all rows.
+function servePlan(date) {
+  var sh = getOrCreatePlanSheet();
+  var last = sh.getLastRow();
+  if (last < 2) {
+    return ContentService
+      .createTextOutput(JSON.stringify([]))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  var values = sh.getRange(2, 1, last - 1, 10).getValues();
+  var want = date ? String(date) : '';
+  var rows = [];
+  for (var i = 0; i < values.length; i++) {
+    var r = values[i];
+    if (want && String(r[0]) !== want) continue;
+    rows.push({
+      date:             String(r[0]),
+      account:          String(r[1]),
+      subcon:           String(r[2]),
+      teamType:         String(r[3]),
+      resourceRemark:   String(r[4]),
+      duId:             String(r[5]),
+      siteName:         String(r[6]),
+      activityRemark:   String(r[7]),
+      dailyPlanActivity:String(r[8]),
+      rowIdx:           r[9] === '' || r[9] === null || isNaN(Number(r[9])) ? -1 : Number(r[9])
+    });
+  }
+  return ContentService
+    .createTextOutput(JSON.stringify(rows))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+// Serve a sorted-desc unique list of dates that have at least one plan row.
+function servePlanDates() {
+  var sh = getOrCreatePlanSheet();
+  var last = sh.getLastRow();
+  if (last < 2) {
+    return ContentService
+      .createTextOutput(JSON.stringify([]))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  var data = sh.getRange(2, 1, last - 1, 1).getValues();
+  var seen = {};
+  var dates = [];
+  for (var i = 0; i < data.length; i++) {
+    var d = String(data[i][0]);
+    if (d && !seen[d]) { seen[d] = true; dates.push(d); }
+  }
+  dates.sort();
+  dates.reverse();
+  return ContentService
+    .createTextOutput(JSON.stringify(dates))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+// Save all rows for a given date. Per-date replace strategy — server
+// deletes every row matching the date, then writes the submitted set
+// in the order received. Idempotent; last writer wins for concurrent edits.
+function handlePlanSave(body) {
+  var date = String(body.date || '').trim();
+  var rows = body.rows || [];
+  if (!date) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ status: 'error', message: 'Missing date' }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // Delete all rows matching this date (reverse order to keep indices stable)
+  var sh = getOrCreatePlanSheet();
+  var last = sh.getLastRow();
+  if (last > 1) {
+    var existing = sh.getRange(2, 1, last - 1, 1).getValues();
+    for (var i = existing.length - 1; i >= 0; i--) {
+      if (String(existing[i][0]) === date) sh.deleteRow(i + 2);
+    }
+  }
+
+  // Write the new set if any
+  var written = 0;
+  if (rows.length) {
+    var out = rows.map(function(r) {
+      return [
+        date,
+        String(r.account           || ''),
+        String(r.subcon            || ''),
+        String(r.teamType          || ''),
+        String(r.resourceRemark    || ''),
+        String(r.duId              || ''),
+        String(r.siteName          || ''),
+        String(r.activityRemark    || ''),
+        String(r.dailyPlanActivity || ''),
+        (r.rowIdx === '' || r.rowIdx === null || r.rowIdx === undefined) ? '' : Number(r.rowIdx)
+      ];
+    });
+    sh.getRange(sh.getLastRow() + 1, 1, out.length, 10).setValues(out);
+    written = out.length;
+  }
+
+  return ContentService
+    .createTextOutput(JSON.stringify({ status: 'ok', written: written }))
     .setMimeType(ContentService.MimeType.JSON);
 }
