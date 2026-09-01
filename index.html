@@ -296,6 +296,11 @@
   #planData td.selected{ background:#b3d4fc !important; }
   #planData th.selected{ background:#7aacdf !important; }
   #planDateInput:disabled{ background:#0d1117; color:#8b949e; cursor:not-allowed; }
+  .plan-del-row{
+    background:transparent;border:1px solid #cfd7df;border-radius:4px;color:#6b7688;
+    cursor:pointer;font-size:12px;padding:2px 6px;line-height:1;
+  }
+  .plan-del-row:hover{ background:#fde7e7; border-color:#e0574f; color:#c0392b; }
   .sub-edit-table input, .sub-edit-table select{
     width:100%; min-width:70px; padding:4px 5px; border:1px solid #d8dce0; border-radius:4px; font-size:10.5px; white-space:nowrap;
     user-select: none;
@@ -645,6 +650,8 @@
         <span style="font-size:13px; font-weight:800; color:#fff;">Daily Plan</span>
         <input type="date" id="planDateInput"
           style="padding:5px 9px; border:1px solid rgba(255,255,255,.2); border-radius:6px; background:#0d1117; color:#e6edf3; font-size:11.5px; outline:none;">
+        <button id="planAddMemberBtn"
+          style="padding:5px 9px;border:1px solid #8b5cf6;border-radius:6px;background:#8b5cf6;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;display:none;">+ Add member</button>
         <button id="planCopyLastBtn"
           style="padding:5px 9px;border:1px solid #2f6bc4;border-radius:6px;background:#2f6bc4;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;">Copy from last date</button>
         <button id="planSaveBtn"
@@ -744,6 +751,34 @@
       <div class="sub-table-status" id="subTableStatus"></div>
         <div class="sub-table-wrap" id="subTableWrap" tabindex="0">
         <table class="sub-edit-table" id="subEditTable" tabindex="0"></table>
+      </div>
+    </div>
+  </div>
+
+  <div class="dash-pw-overlay" id="planAddMemberOverlay">
+    <div class="dash-pw-box" style="max-width:380px;">
+      <div class="dash-pw-title">Add roster member</div>
+      <div style="font-size:11.5px; color:#6b7688; margin-bottom:10px;">New members are appended to the bottom of the roster on every browser.</div>
+      <label style="display:block; font-size:11px; color:#24292f; font-weight:700; margin-bottom:3px;">Account <span style="color:#c0392b;">*</span></label>
+      <input type="text" id="planAddAccount" placeholder="e.g. intisel_tl_newuser_32000001" autocomplete="off"
+        style="width:100%; padding:8px 10px; border:1.3px solid #d8dce0; border-radius:7px; font-size:13px; outline:none; margin-bottom:10px;">
+      <label style="display:block; font-size:11px; color:#24292f; font-weight:700; margin-bottom:3px;">Subcon</label>
+      <input type="text" id="planAddSubcon" placeholder="e.g. Intisel" autocomplete="off"
+        style="width:100%; padding:8px 10px; border:1.3px solid #d8dce0; border-radius:7px; font-size:13px; outline:none; margin-bottom:10px;">
+      <label style="display:block; font-size:11px; color:#24292f; font-weight:700; margin-bottom:3px;">Team Type</label>
+      <select id="planAddTeamType"
+        style="width:100%; padding:8px 10px; border:1.3px solid #d8dce0; border-radius:7px; font-size:13px; outline:none; background:#fff; margin-bottom:10px;">
+        <option value="WL">WL</option>
+        <option value="CSG">CSG</option>
+      </select>
+      <label style="display:block; font-size:11px; color:#24292f; font-weight:700; margin-bottom:3px;">Resource Remark</label>
+      <select id="planAddResourceRemark"
+        style="width:100%; padding:8px 10px; border:1.3px solid #d8dce0; border-radius:7px; font-size:13px; outline:none; background:#fff; margin-bottom:10px;">
+      </select>
+      <div class="dash-pw-error" id="planAddError" style="display:none;">Account is required and must be unique.</div>
+      <div class="dash-pw-btns">
+        <button class="dash-pw-submit" id="planAddSubmit">Add</button>
+        <button class="dash-pw-cancel" id="planAddCancel">Cancel</button>
       </div>
     </div>
   </div>
@@ -1551,6 +1586,10 @@ Remark = ${remark}`;
   let planCurrentDate = '';   // ISO YYYY-MM-DD currently being edited
   let planRows = [];          // in-memory mirror; index aligns with PLAN_ROSTER (always full 23)
   let planDirty = false;      // true after any cell edit, cleared on save / date switch (after confirm)
+  // Plan roster delta (surge-managed additions + removals layered on top of PLAN_ROSTER base).
+  // Mirror of the server's `planRoster` script property. Reconciles on dashboard init.
+  let planRosterDelta = { added: [], removed: [] };
+  let planRosterDirty = false; // (reserved for future retry queue; not used in v1)
   // Plan cell selection (mirrors Table view pattern for select + Ctrl+C)
   let planSelStart = null;
   let planSelEnd = null;
@@ -3752,6 +3791,9 @@ Remark = ${remark}`;
       // Disable the date input for non-surge users (visible, read-only)
       const di = document.getElementById('planDateInput');
       if (di) di.disabled = !!mySubcont;
+      // Surge-only: show the + Add member button
+      const addBtn = document.getElementById('planAddMemberBtn');
+      if (addBtn) addBtn.style.display = mySubcont ? 'none' : 'inline-block';
       renderPlanView();
       // Start polling for active-date changes if subcont, stop if surge
       if (mySubcont) startPlanDatePolling();
@@ -3910,6 +3952,64 @@ Remark = ${remark}`;
     } catch (e) { return false; }
   }
 
+  // ----- Plan roster delta (surge-managed additions + removals) -----
+  function loadPlanRosterDeltaLocal() {
+    try {
+      const raw = localStorage.getItem('planRosterDelta');
+      if (!raw) return { added: [], removed: [] };
+      const parsed = JSON.parse(raw);
+      return {
+        added:   Array.isArray(parsed.added)   ? parsed.added   : [],
+        removed: Array.isArray(parsed.removed) ? parsed.removed : []
+      };
+    } catch (e) { return { added: [], removed: [] }; }
+  }
+
+  function savePlanRosterDeltaLocal() {
+    try {
+      localStorage.setItem('planRosterDelta', JSON.stringify(planRosterDelta));
+    } catch (e) {}
+  }
+
+  async function fetchPlanRoster() {
+    if (!serverConfigured()) return planRosterDelta;
+    try {
+      const res = await fetchWithTimeout(SCRIPT_URL + '?type=planRoster', 10000);
+      if (!res.ok) return planRosterDelta;
+      const json = await res.json();
+      return {
+        added:   Array.isArray(json && json.added)   ? json.added   : [],
+        removed: Array.isArray(json && json.removed) ? json.removed : []
+      };
+    } catch (e) { return planRosterDelta; }
+  }
+
+  async function postPlanRosterSave(delta) {
+    if (!serverConfigured()) return false;
+    try {
+      const res = await fetch(SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ type: 'planRosterSave', added: delta.added, removed: delta.removed })
+      });
+      if (!res.ok) console.warn('[planRoster] save failed: HTTP ' + res.status);
+      return res.ok;
+    } catch (e) {
+      console.warn('[planRoster] save failed', e);
+      return false;
+    }
+  }
+
+  // Effective roster = PLAN_ROSTER base minus `removed`, plus `added`.
+  // Pure / synchronous / cheap — called on every render.
+  function effectiveRoster() {
+    const removed = new Set((planRosterDelta.removed || []).map(String));
+    const base    = PLAN_ROSTER.filter(function(r){ return !removed.has(r.account); });
+    const added   = (planRosterDelta.added || []).filter(function(r){ return !removed.has(r.account); });
+    return base.concat(added);
+  }
+  // -------------------------------------------------------------------
+
   function startPlanDatePolling(){
     stopPlanDatePolling();
     planDatePollTimer = setInterval(async function() {
@@ -3948,7 +4048,7 @@ Remark = ${remark}`;
     } catch (e) {
       saved = [];
     }
-    planRows = _assignSavedRows(PLAN_ROSTER, Array.isArray(saved) ? saved : []);
+    planRows = _assignSavedRows(effectiveRoster(), Array.isArray(saved) ? saved : []);
     planDirty = false;
     setPlanStatus('');
     clearPlanSelection();
@@ -3964,6 +4064,15 @@ Remark = ${remark}`;
     container.querySelectorAll('input.plan-cell, select.plan-cell').forEach(function(el){
       el.addEventListener('input', _onPlanCellEdit);
       el.addEventListener('change', _onPlanCellEdit);
+    });
+
+    // Per-row delete button (surge-only). Delegated; safe to re-attach on each render.
+    container.querySelectorAll('button.plan-del-row').forEach(function(btn){
+      btn.addEventListener('click', function(e){
+        e.preventDefault();
+        e.stopPropagation();
+        handlePlanDeleteRow(btn.getAttribute('data-account'));
+      });
     });
 
     const wrap = container.querySelector('#planWrap');
@@ -3982,17 +4091,21 @@ Remark = ${remark}`;
       _planMouseDown = function(e){
         if (e.target.closest('#planDateInput')) return;
         const td = e.target.closest('td');
-        if (td) {
-          clearPlanSelection();
-          planSelStart = getPlanCellCoords(td);
-          planSelEnd = planSelStart;
-          planIsSelecting = true;
-          _planJustSelected = false;
-          applyPlanSelection();
-          e.preventDefault();
-        } else {
-          clearPlanSelection();
-        }
+        if (!td) { clearPlanSelection(); return; }
+        // If the click landed on an interactive control, let the browser handle
+        // it natively (focus <input>, open <select>). This is the
+        // Google-Sheets-style split: click the cell padding to select, click
+        // the control to edit. Order matters: this early-return MUST come
+        // before clearPlanSelection() — otherwise a click on a <select>
+        // would still clear the previous selection before the dropdown opens.
+        if (e.target.closest('input.plan-cell, select.plan-cell')) return;
+        clearPlanSelection();
+        planSelStart = getPlanCellCoords(td);
+        planSelEnd = planSelStart;
+        planIsSelecting = true;
+        _planJustSelected = false;
+        applyPlanSelection();
+        e.preventDefault();
       };
       _planMouseMove = function(e){
         if (!planIsSelecting) return;
@@ -4117,7 +4230,8 @@ Remark = ${remark}`;
     // Column widths tuned for plan view (Account longest).
     const colW = {
       account: 200, subcon: 130, teamType: 110, resourceRemark: 140,
-      duId: 150, siteName: 170, activityRemark: 160, dailyPlanActivity: 160
+      duId: 150, siteName: 170, activityRemark: 160, dailyPlanActivity: 160,
+      del: 32
     };
     const headers = [
       ['account',           'Account'],
@@ -4129,6 +4243,7 @@ Remark = ${remark}`;
       ['activityRemark',    'Activity Remark'],
       ['dailyPlanActivity', 'Daily Plan Activity']
     ];
+    const showDel = !mySubcont; // surge-only delete column
     const inputBaseStyle = 'width:100%; box-sizing:border-box; padding:5px 7px; border:1px solid #cfd7df; border-radius:5px; background:#fff; color:#24292f; font-size:11.5px; outline:none;';
     const selectBaseStyle = inputBaseStyle + ' cursor:pointer;';
 
@@ -4136,8 +4251,12 @@ Remark = ${remark}`;
     function cellTd(content, rowIdx, colKey, val){
       return '<td data-row="' + rowIdx + '" data-col="' + colKey + '" data-val="' + escAttr(val) + '" style="padding:6px 8px;">' + content + '</td>';
     }
+    function delTd(rowIdx, account){
+      return '<td data-row="' + rowIdx + '" data-col="del" style="padding:6px 4px; text-align:center;">' +
+        '<button type="button" class="plan-del-row" data-account="' + escAttr(account) + '" title="Delete ' + escAttr(account) + ' from roster" style="background:transparent;border:1px solid #cfd7df;border-radius:4px;color:#6b7688;cursor:pointer;font-size:12px;padding:2px 6px;line-height:1;">✕</button>' +
+      '</td>';
+    }
     function makeInputs(row, i){
-      const rosterRow = PLAN_ROSTER[i] || {};
       const inputs = [
         ['account', '<input type="text" class="plan-cell" data-row="' + i + '" data-col="account" value="' + escAttr(row.account) + '" style="' + inputBaseStyle + '">'],
         ['subcon',  '<input type="text" class="plan-cell" data-row="' + i + '" data-col="subcon"  value="' + escAttr(row.subcon)  + '" style="' + inputBaseStyle + '">'],
@@ -4158,14 +4277,17 @@ Remark = ${remark}`;
           PLAN_DAILY_PLAN_OPTS.map(function(o){ return '<option value="' + o + '"' + (row.dailyPlanActivity === o ? ' selected' : '') + '>' + o + '</option>'; }).join('') +
           '</select>']
       ];
-      return inputs.map(function(p){ return cellTd(p[1], i, p[0], row[p[0]] || ''); }).join('');
+      let html = inputs.map(function(p){ return cellTd(p[1], i, p[0], row[p[0]] || ''); }).join('');
+      if (showDel) html += delTd(i, row.account || '');
+      return html;
     }
 
     // Filter rows by subcont visibility when mySubcont is set.
+    const roster = effectiveRoster();
     const mySub = mySubcont ? String(mySubcont).toLowerCase() : '';
     const visibleIdx = [];
-    for (let i = 0; i < PLAN_ROSTER.length; i++) {
-      const r = PLAN_ROSTER[i];
+    for (let i = 0; i < roster.length; i++) {
+      const r = roster[i];
       if (!r) continue;
       if (mySub && String(r.subcon || '').toLowerCase() !== mySub) continue;
       visibleIdx.push(i);
@@ -4180,13 +4302,19 @@ Remark = ${remark}`;
       return '<tr style="border-bottom:1px solid #eef1f3;">' + makeInputs(row, i) + '</tr>';
     }).join('');
 
-    const colgroup = headers.map(function(h){ return '<col style="width:' + colW[h[0]] + 'px; min-width:' + colW[h[0]] + 'px;">'; }).join('');
+    let displayHeaders = headers.slice();
+    let displayColW = headers.map(function(h){ return colW[h[0]]; });
+    if (showDel) {
+      displayHeaders = displayHeaders.concat([['del', '']]);
+      displayColW = displayColW.concat([colW.del]);
+    }
+    const colgroup = displayColW.map(function(w, i){ return '<col style="width:' + w + 'px; min-width:' + w + 'px;">'; }).join('');
     const thead    = '<tr style="background:#f6f8fa; color:#24292f;">' +
-      headers.map(function(h){ return '<th style="padding:8px 8px; text-align:left; font-weight:700; font-size:11.5px; border-bottom:2px solid #d0d7de;">' + h[1] + '</th>'; }).join('') +
+      displayHeaders.map(function(h){ return '<th style="padding:8px 8px; text-align:left; font-weight:700; font-size:11.5px; border-bottom:2px solid #d0d7de;' + (h[0] === 'del' ? ' width:32px; min-width:32px;' : '') + '">' + h[1] + '</th>'; }).join('') +
       '</tr>';
 
     return '<div id="planWrap" tabindex="0" style="overflow:auto;position:absolute;top:46px;left:0;right:0;bottom:0;user-select:none;-webkit-user-select:none;background:#fff;">' +
-      '<table id="planData" style="width:100%; table-layout:fixed; border-collapse:collapse; font-size:11.5px; min-width:1280px;">' +
+      '<table id="planData" style="width:100%; table-layout:fixed; border-collapse:collapse; font-size:11.5px; min-width:' + (showDel ? 1312 : 1280) + 'px;">' +
         '<colgroup>' + colgroup + '</colgroup>' +
         '<thead style="position:sticky; top:0; z-index:3; background:#f6f8fa;">' + thead + '</thead>' +
         '<tbody>' + rowsHtml + '</tbody>' +
@@ -4312,7 +4440,8 @@ Remark = ${remark}`;
       // Build the rows to send. If the user is scoped to a subcont, the
       // server-side per-date replace would otherwise wipe other teams'
       // rows — so merge with the current server state first and send
-      // the full 23-row set, preserving all rows the user can't see.
+      // the full effective-roster set, preserving all rows the user can't see.
+      const roster = effectiveRoster();
       let rowsToSend;
       if (mySubcont) {
         let current = [];
@@ -4324,13 +4453,13 @@ Remark = ${remark}`;
         }
         const byIdx = {};
         (current || []).forEach(function(r){
-          if (typeof r.rowIdx === 'number' && r.rowIdx >= 0 && r.rowIdx < PLAN_ROSTER.length) {
+          if (typeof r.rowIdx === 'number' && r.rowIdx >= 0 && r.rowIdx < roster.length) {
             byIdx[r.rowIdx] = r;
           }
         });
         // Local edits win for visible rows; untouched rows keep server values.
         planRows.forEach(function(local, i){ byIdx[i] = local; });
-        rowsToSend = PLAN_ROSTER.map(function(r, i){
+        rowsToSend = roster.map(function(r, i){
           const src = byIdx[i];
           if (src) return src;
           return {
@@ -4340,7 +4469,7 @@ Remark = ${remark}`;
           };
         });
       } else {
-        // Surge user: send the local planRows as-is (full 23 in roster order).
+        // Surge user: send the local planRows as-is (full effective roster in roster order).
         rowsToSend = planRows;
       }
 
@@ -4395,9 +4524,10 @@ Remark = ${remark}`;
     if (!confirm('Copy plan from ' + prior + ' into ' + planCurrentDate + '? This will overwrite current rows.')) return;
     const priorRows = await fetchPlanData(prior);
     // priorRows preserves save order — sort by rowIdx if present, else assume in-order
+    const roster = effectiveRoster();
     const byIdx = {};
     (priorRows || []).forEach(function(r){
-      if (typeof r.rowIdx === 'number' && r.rowIdx >= 0 && r.rowIdx < PLAN_ROSTER.length) {
+      if (typeof r.rowIdx === 'number' && r.rowIdx >= 0 && r.rowIdx < roster.length) {
         byIdx[r.rowIdx] = r;
       }
     });
@@ -4406,10 +4536,10 @@ Remark = ${remark}`;
       const src = byIdx[i] || (priorRows || [])[cursor++];
       if (src) {
         planRows[i] = {
-          account:           src.account           != null ? String(src.account)           : (PLAN_ROSTER[i] ? PLAN_ROSTER[i].account : ''),
-          subcon:            src.subcon            != null ? String(src.subcon)            : (PLAN_ROSTER[i] ? PLAN_ROSTER[i].subcon  : ''),
-          teamType:          src.teamType          != null ? String(src.teamType)          : (PLAN_ROSTER[i] ? PLAN_ROSTER[i].teamType: ''),
-          resourceRemark:    src.resourceRemark    != null ? String(src.resourceRemark)    : (PLAN_ROSTER[i] ? PLAN_ROSTER[i].resourceRemark : ''),
+          account:           src.account           != null ? String(src.account)           : (roster[i] ? roster[i].account : ''),
+          subcon:            src.subcon            != null ? String(src.subcon)            : (roster[i] ? roster[i].subcon  : ''),
+          teamType:          src.teamType          != null ? String(src.teamType)          : (roster[i] ? roster[i].teamType: ''),
+          resourceRemark:    src.resourceRemark    != null ? String(src.resourceRemark)    : (roster[i] ? roster[i].resourceRemark : ''),
           duId:              src.duId              != null ? String(src.duId)              : '',
           siteName:          src.siteName          != null ? String(src.siteName)          : '',
           activityRemark:    src.activityRemark    != null ? String(src.activityRemark)    : '',
@@ -4427,6 +4557,91 @@ Remark = ${remark}`;
       _wirePlanTable(container);
     }
   });
+
+  // ----- Add roster member (surge-only) -----
+  function openPlanAddMemberModal(){
+    if (mySubcont) return; // subcont never sees this
+    const ov = document.getElementById('planAddMemberOverlay');
+    if (!ov) return;
+    // Populate the Resource Remark select from PLAN_RESOURCE_REMARK_OPTS
+    const rr = document.getElementById('planAddResourceRemark');
+    if (rr) {
+      rr.innerHTML = PLAN_RESOURCE_REMARK_OPTS.map(function(o){
+        return '<option value="' + escAttr(o) + '"' + (o === 'Dedicated/Shared' ? ' selected' : '') + '>' + escAttr(o) + '</option>';
+      }).join('');
+    }
+    // Reset fields
+    const acc = document.getElementById('planAddAccount');
+    const sub = document.getElementById('planAddSubcon');
+    const tt  = document.getElementById('planAddTeamType');
+    if (acc) acc.value = '';
+    if (sub) sub.value = '';
+    if (tt)  tt.value  = 'WL';
+    const err = document.getElementById('planAddError');
+    if (err) err.style.display = 'none';
+    ov.classList.add('show');
+    if (acc) acc.focus();
+  }
+
+  function closePlanAddMemberModal(){
+    const ov = document.getElementById('planAddMemberOverlay');
+    if (ov) ov.classList.remove('show');
+  }
+
+  function submitPlanAddMember(){
+    if (mySubcont) return;
+    const acc = String((document.getElementById('planAddAccount') || {}).value || '').trim();
+    const sub = String((document.getElementById('planAddSubcon')  || {}).value || '').trim();
+    const tt  = String((document.getElementById('planAddTeamType') || {}).value || '').trim();
+    const rr  = String((document.getElementById('planAddResourceRemark') || {}).value || '').trim();
+    const err = document.getElementById('planAddError');
+    function showErr(msg){ if (err) { err.textContent = msg; err.style.display = 'block'; } }
+
+    if (!acc) { showErr('Account is required.'); return; }
+    const existingAccounts = new Set(effectiveRoster().map(function(r){ return r.account; }));
+    if (existingAccounts.has(acc)) { showErr('Account "' + acc + '" is already in the roster.'); return; }
+
+    // Append to added (not base) and clear removed if it was there.
+    planRosterDelta.added = (planRosterDelta.added || []).concat([{
+      account: acc, subcon: sub, teamType: tt, resourceRemark: rr
+    }]);
+    planRosterDelta.removed = (planRosterDelta.removed || []).filter(function(a){ return a !== acc; });
+
+    savePlanRosterDeltaLocal();
+    // Fire-and-forget server save (the local value is the source of truth for v1).
+    postPlanRosterSave(planRosterDelta);
+    closePlanAddMemberModal();
+    renderPlanView();
+  }
+
+  document.getElementById('planAddMemberBtn').addEventListener('click', openPlanAddMemberModal);
+  document.getElementById('planAddCancel').addEventListener('click', closePlanAddMemberModal);
+  document.getElementById('planAddSubmit').addEventListener('click', submitPlanAddMember);
+  document.getElementById('planAddAccount').addEventListener('keydown', function(e){
+    if (e.key === 'Enter') submitPlanAddMember();
+    else if (e.key === 'Escape') closePlanAddMemberModal();
+  });
+  // Click-outside to close
+  document.getElementById('planAddMemberOverlay').addEventListener('click', function(e){
+    if (e.target === this) closePlanAddMemberModal();
+  });
+
+  // ----- Delete roster member (surge-only, delegated via _wirePlanTable) -----
+  function handlePlanDeleteRow(account){
+    if (mySubcont) return;
+    if (!account) return;
+    if (!confirm('Delete member "' + account + '" from the roster?\n\n' +
+                 'Their plan rows on all dates will be dropped on the next save.')) return;
+    // Add to removed (dedupe); defensively remove from added if present.
+    const removed = (planRosterDelta.removed || []).filter(function(a){ return a !== account; });
+    removed.push(account);
+    planRosterDelta.removed = removed;
+    planRosterDelta.added   = (planRosterDelta.added   || []).filter(function(r){ return r.account !== account; });
+
+    savePlanRosterDeltaLocal();
+    postPlanRosterSave(planRosterDelta);
+    renderPlanView();
+  }
 
   async function initDashboard(){
     // Guard: prevent double-call (wrapper handles this, but keep as safety)
@@ -4642,6 +4857,22 @@ Remark = ${remark}`;
     const input = document.getElementById('loginInput');
     if(saved && input) input.value = saved;
   })();
+
+  // Prefill plan roster delta from localStorage on page load (no flash of empty roster)
+  planRosterDelta = loadPlanRosterDeltaLocal();
+  // Reconcile with server asynchronously (server-wins on first load).
+  // Only re-render if the server's value actually differs from the local one.
+  fetchPlanRoster().then(function(server){
+    if (JSON.stringify(server) !== JSON.stringify(planRosterDelta)) {
+      planRosterDelta = server;
+      savePlanRosterDeltaLocal();
+      // Only re-render if the plan view is already open. The plan view's
+      // own init will pick up the updated value on first entry otherwise.
+      if (typeof dashView !== 'undefined' && dashView === 'plan' && typeof renderPlanView === 'function') {
+        try { renderPlanView(); } catch(e){ console.warn('[planRoster] post-fetch render failed', e); }
+      }
+    }
+  }).catch(function(e){ console.warn('[planRoster] initial fetch failed', e); });
 
   // Show ready message on page load
   showLoginDebug('Page ready. Enter token and click Enter Dashboard.');

@@ -122,6 +122,8 @@ function doGet(e) {
       return servePlanDates();
     } else if (type === 'activeDate') {
       return serveActiveDate();
+    } else if (type === 'planRoster') {
+      return servePlanRoster();
     } else {
       // Default: return full forward log
       return serveForwardLog();
@@ -381,6 +383,11 @@ function doPost(e) {
     // Handle setting the surge's active date (broadcast to subcont clients)
     if (body.type === 'setActiveDate') {
       return handleSetActiveDate(body);
+    }
+
+    // Handle plan roster delta save (surge-managed additions/removals)
+    if (body.type === 'planRosterSave') {
+      return handlePlanRosterSave(body);
     }
 
     // Handle forward/submission
@@ -690,5 +697,46 @@ function handleSetActiveDate(body) {
   PropertiesService.getScriptProperties().setProperty('planActiveDate', date);
   return ContentService
     .createTextOutput(JSON.stringify({ status: 'ok', date: date }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+// Serve the surge-managed plan roster delta. Layered on top of the
+// hardcoded base roster in the client. Stored in script properties
+// (survives redeploys). Returns { added: [...], removed: [...] }.
+function servePlanRoster() {
+  var raw = PropertiesService.getScriptProperties().getProperty('planRoster') || '';
+  var delta;
+  try {
+    delta = raw ? JSON.parse(raw) : { added: [], removed: [] };
+    if (!Array.isArray(delta.added))   delta.added   = [];
+    if (!Array.isArray(delta.removed)) delta.removed = [];
+  } catch (e) {
+    delta = { added: [], removed: [] };
+  }
+  return ContentService
+    .createTextOutput(JSON.stringify({ added: delta.added, removed: delta.removed }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+// Save the surge-managed plan roster delta. Light validation keeps the
+// schema tight so the client can rely on it. Same trust model as
+// handleSetActiveDate: no auth, surge check is client-side.
+function handlePlanRosterSave(body) {
+  var added   = Array.isArray(body.added)   ? body.added   : [];
+  var removed = Array.isArray(body.removed) ? body.removed : [];
+  // Normalize each added entry and drop entries with empty account.
+  var cleanAdded = added.map(function(r) {
+    return {
+      account:        String(r.account || '').trim(),
+      subcon:         String(r.subcon || '').trim(),
+      teamType:       String(r.teamType || '').trim(),
+      resourceRemark: String(r.resourceRemark || '').trim()
+    };
+  }).filter(function(r) { return r.account !== ''; });
+  var cleanRemoved = removed.map(String).filter(function(s) { return s !== ''; });
+  PropertiesService.getScriptProperties().setProperty('planRoster',
+    JSON.stringify({ added: cleanAdded, removed: cleanRemoved }));
+  return ContentService
+    .createTextOutput(JSON.stringify({ status: 'ok', added: cleanAdded.length, removed: cleanRemoved.length }))
     .setMimeType(ContentService.MimeType.JSON);
 }
