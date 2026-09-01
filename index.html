@@ -293,6 +293,8 @@
   #tableData th.selected{ background:#7aacdf !important; }
   #tableData td{ user-select:none; -webkit-user-select:none; cursor:cell; }
   #tableData th{ user-select:none; -webkit-user-select:none; cursor:pointer; }
+  #planData td.selected{ background:#b3d4fc !important; }
+  #planData th.selected{ background:#7aacdf !important; }
   .sub-edit-table input, .sub-edit-table select{
     width:100%; min-width:70px; padding:4px 5px; border:1px solid #d8dce0; border-radius:4px; font-size:10.5px; white-space:nowrap;
     user-select: none;
@@ -646,6 +648,7 @@
           style="padding:5px 9px;border:1px solid #2f6bc4;border-radius:6px;background:#2f6bc4;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;">Copy from last date</button>
         <button id="planSaveBtn"
           style="padding:5px 9px;border:1px solid #4caf7d;border-radius:6px;background:#4caf7d;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;">Save</button>
+        <span id="planSelInfo" style="font-size:11px; color:#a8d4f0; font-weight:700; display:none;"></span>
         <span id="planStatus" style="margin-left:auto; font-size:11px; color:#b7c0c9;"></span>
       </div>
       <div id="dashPlan" style="display:none; position:absolute; inset:0; overflow:auto; background:#fff; padding-top:46px;"></div>
@@ -1545,8 +1548,13 @@ Remark = ${remark}`;
   let dashPivotMode = 'subcont-gap';
   // ----- Plan tab state -----
   let planCurrentDate = '';   // ISO YYYY-MM-DD currently being edited
-  let planRows = [];          // in-memory mirror; index aligns with PLAN_ROSTER
+  let planRows = [];          // in-memory mirror; index aligns with PLAN_ROSTER (always full 23)
   let planDirty = false;      // true after any cell edit, cleared on save / date switch (after confirm)
+  // Plan cell selection (mirrors Table view pattern for select + Ctrl+C)
+  let planSelStart = null;
+  let planSelEnd = null;
+  let planIsSelecting = false;
+  let _planMouseDown, _planMouseMove, _planSelectStart, _planClick;
   // ---------------------------
   let pivotSortKey = 'total';
   let pivotSortDir = 'desc';
@@ -2527,6 +2535,15 @@ Remark = ${remark}`;
     if(!(e.ctrlKey || e.metaKey) || e.key !== 'c') return;
     if(document.body.classList.contains('dashboard-mode') && dashView === 'table' && !!document.querySelector('#tableData .selected')){
       copyTableSelection();
+      e.preventDefault();
+    }
+  });
+
+  // Global Ctrl+C for plan view
+  document.addEventListener('keydown', function(e){
+    if (!(e.ctrlKey || e.metaKey) || e.key !== 'c') return;
+    if (document.body.classList.contains('dashboard-mode') && dashView === 'plan' && !!document.querySelector('#planData .selected')) {
+      copyPlanSelection();
       e.preventDefault();
     }
   });
@@ -3857,14 +3874,72 @@ Remark = ${remark}`;
     planRows = _assignSavedRows(PLAN_ROSTER, Array.isArray(saved) ? saved : []);
     planDirty = false;
     setPlanStatus('');
+    clearPlanSelection();
 
     container.innerHTML = _planTableHtml();
+    _wirePlanTable(container);
+  }
 
-    // Wire cell edits: any change sets planDirty and mirrors into planRows[i][col].
+  // Wire cell edits + selection drag handlers on a freshly rendered plan table.
+  // Called by renderPlanView and the Copy-from-last handler.
+  function _wirePlanTable(container){
+    if (!container) return;
     container.querySelectorAll('input.plan-cell, select.plan-cell').forEach(function(el){
       el.addEventListener('input', _onPlanCellEdit);
       el.addEventListener('change', _onPlanCellEdit);
     });
+
+    const wrap = container.querySelector('#planWrap');
+    if (wrap) {
+      if (_planMouseDown)   wrap.removeEventListener('mousedown',   _planMouseDown);
+      if (_planMouseMove)   wrap.removeEventListener('mousemove',   _planMouseMove);
+      if (_planSelectStart) wrap.removeEventListener('selectstart', _planSelectStart);
+      if (_planClick)       wrap.removeEventListener('click',       _planClick);
+
+      // _planJustSelected flag: suppresses the click-clears-selection behaviour
+      // immediately after a drag-select finishes. Closure-local; recreated each wire.
+      let _planJustSelected = false;
+
+      _planMouseDown = function(e){
+        if (e.target.closest('#planDateInput')) return;
+        const td = e.target.closest('td');
+        if (td) {
+          clearPlanSelection();
+          planSelStart = getPlanCellCoords(td);
+          planSelEnd = planSelStart;
+          planIsSelecting = true;
+          _planJustSelected = false;
+          applyPlanSelection();
+          e.preventDefault();
+        } else {
+          clearPlanSelection();
+        }
+      };
+      _planMouseMove = function(e){
+        if (!planIsSelecting) return;
+        const td = e.target.closest('td');
+        if (td) {
+          planSelEnd = getPlanCellCoords(td);
+          applyPlanSelection();
+        }
+      };
+      _planSelectStart = function(e){ if (planIsSelecting) e.preventDefault(); };
+      _planClick = function(e){
+        if (_planJustSelected) { _planJustSelected = false; return; }
+        if (!e.target.closest('td') && !e.target.closest('th')) clearPlanSelection();
+      };
+
+      wrap.addEventListener('mousedown',   _planMouseDown);
+      wrap.addEventListener('mousemove',   _planMouseMove);
+      wrap.addEventListener('selectstart', _planSelectStart);
+      wrap.addEventListener('click',       _planClick);
+
+      // Finalize the drag on mouseup (mirrors Table view pattern)
+      document.addEventListener('mouseup', function _planUpHandler(){
+        planIsSelecting = false;
+        if (planSelStart && planSelEnd) _planJustSelected = true;
+      });
+    }
   }
 
   function _onPlanCellEdit(e){
@@ -3874,6 +3949,9 @@ Remark = ${remark}`;
     if (!Number.isFinite(rowIdx) || !col || !planRows[rowIdx]) return;
     planRows[rowIdx][col] = String(el.value || '');
     planDirty = true;
+    // Mirror into the parent <td>'s data-val so Ctrl+C copies the latest value
+    const td = el.closest('td');
+    if (td) td.setAttribute('data-val', String(el.value || ''));
     setPlanStatus('Unsaved changes');
   }
 
@@ -3901,39 +3979,52 @@ Remark = ${remark}`;
     const inputBaseStyle = 'width:100%; box-sizing:border-box; padding:5px 7px; border:1px solid #cfd7df; border-radius:5px; background:#fff; color:#24292f; font-size:11.5px; outline:none;';
     const selectBaseStyle = inputBaseStyle + ' cursor:pointer;';
 
-    const rowsHtml = planRows.map(function(row, i){
-      // Roster slot index — used to mark which roster position this row is.
+    // Build cell content helpers (data-val mirrors the visible cell value for Ctrl+C).
+    function cellTd(content, rowIdx, colKey, val){
+      return '<td data-row="' + rowIdx + '" data-col="' + colKey + '" data-val="' + escAttr(val) + '" style="padding:6px 8px;">' + content + '</td>';
+    }
+    function makeInputs(row, i){
       const rosterRow = PLAN_ROSTER[i] || {};
+      const inputs = [
+        ['account', '<input type="text" class="plan-cell" data-row="' + i + '" data-col="account" value="' + escAttr(row.account) + '" style="' + inputBaseStyle + '">'],
+        ['subcon',  '<input type="text" class="plan-cell" data-row="' + i + '" data-col="subcon"  value="' + escAttr(row.subcon)  + '" style="' + inputBaseStyle + '">'],
+        ['teamType', '<select class="plan-cell" data-row="' + i + '" data-col="teamType" style="' + selectBaseStyle + '">' +
+          ['WL','CSG'].map(function(o){ return '<option value="' + o + '"' + (row.teamType === o ? ' selected' : '') + '>' + o + '</option>'; }).join('') +
+          '</select>'],
+        ['resourceRemark', '<select class="plan-cell" data-row="' + i + '" data-col="resourceRemark" style="' + selectBaseStyle + '">' +
+          PLAN_RESOURCE_REMARK_OPTS.map(function(o){ return '<option value="' + o + '"' + (row.resourceRemark === o ? ' selected' : '') + '>' + o + '</option>'; }).join('') +
+          '</select>'],
+        ['duId',     '<input type="text" class="plan-cell" data-row="' + i + '" data-col="duId" value="' + escAttr(row.duId) + '" style="' + inputBaseStyle + '">'],
+        ['siteName', '<input type="text" class="plan-cell" data-row="' + i + '" data-col="siteName" value="' + escAttr(row.siteName) + '" style="' + inputBaseStyle + '">'],
+        ['activityRemark', '<select class="plan-cell" data-row="' + i + '" data-col="activityRemark" style="' + selectBaseStyle + '">' +
+          '<option value="">—</option>' +
+          PLAN_ACTIVITY_REMARK_OPTS.map(function(o){ return '<option value="' + o + '"' + (row.activityRemark === o ? ' selected' : '') + '>' + o + '</option>'; }).join('') +
+          '</select>'],
+        ['dailyPlanActivity', '<select class="plan-cell" data-row="' + i + '" data-col="dailyPlanActivity" style="' + selectBaseStyle + '">' +
+          '<option value="">—</option>' +
+          PLAN_DAILY_PLAN_OPTS.map(function(o){ return '<option value="' + o + '"' + (row.dailyPlanActivity === o ? ' selected' : '') + '>' + o + '</option>'; }).join('') +
+          '</select>']
+      ];
+      return inputs.map(function(p){ return cellTd(p[1], i, p[0], row[p[0]] || ''); }).join('');
+    }
 
-      const acctInput = '<input type="text" class="plan-cell" data-row="' + i + '" data-col="account" value="' + escAttr(row.account) + '" style="' + inputBaseStyle + '">';
-      const subInput  = '<input type="text" class="plan-cell" data-row="' + i + '" data-col="subcon"  value="' + escAttr(row.subcon)  + '" style="' + inputBaseStyle + '">';
-      const teamSel   = '<select class="plan-cell" data-row="' + i + '" data-col="teamType" style="' + selectBaseStyle + '">' +
-        ['WL','CSG'].map(function(o){ return '<option value="' + o + '"' + (row.teamType === o ? ' selected' : '') + '>' + o + '</option>'; }).join('') +
-        '</select>';
-      const resSel    = '<select class="plan-cell" data-row="' + i + '" data-col="resourceRemark" style="' + selectBaseStyle + '">' +
-        PLAN_RESOURCE_REMARK_OPTS.map(function(o){ return '<option value="' + o + '"' + (row.resourceRemark === o ? ' selected' : '') + '>' + o + '</option>'; }).join('') +
-        '</select>';
-      const duIdInput = '<input type="text" class="plan-cell" data-row="' + i + '" data-col="duId" value="' + escAttr(row.duId) + '" style="' + inputBaseStyle + '">';
-      const siteInput = '<input type="text" class="plan-cell" data-row="' + i + '" data-col="siteName" value="' + escAttr(row.siteName) + '" style="' + inputBaseStyle + '">';
-      const actSel    = '<select class="plan-cell" data-row="' + i + '" data-col="activityRemark" style="' + selectBaseStyle + '">' +
-        '<option value="">—</option>' +
-        PLAN_ACTIVITY_REMARK_OPTS.map(function(o){ return '<option value="' + o + '"' + (row.activityRemark === o ? ' selected' : '') + '>' + o + '</option>'; }).join('') +
-        '</select>';
-      const planSel   = '<select class="plan-cell" data-row="' + i + '" data-col="dailyPlanActivity" style="' + selectBaseStyle + '">' +
-        '<option value="">—</option>' +
-        PLAN_DAILY_PLAN_OPTS.map(function(o){ return '<option value="' + o + '"' + (row.dailyPlanActivity === o ? ' selected' : '') + '>' + o + '</option>'; }).join('') +
-        '</select>';
+    // Filter rows by subcont visibility when mySubcont is set.
+    const mySub = mySubcont ? String(mySubcont).toLowerCase() : '';
+    const visibleIdx = [];
+    for (let i = 0; i < PLAN_ROSTER.length; i++) {
+      const r = PLAN_ROSTER[i];
+      if (!r) continue;
+      if (mySub && String(r.subcon || '').toLowerCase() !== mySub) continue;
+      visibleIdx.push(i);
+    }
 
-      return '<tr style="border-bottom:1px solid #eef1f3;">' +
-        '<td style="padding:6px 8px;">' + acctInput + '</td>' +
-        '<td style="padding:6px 8px;">' + subInput  + '</td>' +
-        '<td style="padding:6px 8px;">' + teamSel   + '</td>' +
-        '<td style="padding:6px 8px;">' + resSel    + '</td>' +
-        '<td style="padding:6px 8px;">' + duIdInput + '</td>' +
-        '<td style="padding:6px 8px;">' + siteInput + '</td>' +
-        '<td style="padding:6px 8px;">' + actSel    + '</td>' +
-        '<td style="padding:6px 8px;">' + planSel   + '</td>' +
-        '</tr>';
+    if (visibleIdx.length === 0) {
+      return '<div id="planWrap" tabindex="0" style="overflow:auto;position:absolute;top:46px;left:0;right:0;bottom:0;user-select:none;-webkit-user-select:none;background:#fff;padding:30px;color:#6b7688;font-size:13px;">No roster entries for your subcont.</div>';
+    }
+
+    const rowsHtml = visibleIdx.map(function(i){
+      const row = planRows[i] || {};
+      return '<tr style="border-bottom:1px solid #eef1f3;">' + makeInputs(row, i) + '</tr>';
     }).join('');
 
     const colgroup = headers.map(function(h){ return '<col style="width:' + colW[h[0]] + 'px; min-width:' + colW[h[0]] + 'px;">'; }).join('');
@@ -3941,11 +4032,13 @@ Remark = ${remark}`;
       headers.map(function(h){ return '<th style="padding:8px 8px; text-align:left; font-weight:700; font-size:11.5px; border-bottom:2px solid #d0d7de;">' + h[1] + '</th>'; }).join('') +
       '</tr>';
 
-    return '<table id="planData" style="width:100%; table-layout:fixed; border-collapse:collapse; font-size:11.5px; min-width:1280px;">' +
-      '<colgroup>' + colgroup + '</colgroup>' +
-      '<thead style="position:sticky; top:0; z-index:3; background:#f6f8fa;">' + thead + '</thead>' +
-      '<tbody>' + rowsHtml + '</tbody>' +
-      '</table>';
+    return '<div id="planWrap" tabindex="0" style="overflow:auto;position:absolute;top:46px;left:0;right:0;bottom:0;user-select:none;-webkit-user-select:none;background:#fff;">' +
+      '<table id="planData" style="width:100%; table-layout:fixed; border-collapse:collapse; font-size:11.5px; min-width:1280px;">' +
+        '<colgroup>' + colgroup + '</colgroup>' +
+        '<thead style="position:sticky; top:0; z-index:3; background:#f6f8fa;">' + thead + '</thead>' +
+        '<tbody>' + rowsHtml + '</tbody>' +
+      '</table>' +
+    '</div>';
   }
 
   function escAttr(s){
@@ -3956,6 +4049,106 @@ Remark = ${remark}`;
       .replace(/>/g, '&gt;');
   }
 
+  // ============================================================
+  // Plan cell selection (drag to select, Ctrl+C to copy).
+  // Mirrors the Table view's selection pattern but operates on
+  // #planData. Cell <td> elements carry data-val so the copied
+  // text reflects the latest input/select value.
+  // ============================================================
+
+  function _clearPlanSelectionVisuals(){
+    const tbl = document.getElementById('planData');
+    if (!tbl) return;
+    tbl.querySelectorAll('td.selected, th.selected').forEach(function(el){ el.classList.remove('selected'); });
+  }
+
+  function clearPlanSelection(){
+    _clearPlanSelectionVisuals();
+    planSelStart = null;
+    planSelEnd = null;
+    const info = document.getElementById('planSelInfo');
+    if (info) info.style.display = 'none';
+  }
+
+  function getPlanCellCoords(td){
+    if (!td) return null;
+    const row = td.closest('tr');
+    if (!row) return null;
+    const tbl = document.getElementById('planData');
+    if (!tbl) return null;
+    const bodyRows = tbl.tBodies[0] ? tbl.tBodies[0].rows : [];
+    const rowIdx = Array.prototype.indexOf.call(bodyRows, row);
+    const colIdx = Array.prototype.indexOf.call(row.cells, td);
+    if (rowIdx < 0 || colIdx < 0) return null;
+    return { row: rowIdx, col: colIdx };
+  }
+
+  function applyPlanSelection(){
+    const tbl = document.getElementById('planData');
+    if (!tbl) return;
+    if (!planSelStart || !planSelEnd) { _clearPlanSelectionVisuals(); return; }
+    _clearPlanSelectionVisuals();
+    const bodyRows = tbl.tBodies[0] ? tbl.tBodies[0].rows : [];
+    const headRow  = tbl.tHead && tbl.tHead.rows[0];
+    const minRow = Math.min(planSelStart.row, planSelEnd.row);
+    const maxRow = Math.max(planSelStart.row, planSelEnd.row);
+    const minCol = Math.min(planSelStart.col, planSelEnd.col);
+    const maxCol = Math.max(planSelStart.col, planSelEnd.col);
+    let count = 0;
+    for (let r = minRow; r <= maxRow; r++) {
+      if (bodyRows[r]) {
+        for (let c = minCol; c <= maxCol; c++) {
+          if (bodyRows[r].cells[c]) {
+            bodyRows[r].cells[c].classList.add('selected');
+            count++;
+          }
+        }
+      }
+    }
+    if (headRow) {
+      for (let c = minCol; c <= maxCol; c++) {
+        if (headRow.cells[c]) headRow.cells[c].classList.add('selected');
+      }
+    }
+    const info = document.getElementById('planSelInfo');
+    if (info) {
+      info.textContent = count + ' cell' + (count !== 1 ? 's' : '') + ' selected';
+      info.style.display = count > 0 ? 'inline' : 'none';
+    }
+  }
+
+  function copyPlanSelection(){
+    const tbl = document.getElementById('planData');
+    if (!tbl || !planSelStart || !planSelEnd) return;
+    const bodyRows = tbl.tBodies[0] ? tbl.tBodies[0].rows : [];
+    const minRow = Math.min(planSelStart.row, planSelEnd.row);
+    const maxRow = Math.max(planSelStart.row, planSelEnd.row);
+    const minCol = Math.min(planSelStart.col, planSelEnd.col);
+    const maxCol = Math.max(planSelStart.col, planSelEnd.col);
+    let text = '';
+    for (let r = minRow; r <= maxRow; r++) {
+      const rowData = [];
+      for (let c = minCol; c <= maxCol; c++) {
+        if (bodyRows[r] && bodyRows[r].cells[c]) {
+          rowData.push((bodyRows[r].cells[c].getAttribute('data-val') || '').replace(/\t/g, ' '));
+        }
+      }
+      text += rowData.join('\t') + '\n';
+    }
+    navigator.clipboard.writeText(text).catch(function(){});
+    const info = document.getElementById('planSelInfo');
+    if (info) {
+      const prev = info.textContent;
+      const prevColor = info.style.color;
+      info.textContent = 'Copied!';
+      info.style.color = '#4caf7d';
+      setTimeout(function(){
+        info.textContent = prev;
+        info.style.color = prevColor || '';
+      }, 1200);
+    }
+  }
+
   // ----- Plan button handlers -----
 
   document.getElementById('planSaveBtn').addEventListener('click', async function(){
@@ -3963,10 +4156,45 @@ Remark = ${remark}`;
     if (!planCurrentDate) { setPlanStatus('Pick a date first'); return; }
     setPlanStatus('Saving…');
     try {
+      // Build the rows to send. If the user is scoped to a subcont, the
+      // server-side per-date replace would otherwise wipe other teams'
+      // rows — so merge with the current server state first and send
+      // the full 23-row set, preserving all rows the user can't see.
+      let rowsToSend;
+      if (mySubcont) {
+        let current = [];
+        try {
+          current = await fetchPlanData(planCurrentDate);
+        } catch (e) {
+          setPlanStatus('Save failed: cannot read current state to safely merge');
+          return;
+        }
+        const byIdx = {};
+        (current || []).forEach(function(r){
+          if (typeof r.rowIdx === 'number' && r.rowIdx >= 0 && r.rowIdx < PLAN_ROSTER.length) {
+            byIdx[r.rowIdx] = r;
+          }
+        });
+        // Local edits win for visible rows; untouched rows keep server values.
+        planRows.forEach(function(local, i){ byIdx[i] = local; });
+        rowsToSend = PLAN_ROSTER.map(function(r, i){
+          const src = byIdx[i];
+          if (src) return src;
+          return {
+            account: r.account, subcon: r.subcon, teamType: r.teamType,
+            resourceRemark: r.resourceRemark,
+            duId: '', siteName: '', activityRemark: '', dailyPlanActivity: ''
+          };
+        });
+      } else {
+        // Surge user: send the local planRows as-is (full 23 in roster order).
+        rowsToSend = planRows;
+      }
+
       const payload = {
         type: 'planSave',
         date: planCurrentDate,
-        rows: planRows.map(function(r, i){
+        rows: rowsToSend.map(function(r, i){
           return Object.assign({ rowIdx: i }, r);
         })
       };
@@ -4033,11 +4261,11 @@ Remark = ${remark}`;
     setPlanStatus('Copied from ' + prior + ' (unsaved)');
     // Re-render so the inputs reflect the new planRows.
     const container = document.getElementById('dashPlan');
-    if (container) container.innerHTML = _planTableHtml();
-    container.querySelectorAll('input.plan-cell, select.plan-cell').forEach(function(el){
-      el.addEventListener('input', _onPlanCellEdit);
-      el.addEventListener('change', _onPlanCellEdit);
-    });
+    if (container) {
+      container.innerHTML = _planTableHtml();
+      clearPlanSelection();
+      _wirePlanTable(container);
+    }
   });
 
   async function initDashboard(){
