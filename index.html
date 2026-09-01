@@ -646,7 +646,7 @@
           style="padding:5px 9px;border:1px solid #2f6bc4;border-radius:6px;background:#2f6bc4;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;">Export</button>
       </div>
       <div id="dashTable" style="display:none; position:absolute; inset:0; overflow:auto; background:#fff; padding-top:46px;"></div>
-      <div id="dashPlanBar" style="display:none; position:absolute; top:0; left:0; right:0; z-index:100; background:#1c2530; border-bottom:1px solid rgba(255,255,255,.1); padding:6px 14px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+      <div id="dashPlanBar" style="display:none; position:absolute; top:0; left:0; right:0; z-index:100; background:#1c2530; border-bottom:1px solid rgba(255,255,255,.1); padding:6px 14px; display:flex; align-items:center; gap:6px; flex-wrap:nowrap; overflow-x:auto;">
         <span style="font-size:13px; font-weight:800; color:#fff;">Daily Plan</span>
         <input type="date" id="planDateInput"
           style="padding:5px 9px; border:1px solid rgba(255,255,255,.2); border-radius:6px; background:#0d1117; color:#e6edf3; font-size:11.5px; outline:none;">
@@ -1661,7 +1661,7 @@ Remark = ${remark}`;
     { account:'caa_tl_reza.r_32020226',         subcon:'CAA',      teamType:'WL',  resourceRemark:'Dedicated/Shared' }
   ];
   const PLAN_RESOURCE_REMARK_OPTS  = ['Dedicated','Shared','Dedicated/Shared'];
-  const PLAN_ACTIVITY_REMARK_OPTS  = ['WORK','IDLE','ON LEAVE','OTHER PROJECT','WAITING MATERIAL'];
+  const PLAN_ACTIVITY_REMARK_OPTS  = ['WORK','IDLE','ON LEAVE','OTHER PROJECT','WAITING MATERIAL','Closing Only'];
   const PLAN_DAILY_PLAN_OPTS       = ['MOS','MOS+Install','Install','Integration','ATP'];
   // -----------------------------------------------------------------------------------------------
   function subcontNameFromToken(token){
@@ -4190,12 +4190,14 @@ Remark = ${remark}`;
             } else {
               input.value = val;
             }
-            // Mirror into planRows + data-val
+            // Mirror into planRows + data-val, then repaint cell styling (programmatic
+            // .value assignment doesn't fire 'change', so _onPlanCellEdit doesn't run).
             const rowIdx = Number(td.dataset.row);
             const colKey = td.dataset.col;
             if (planRows[rowIdx] && colKey) {
               planRows[rowIdx][colKey] = input.value;
               td.setAttribute('data-val', input.value);
+              _applyPlanCellStyle(input, colKey, input.value);
               wrote = true;
             }
           }
@@ -4221,25 +4223,16 @@ Remark = ${remark}`;
     }
   }
 
-  function _onPlanCellEdit(e){
-    const el = e.target;
-    const rowIdx = Number(el.dataset.row);
-    const col    = el.dataset.col;
-    if (!Number.isFinite(rowIdx) || !col || !planRows[rowIdx]) return;
-    planRows[rowIdx][col] = String(el.value || '');
-    planDirty = true;
-    // Mirror into the parent <td>'s data-val so Ctrl+C copies the latest value
-    const td = el.closest('td');
-    if (td) td.setAttribute('data-val', String(el.value || ''));
-    // Subcon cell — repaint background/foreground from SUBCONT_COLOR_MAP (identity cue).
+  // Shared cell-coloring helper. Called by both _onPlanCellEdit (typed input)
+// and _planPaste (clipboard write) so the visual state stays in sync
+// regardless of how the cell value changed.
+function _applyPlanCellStyle(el, col, val){
     if (col === 'subcon') {
-      const bg = dashSubcontColor(String(el.value || ''));
+      const bg = dashSubcontColor(val);
       el.style.background = bg;
       el.style.color = contrastText(bg);
-    }
-    // Activity Remark cell — apply PLAN_ACTIVITY_STYLE (e.g. WORK → green). null = reset to base.
-    if (col === 'activityRemark') {
-      const st = PLAN_ACTIVITY_STYLE[String(el.value || '')] || null;
+    } else if (col === 'activityRemark') {
+      const st = PLAN_ACTIVITY_STYLE[val] || null;
       if (st) {
         el.style.background = st.cell;
         el.style.color = st.text;
@@ -4250,6 +4243,21 @@ Remark = ${remark}`;
         el.style.fontWeight = '';
       }
     }
+  }
+
+  function _onPlanCellEdit(e){
+    const el = e.target;
+    const rowIdx = Number(el.dataset.row);
+    const col    = el.dataset.col;
+    if (!Number.isFinite(rowIdx) || !col || !planRows[rowIdx]) return;
+    const val = String(el.value || '');
+    planRows[rowIdx][col] = val;
+    planDirty = true;
+    // Mirror into the parent <td>'s data-val so Ctrl+C copies the latest value
+    const td = el.closest('td');
+    if (td) td.setAttribute('data-val', val);
+    // Recolor the cell from SUBCONT_COLOR_MAP / PLAN_ACTIVITY_STYLE (where applicable).
+    _applyPlanCellStyle(el, col, val);
     setPlanStatus('Unsaved changes');
   }
 
