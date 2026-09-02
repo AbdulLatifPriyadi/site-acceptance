@@ -650,6 +650,8 @@
         <span style="font-size:13px; font-weight:800; color:#fff;">Daily Plan</span>
         <input type="date" id="planDateInput"
           style="padding:5px 9px; border:1px solid rgba(255,255,255,.2); border-radius:6px; background:#0d1117; color:#e6edf3; font-size:11.5px; outline:none;">
+        <button id="planLoadDateBtn" title="Load the picked date (date change is no longer auto-applied)"
+          style="padding:5px 12px;border:1px solid #5ab0ff;border-radius:6px;background:#1f6feb;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;">Load</button>
         <button id="planAddMemberBtn"
           style="padding:5px 9px;border:1px solid #8b5cf6;border-radius:6px;background:#8b5cf6;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;display:none;">+ Add member</button>
         <button id="planSetActiveBtn"
@@ -666,7 +668,7 @@
       <div id="planLoadingOverlay" style="display:none; position:absolute; inset:0; background:rgba(0,0,0,.5); z-index:50; align-items:center; justify-content:center;">
         <div style="display:inline-flex; align-items:center; gap:8px; background:#fff; color:#1c2530; padding:10px 18px; border-radius:8px; box-shadow:0 4px 14px rgba(0,0,0,.3); font-size:12px; font-weight:600;">
           <svg viewBox="0 0 24 24" width="16" height="16" style="animation:spin .8s linear infinite;"><circle cx="12" cy="12" r="9" fill="none" stroke="#cfd7df" stroke-width="3"/><path d="M21 12a9 9 0 0 0-9-9" fill="none" stroke="#2f6bc4" stroke-width="3" stroke-linecap="round"/></svg>
-          Loading plan…
+          <span class="plan-loading-msg">Loading plan…</span>
         </div>
       </div>
       <button class="dash-var-toggle" id="dashVarToggle" title="Toggle variable reference" style="display:none;">_vars</button>
@@ -1604,6 +1606,10 @@ Remark = ${remark}`;
   let planCurrentDate = '';   // ISO YYYY-MM-DD currently being edited
   let planRows = [];          // in-memory mirror; index aligns with PLAN_ROSTER (always full 23)
   let planDirty = false;      // true after any cell edit, cleared on save / date switch (after confirm)
+  // Plan sort/filter state. Empty key = roster order, no filters.
+  let _planSortKey = '';
+  let _planSortDir = 'asc';   // 'asc' | 'desc'
+  let _planFilters = {};      // { colKey: 'substring filter (case-insensitive)' }
   // Plan roster delta (surge-managed additions + removals layered on top of PLAN_ROSTER base).
   // Mirror of the server's `planRoster` script property. Reconciles on dashboard init.
   let planRosterDelta = { added: [], removed: [] };
@@ -4088,6 +4094,7 @@ Remark = ${remark}`;
 
       container.innerHTML = _planTableHtml();
       _wirePlanTable(container);
+      _wirePlanSortAndFilter(container);
       // Pin Save to right edge (already absolute in inline style); keep #planWrap clear of the bar
       // even when the bar wraps to a 2nd row on narrow viewports.
       var _pb = document.getElementById('dashPlanBar');
@@ -4252,6 +4259,92 @@ Remark = ${remark}`;
     }
   }
 
+  // Compute the list of roster indices to show in the Plan table, after
+  // applying (in order): subcont visibility, text filters, then sort.
+  // _planSortKey === '' preserves roster order (stable).
+  function _visibleSortedIndices(){
+    const roster = effectiveRoster();
+    const mySub = mySubcont ? String(mySubcont).toLowerCase() : '';
+    let indices = [];
+    for (let i = 0; i < roster.length; i++) {
+      const r = roster[i];
+      if (!r) continue;
+      if (mySub && String(r.subcon || '').toLowerCase() !== mySub) continue;
+      indices.push(i);
+    }
+
+    const filters = _planFilters || {};
+    const filterKeys = Object.keys(filters).filter(function(k){ return filters[k]; });
+    if (filterKeys.length) {
+      indices = indices.filter(function(i){
+        const row = planRows[i] || {};
+        for (let k = 0; k < filterKeys.length; k++) {
+          const f = String(filters[filterKeys[k]] || '').toLowerCase();
+          const v = String((row && row[filterKeys[k]]) || '').toLowerCase();
+          if (v.indexOf(f) === -1) return false;
+        }
+        return true;
+      });
+    }
+
+    if (_planSortKey) {
+      const key = _planSortKey;
+      const dir = _planSortDir === 'desc' ? -1 : 1;
+      indices.sort(function(a, b){
+        const va = String((planRows[a] && planRows[a][key]) || '').toLowerCase();
+        const vb = String((planRows[b] && planRows[b][key]) || '').toLowerCase();
+        if (va < vb) return -1 * dir;
+        if (va > vb) return  1 * dir;
+        return a - b; // stable: preserve original order on tie
+      });
+    }
+    return indices;
+  }
+
+  // Re-render the table from the current planRows (no fetch). Used after
+  // sort/filter changes so the user sees the new ordering immediately
+  // without losing local edits or dirty state.
+  function _refreshPlanTableOnly(){
+    const container = document.getElementById('dashPlan');
+    if (!container) return;
+    container.innerHTML = _planTableHtml();
+    clearPlanSelection();
+    _wirePlanTable(container);
+    _wirePlanSortAndFilter(container);
+    const pb = document.getElementById('dashPlanBar');
+    const pw = document.getElementById('planWrap');
+    if (pb && pw) pw.style.top = pb.offsetHeight + 'px';
+  }
+
+  // Bind click handlers on sortable <th> elements and input handlers on
+  // the per-column filter <input>s. Called after every table render so
+  // the freshly-injected DOM nodes get wired up.
+  function _wirePlanSortAndFilter(container){
+    if (!container) return;
+    container.querySelectorAll('th[data-sort-key]').forEach(function(th){
+      th.addEventListener('click', function(){
+        const key = th.getAttribute('data-sort-key');
+        if (!key) return;
+        if (_planSortKey === key) {
+          _planSortDir = _planSortDir === 'asc' ? 'desc' : 'asc';
+        } else {
+          _planSortKey = key;
+          _planSortDir = 'asc';
+        }
+        _refreshPlanTableOnly();
+      });
+    });
+    container.querySelectorAll('input.plan-filter').forEach(function(inp){
+      inp.addEventListener('input', function(){
+        const k = inp.getAttribute('data-col');
+        if (!k) return;
+        _planFilters[k] = inp.value || '';
+        _refreshPlanTableOnly();
+      });
+    });
+  }
+
+
   // Shared cell-coloring helper. Called by both _onPlanCellEdit (typed input)
 // and _planPaste (clipboard write) so the visual state stays in sync
 // regardless of how the cell value changed.
@@ -4317,9 +4410,14 @@ function _applyPlanCellStyle(el, col, val){
 
   // Show the Plan loading overlay (gray 50% + spinner). Resolves on next tick
   // so the spinner paints before the synchronous-heavy fetch starts.
-  function _showPlanLoading(){
+  function _showPlanLoading(msg){
     const ov = document.getElementById('planLoadingOverlay');
-    if (ov) ov.style.display = 'flex';
+    if (!ov) return;
+    if (msg != null) {
+      const txt = ov.querySelector('.plan-loading-msg');
+      if (txt) txt.textContent = msg;
+    }
+    ov.style.display = 'flex';
   }
   function _hidePlanLoading(){
     const ov = document.getElementById('planLoadingOverlay');
@@ -4392,19 +4490,13 @@ function _applyPlanCellStyle(el, col, val){
       return html;
     }
 
-    // Filter rows by subcont visibility when mySubcont is set.
-    const roster = effectiveRoster();
-    const mySub = mySubcont ? String(mySubcont).toLowerCase() : '';
-    const visibleIdx = [];
-    for (let i = 0; i < roster.length; i++) {
-      const r = roster[i];
-      if (!r) continue;
-      if (mySub && String(r.subcon || '').toLowerCase() !== mySub) continue;
-      visibleIdx.push(i);
-    }
+    // Filter rows by subcont visibility + text filters, then sort. Combined into
+    // _visibleSortedIndices() so the table render stays a single pass.
+    const visibleIdx = _visibleSortedIndices();
 
     if (visibleIdx.length === 0) {
-      return '<div id="planWrap" tabindex="0" style="overflow:auto;position:absolute;top:46px;left:0;right:0;bottom:0;user-select:none;-webkit-user-select:none;background:#fff;padding:30px;color:#6b7688;font-size:13px;">No roster entries for your subcont.</div>';
+      const msg = mySubcont ? 'No roster entries for your subcont.' : 'No rows match the current filters.';
+      return '<div id="planWrap" tabindex="0" style="overflow:auto;position:absolute;top:46px;left:0;right:0;bottom:0;user-select:none;-webkit-user-select:none;background:#fff;padding:30px;color:#6b7688;font-size:13px;">' + msg + '</div>';
     }
 
     const rowsHtml = visibleIdx.map(function(i){
@@ -4419,14 +4511,41 @@ function _applyPlanCellStyle(el, col, val){
       displayColW = displayColW.concat([colW.del]);
     }
     const colgroup = displayColW.map(function(w, i){ return '<col style="width:' + w + 'px; min-width:' + w + 'px;">'; }).join('');
-    const thead    = '<tr style="background:#f6f8fa; color:#24292f;">' +
-      displayHeaders.map(function(h){ return '<th style="padding:8px 8px; text-align:left; font-weight:700; font-size:11.5px; border-bottom:2px solid #d0d7de;' + (h[0] === 'del' ? ' width:32px; min-width:32px;' : '') + '">' + h[1] + '</th>'; }).join('') +
+
+    // Header row: each non-del column is click-to-sort, shows a caret indicator.
+    function _sortIndicator(key){
+      if (_planSortKey !== key) return '<span style="opacity:.3; margin-left:4px; font-size:10px;">▼</span>';
+      return '<span style="margin-left:4px; font-size:10px; color:#1f6feb;">' + (_planSortDir === 'desc' ? '▲' : '▼') + '</span>';
+    }
+    const thead = '<tr style="background:#f6f8fa; color:#24292f;">' +
+      displayHeaders.map(function(h){
+        const key = h[0];
+        if (key === 'del') {
+          return '<th style="padding:8px 8px; text-align:left; font-weight:700; font-size:11.5px; border-bottom:2px solid #d0d7de; width:32px; min-width:32px;"></th>';
+        }
+        return '<th data-sort-key="' + key + '" style="padding:8px 8px; text-align:left; font-weight:700; font-size:11.5px; border-bottom:2px solid #d0d7de; cursor:pointer; user-select:none;" title="Click to sort by ' + h[1] + '">' + h[1] + _sortIndicator(key) + '</th>';
+      }).join('') +
       '</tr>';
+
+    // Filter input row: one text input per data column (case-insensitive contains).
+    // Stays inside the sticky <thead> so it remains visible during scroll.
+    const filterRow = '<tr style="background:#eef1f3;">' +
+      displayHeaders.map(function(h){
+        const key = h[0];
+        if (key === 'del') {
+          return '<td style="padding:3px 4px; border-bottom:1px solid #d0d7de;"></td>';
+        }
+        const v = _planFilters[key] || '';
+        return '<td style="padding:3px 4px; border-bottom:1px solid #d0d7de;">' +
+          '<input type="text" class="plan-filter" data-col="' + key + '" value="' + escAttr(v) + '" placeholder="Filter…" style="width:100%; box-sizing:border-box; padding:2px 5px; border:1px solid #cfd7df; border-radius:4px; background:#fff; color:#24292f; font-size:10.5px; outline:none;">' +
+        '</td>';
+      }).join('') +
+    '</tr>';
 
     return '<div id="planWrap" tabindex="0" style="overflow:auto;position:absolute;top:46px;left:0;right:0;bottom:0;user-select:none;-webkit-user-select:none;background:#fff;">' +
       '<table id="planData" style="width:100%; table-layout:fixed; border-collapse:collapse; font-size:11.5px; min-width:' + (showDel ? 1312 : 1280) + 'px;">' +
         '<colgroup>' + colgroup + '</colgroup>' +
-        '<thead style="position:sticky; top:0; z-index:3; background:#f6f8fa;">' + thead + '</thead>' +
+        '<thead style="position:sticky; top:0; z-index:3; background:#f6f8fa; box-shadow:0 2px 0 #d0d7de;">' + thead + filterRow + '</thead>' +
         '<tbody>' + rowsHtml + '</tbody>' +
       '</table>' +
     '</div>';
@@ -4547,6 +4666,7 @@ function _applyPlanCellStyle(el, col, val){
     if (!serverConfigured()) { setPlanStatus('Server not configured'); return; }
     if (!planCurrentDate) { setPlanStatus('Pick a date first'); return; }
     setPlanStatus('Saving…');
+    _showPlanLoading('Saving…');
     try {
       // Build the rows to send. If the user is scoped to a subcont, the
       // server-side per-date replace would otherwise wipe other teams'
@@ -4603,6 +4723,8 @@ function _applyPlanCellStyle(el, col, val){
     } catch (e) {
       console.warn('[plan] save failed', e);
       setPlanStatus('Save failed: ' + (e && e.message ? e.message : String(e)));
+    } finally {
+      _hidePlanLoading();
     }
   });
   try { console.log('[plan] save handler bound'); } catch (_) {}
@@ -4625,16 +4747,25 @@ function _applyPlanCellStyle(el, col, val){
     }
     const newDate = e.target.value;
     if (!newDate) return;
-    if (planDirty && !confirm('Discard unsaved changes for ' + (planCurrentDate || 'this date') + '?')) {
-      e.target.value = planCurrentDate || '';
-      return;
-    }
+    // Per UX request: changing the date does NOT auto-render. The user must
+    // click the explicit "Load" button beside the date to apply the new date.
+    // We keep the input value (so the user sees what they picked) but leave
+    // planRows + the table alone until they confirm.
+    if (newDate === planCurrentDate) return;
+    setPlanStatus('Picked ' + newDate + ' — click Load to fetch');
+  });
+
+  document.getElementById('planLoadDateBtn').addEventListener('click', async function(){
+    if (mySubcont) return; // subcont users can't change the active date
+    const dateInput = document.getElementById('planDateInput');
+    const newDate = dateInput ? dateInput.value : '';
+    if (!newDate) { setPlanStatus('Pick a date first'); return; }
+    if (newDate === planCurrentDate) { setPlanStatus('Already showing ' + newDate); return; }
+    if (planDirty && !confirm('Discard unsaved changes for ' + (planCurrentDate || 'this date') + ' and load ' + newDate + '?')) return;
     planCurrentDate = newDate;
     planDirty = false;
     _applySaveButtonState();
     setPlanStatus('');
-    // Browsing the date picker is now LOCAL only — subcont viewers don't auto-follow.
-    // Subcont clients pick up the new date only when surge clicks the SET (broadcast) button.
     renderPlanView();
   });
 
@@ -4677,10 +4808,11 @@ function _applyPlanCellStyle(el, col, val){
     // Re-render so the inputs reflect the new planRows.
     const container = document.getElementById('dashPlan');
     if (container) {
-      container.innerHTML = _planTableHtml();
-      clearPlanSelection();
-      _wirePlanTable(container);
-    }
+container.innerHTML = _planTableHtml();
+    clearPlanSelection();
+    _wirePlanTable(container);
+    _wirePlanSortAndFilter(container);
+  }
   });
 
   // ----- Add roster member (surge-only) -----
