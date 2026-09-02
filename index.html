@@ -4443,8 +4443,11 @@ function _applyPlanCellStyle(el, col, val){
   //   - siteName        ← matching tracker siteName
   //   - activityRemark  ← 'WORK'
   // Matching strategy (in order, first hit wins per row):
-  //   1) Exact case-insensitive on account ↔ entry key (duId) OR .name
+  //   1) Exact case-insensitive on account ↔ ci.account (Apps Script exposes the
+  //      Clockin sheet's column A "Account" id; this matches plan rows cleanly
+  //      when both sides use the same snake_case id)
   //   2) Fuzzy: case-insensitive substring of length >= 6 in either direction
+  //      — falls back across ci.account, key (duId), and .name
   //   3) Diagnostic console.log dumps the first few entries + lookups so we can
   //      see exactly what's being compared if a match is unexpectedly missed.
   function _runQueryWork(){
@@ -4452,9 +4455,11 @@ function _applyPlanCellStyle(el, col, val){
       setPlanStatus('Plan not loaded');
       return;
     }
-    // 1. Build account-name → active duId map. Each entry registers both its
-    //    key (Apps Script uppercases duId, so we lowercase to compare) and its
-    //    .name field under their lowercased forms.
+    // 1. Build account-name → active duId map. Each entry registers the new
+    //    ci.account first (plan accounts match this exactly when Apps Script
+    //    exposes the column-A id), then key (Apps Script uppercases duId, so we
+    //    lowercase to compare), then .name. Account is registered FIRST so it
+    //    wins on collision; key + name remain registered as fallback.
     const activeByAccount = Object.create(null);
     let totalScanned = 0;
     let activeScanned = 0;
@@ -4464,24 +4469,29 @@ function _applyPlanCellStyle(el, col, val){
         const ci = dashClockinData[k];
         if (!ci) return;
         if (String(ci.clockOut || '').trim()) return; // already clocked out
-        const keyStr  = String(k || '').trim();
-        const nameStr = String(ci.name || '').trim();
-        if (!keyStr && !nameStr) return;
+        const keyStr    = String(k || '').trim();
+        const nameStr   = String(ci.name    || '').trim();
+        const accountStr = String(ci.account || '').trim();
+        if (!keyStr && !nameStr && !accountStr) return;
         activeScanned++;
-        if (keyStr)  activeByAccount[keyStr.toLowerCase()]  = k;
-        if (nameStr) activeByAccount[nameStr.toLowerCase()] = k;
+        if (accountStr) activeByAccount[accountStr.toLowerCase()] = k;
+        if (keyStr)     activeByAccount[keyStr.toLowerCase()]     = k;
+        if (nameStr)    activeByAccount[nameStr.toLowerCase()]    = k;
       });
     }
     try {
       console.log('[QueryWork] dashClockinData scanned=' + totalScanned +
                   ' active=' + activeScanned +
                   ' accountKeys=' + Object.keys(activeByAccount).length);
-      // Dump first 5 entries (key + name) so we can see what apps-script returned.
+      // Dump first 5 entries (account + name + team) so we can see what
+      // apps-script returned — the account column is critical for matching.
       const sampleKeys = Object.keys(dashClockinData || {}).slice(0, 5);
       sampleKeys.forEach(function(k){
         const ci = dashClockinData[k] || {};
         console.log('[QueryWork]   sample key=' + JSON.stringify(k) +
+                    ' account=' + JSON.stringify(ci.account) +
                     ' name=' + JSON.stringify(ci.name) +
+                    ' team=' + JSON.stringify(ci.team) +
                     ' clockOut=' + JSON.stringify(ci.clockOut));
       });
     } catch (_) {}
