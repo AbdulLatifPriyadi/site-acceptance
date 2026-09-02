@@ -4351,6 +4351,8 @@ function _applyPlanCellStyle(el, col, val){
   // '(no match)' for that row. The user can clear filters and re-query.
   // CAVEAT: getFilteredSites() returns a new array per call. Per-row Queries are
   // sub-second on typical sheets; if it ever becomes slow, cache the result here.
+  // Also returns the matched site's `team` field (Tracker column M) so the
+  // caller can decide to highlight a row when a work team is already assigned.
   function _getRemarkForDuId(duId){
     const want = String(duId || '').trim();
     if (!want) return { state: 'empty' }; // empty DU ID is treated as "site matched but no remark" semantically; UI shows '(empty)'
@@ -4358,7 +4360,8 @@ function _applyPlanCellStyle(el, col, val){
     const match = sites.find(function(s){ return String((s && s.duId) || '').trim() === want; });
     if (!match) return { state: 'no-match' };
     const remark = (match && match.remark != null) ? String(match.remark) : '';
-    return remark ? { state: 'ok', remark: remark } : { state: 'empty' };
+    const team   = (match && match.team   != null) ? String(match.team).trim() : '';
+    return remark ? { state: 'ok', remark: remark, team: team } : { state: 'empty', team: team };
   }
 
   // Wire per-row Query buttons on a freshly rendered plan table. Called from
@@ -4377,7 +4380,9 @@ function _applyPlanCellStyle(el, col, val){
 
   // Perform the DU-ID lookup and write the result into the cell's <span> +
   // data-val + swap the button label. Reads DU ID live from planRows[rowIdx]
-  // so unsaved edits are picked up.
+  // so unsaved edits are picked up. Also toggles a red outline on the row when
+  // the matched site already has a work team assigned — so the planner gets a
+  // visual "conflict" warning before they double-book someone.
   function _runPlanResultQuery(btn){
     const rowIdx = Number(btn.getAttribute('data-row'));
     if (!Number.isFinite(rowIdx) || !planRows[rowIdx]) return;
@@ -4398,6 +4403,26 @@ function _applyPlanCellStyle(el, col, val){
     // Swap Query → ↻ so the user can re-query after editing the DU ID.
     btn.textContent = '↻';
     btn.setAttribute('title', 'Re-query (picks up unsaved DU ID changes)');
+
+    // Red outline on the row when the matched site already has a work team
+    // (Tracker column M non-empty). Cleared on every re-query so a changed DU
+    // ID that no longer matches a team drops the highlight.
+    _setPlanRowWorkHighlight(rowIdx, !!(result.state === 'ok' && result.team));
+  }
+
+  // Apply or clear a red 2px inset outline on every cell of the plan row whose
+  // first <td data-row=rowIdx>. Uses box-shadow (not border) so it composites
+  // cleanly over the table's border-collapse:collapse layout.
+  function _setPlanRowWorkHighlight(rowIdx, on){
+    const wrap = document.getElementById('planWrap');
+    if (!wrap) return;
+    const cell = wrap.querySelector('td[data-row="' + rowIdx + '"]');
+    const tr = cell ? cell.closest('tr') : null;
+    if (!tr) return;
+    const tds = tr.querySelectorAll('td');
+    tds.forEach(function(td){
+      td.style.boxShadow = on ? 'inset 0 0 0 2px #e0574f' : '';
+    });
   }
 
   function _onPlanCellEdit(e){
