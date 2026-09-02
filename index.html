@@ -4375,8 +4375,9 @@ function _applyPlanCellStyle(el, col, val){
   }
 
   // Wire per-row Query buttons on a freshly rendered plan table. Called from
-  // renderPlanView after _wirePlanTable. Click handler mutates the cell in place
-  // (no full re-render) so any in-progress edits in other cells keep focus.
+  // renderPlanView after _wirePlanTable. Click handler looks up the Table tab
+  // for the row's DU ID and shows a tooltip preview — it does NOT fill the
+  // Result cell; the user can manually apply the result via the select.
   function _wirePlanResultRefresh(container){
     if (!container) return;
     container.querySelectorAll('button.plan-result-query').forEach(function(btn){
@@ -4386,38 +4387,54 @@ function _applyPlanCellStyle(el, col, val){
         _runPlanResultQuery(btn);
       });
     });
+    // Also wire Result select changes to mirror into activityRemark + recolor.
+    container.querySelectorAll('select.plan-cell[data-col="result"]').forEach(function(sel){
+      sel.addEventListener('change', function(e){
+        e.stopPropagation();
+        var rowIdx = Number(sel.getAttribute('data-row'));
+        var val = sel.value;
+        if (!Number.isFinite(rowIdx) || !planRows[rowIdx]) return;
+        planRows[rowIdx].activityRemark = val;
+        // Sync activityRemark select in the same row if it exists.
+        var actSel = container.querySelector('select.plan-cell[data-row="' + rowIdx + '"][data-col="activityRemark"]');
+        if (actSel) {
+          actSel.value = val;
+          // Mirror style from activityRemark select to result select.
+          var actStyle = PLAN_ACTIVITY_STYLE[val] || null;
+          sel.style.background = actStyle ? actStyle.cell : '#fff';
+          sel.style.color = actStyle ? actStyle.text : '#24292f';
+          sel.style.fontWeight = actStyle ? '700' : '400';
+          actSel.style.background = sel.style.background;
+          actSel.style.color = sel.style.color;
+          actSel.style.fontWeight = sel.style.fontWeight;
+        }
+        planDirty = true;
+        _applySaveButtonState();
+        setPlanStatus('Unsaved changes');
+      });
+    });
   }
 
-  // Perform the DU-ID lookup and write the result into the cell's <span> +
-  // data-val + swap the button label. Reads DU ID live from planRows[rowIdx]
-  // so unsaved edits are picked up. Also toggles a red outline on the row when
-  // the matched site already has a work team assigned — so the planner gets a
-  // visual "conflict" warning before they double-book someone.
+  // Perform the Table tab lookup and show a tooltip preview on the Query button.
+  // Does NOT fill the Result cell — the user manually applies via the select.
+  // Reads DU ID live from planRows[rowIdx] so unsaved edits are picked up.
   function _runPlanResultQuery(btn){
-    const rowIdx = Number(btn.getAttribute('data-row'));
+    var rowIdx = Number(btn.getAttribute('data-row'));
     if (!Number.isFinite(rowIdx) || !planRows[rowIdx]) return;
-    const duId = planRows[rowIdx].duId;
-    const td = btn.closest('td');
-    const span = td ? td.querySelector('span.plan-result-text') : null;
-    const result = _getRemarkForDuId(duId);
+    var duId = planRows[rowIdx].duId;
+    var result = _getRemarkForDuId(duId);
+    var tip;
     if (result.state === 'no-match') {
-      if (span) { span.textContent = '(no match)'; span.style.color = '#6b7688'; span.style.fontStyle = 'italic'; }
-      if (td) td.setAttribute('data-val', '');
+      tip = '(no match)';
     } else if (result.state === 'empty') {
-      if (span) { span.textContent = '(empty)'; span.style.color = '#6b7688'; span.style.fontStyle = 'italic'; }
-      if (td) td.setAttribute('data-val', '');
+      tip = '(empty remark in Table tab)';
     } else {
-      if (span) { span.textContent = result.remark; span.style.color = '#24292f'; span.style.fontStyle = 'normal'; }
-      if (td) td.setAttribute('data-val', result.remark);
+      tip = 'Table tab: ' + result.remark + (result.team ? ' [' + result.team + ']' : '');
     }
-    // Swap Query → ↻ so the user can re-query after editing the DU ID.
-    btn.textContent = '↻';
-    btn.setAttribute('title', 'Re-query (picks up unsaved DU ID changes)');
-
-    // Red outline on the row when the matched site already has a work team
-    // (Tracker column M non-empty). Cleared on every re-query so a changed DU
-    // ID that no longer matches a team drops the highlight.
-    _setPlanRowWorkHighlight(rowIdx, !!(result.state === 'ok' && result.team));
+    btn.setAttribute('title', tip);
+    // Briefly highlight the button to confirm the lookup ran.
+    btn.style.background = '#1550b5';
+    setTimeout(function(){ btn.style.background = '#1f6feb'; }, 400);
   }
 
   // Apply or clear a red 2px inset outline on every cell of the plan row whose
@@ -4548,6 +4565,7 @@ function _applyPlanCellStyle(el, col, val){
       _updatePlanCellInput(i, 'duId', duId);
       _updatePlanCellInput(i, 'siteName', siteName);
       _updatePlanCellInput(i, 'activityRemark', 'WORK');
+      _updatePlanCellInput(i, 'result', 'WORK');
       // Highlight the row as a work-conflict site (already has a work team).
       _setPlanRowWorkHighlight(i, true);
       filled++;
@@ -4671,12 +4689,24 @@ function _applyPlanCellStyle(el, col, val){
         '<button type="button" class="plan-del-row" data-account="' + escAttr(account) + '" title="Delete ' + escAttr(account) + ' from roster" style="background:transparent;border:1px solid #cfd7df;border-radius:4px;color:#6b7688;cursor:pointer;font-size:12px;padding:2px 6px;line-height:1;">✕</button>' +
       '</td>';
     }
-    // Inner content for the per-row Result cell: shows a '—' placeholder + a small
-    // Query button that looks up the row's DU ID against getFilteredSites() (the
-    // Table tab data). Wrapped by cellTd() the same way the input/select cells are.
-    function resultCell(rowIdx){
-      return '<span class="plan-result-text" style="color:#6b7688; font-style:italic;">—</span>' +
-        '<button type="button" class="plan-result-query" data-row="' + rowIdx + '" title="Query Table tab for this row\'s DU ID" style="margin-left:8px; padding:2px 8px; border:1px solid #1f6feb; border-radius:4px; background:#1f6feb; color:#fff; font-size:10px; cursor:pointer; font-weight:600; line-height:1.4;">Query</button>';
+    // Result cell: an editable <select> (mirrors activityRemark options, styled green
+    // for WORK) with a small search-icon button on the right. The select writes
+    // to planRows[rowIdx].activityRemark directly. The Query button shows a
+    // tooltip preview from the Table tab — it does NOT fill the cell; the user
+    // can use the select to manually apply the result.
+    function resultCell(rowIdx, activityRemark){
+      var actKey = String(activityRemark || '');
+      var actStyle = PLAN_ACTIVITY_STYLE[actKey] || null;
+      var selStyle = actStyle
+        ? 'flex:1;min-width:0;box-sizing:border-box;padding:4px 6px;border:1px solid #cfd7df;border-radius:4px;background:' + actStyle.cell + ';color:' + actStyle.text + ';font-size:11px;font-weight:700;cursor:pointer;outline:none;appearance:auto;-webkit-appearance:auto;'
+        : 'flex:1;min-width:0;box-sizing:border-box;padding:4px 6px;border:1px solid #cfd7df;border-radius:4px;background:#fff;color:#24292f;font-size:11px;cursor:pointer;outline:none;appearance:auto;-webkit-appearance:auto;';
+      return '<div class="plan-result-wrap" style="display:flex;align-items:center;gap:4px;width:100%;">' +
+        '<select class="plan-cell" data-row="' + rowIdx + '" data-col="result" style="' + selStyle + '">' +
+        '<option value="">—</option>' +
+        PLAN_ACTIVITY_REMARK_OPTS.map(function(o){ return '<option value="' + o + '"' + (actKey === o ? ' selected' : '') + '>' + o + '</option>'; }).join('') +
+        '</select>' +
+        '<button type="button" class="plan-result-query" data-row="' + rowIdx + '" title="Preview from Table tab (click to see suggestion)" style="flex:0 0 auto;padding:3px 6px;border:1px solid #1f6feb;border-radius:4px;background:#1f6feb;color:#fff;font-size:11px;cursor:pointer;line-height:1.4;white-space:nowrap;">&#8981;</button>' +
+        '</div>';
     }
     function makeInputs(row, i){
       // Per-row subcon tint (uses dashSubcontColor → SUBCONT_COLOR_MAP, with palette fallback).
@@ -4708,12 +4738,17 @@ function _applyPlanCellStyle(el, col, val){
           '<option value="">—</option>' +
           PLAN_DAILY_PLAN_OPTS.map(function(o){ return '<option value="' + o + '"' + (row.dailyPlanActivity === o ? ' selected' : '') + '>' + o + '</option>'; }).join('') +
           '</select>'],
-        // Result cell: not an editable input — uses cellTd's data-val slot as an
-        // empty placeholder. The Query button writes the actual value into the
-        // <span> + updates data-val in place (see _runPlanResultQuery).
-        ['result', resultCell(i)]
+        // Result cell: editable <select> (mirrors activityRemark options) + small
+        // search-icon button. Writes to planRows[rowIdx].activityRemark via the
+        // select's change handler. data-val reflects activityRemark so Ctrl+C
+        // copies the current value.
+        ['result', resultCell(i, row.activityRemark)]
       ];
-      let html = inputs.map(function(p){ return cellTd(p[1], i, p[0], row[p[0]] || ''); }).join('');
+      let html = inputs.map(function(p){
+        // Result column: use activityRemark for data-val so Ctrl+C works correctly.
+        var val = (p[0] === 'result') ? (row.activityRemark || '') : (row[p[0]] || '');
+        return cellTd(p[1], i, p[0], val);
+      }).join('');
       if (showDel) html += delTd(i, row.account || '');
       return html;
     }
