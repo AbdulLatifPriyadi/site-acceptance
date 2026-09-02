@@ -660,7 +660,7 @@
         <button id="planSaveBtn"
           style="position:absolute; right:14px; top:50%; transform:translateY(-50%); z-index:2; padding:5px 14px;border:1px solid #4caf7d;border-radius:6px;background:#4caf7d;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;box-shadow:0 1px 4px rgba(0,0,0,.25);">Save</button>
         <span id="planSelInfo" style="font-size:11px; color:#a8d4f0; font-weight:700; display:none;"></span>
-        <span id="planStatus" style="margin-left:auto; font-size:11px; color:#b7c0c9;"></span>
+        <span id="planStatus" style="margin-left:auto; padding-right:64px; font-size:11px; color:#b7c0c9; position:relative; z-index:3;"></span>
       </div>
       <div id="dashPlan" style="display:none; position:absolute; inset:0; overflow:auto; background:#fff; padding-top:46px;"></div>
       <button class="dash-var-toggle" id="dashVarToggle" title="Toggle variable reference" style="display:none;">_vars</button>
@@ -4269,6 +4269,7 @@ function _applyPlanCellStyle(el, col, val){
   function setPlanStatus(text){
     const el = document.getElementById('planStatus');
     if (el) el.textContent = text || '';
+    try { console.log('[plan] status:', text || ''); } catch (_) {}
   }
 
   function _planTableHtml(){
@@ -4488,6 +4489,7 @@ function _applyPlanCellStyle(el, col, val){
   // ----- Plan button handlers -----
 
   document.getElementById('planSaveBtn').addEventListener('click', async function(){
+    try { console.log('[plan] save click', { serverConfigured: serverConfigured(), date: planCurrentDate }); } catch (_) {}
     if (!serverConfigured()) { setPlanStatus('Server not configured'); return; }
     if (!planCurrentDate) { setPlanStatus('Pick a date first'); return; }
     setPlanStatus('Saving…');
@@ -4548,6 +4550,7 @@ function _applyPlanCellStyle(el, col, val){
       setPlanStatus('Save failed: ' + (e && e.message ? e.message : String(e)));
     }
   });
+  try { console.log('[plan] save handler bound'); } catch (_) {}
 
   document.getElementById('planSetActiveBtn').addEventListener('click', async function(){
     // Defensive: the button is also hidden for subcont users.
