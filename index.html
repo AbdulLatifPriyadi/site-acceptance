@@ -1117,8 +1117,10 @@ Remark = ${remark}`;
   const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxYb30QpZOkQSrRhx2hvuHPA8P3JMXxiqZAVGqb2b1UibXTUT-ZIvMO6cdJa2s7dhLy/exec';
 
   function serverConfigured(){
-    return (!!SHEETS_CSV_URL && SHEETS_CSV_URL.includes('docs.google.com')) ||
-           (!!SCRIPT_URL && !SCRIPT_URL.includes('PASTE_YOUR'));
+    // SHEETS_CSV_URL was deprecated (line 1112 commented out); use typeof guard
+    // so the legacy CSV branch doesn't throw ReferenceError when it's absent.
+    var sheetsOk = (typeof SHEETS_CSV_URL !== 'undefined' && !!SHEETS_CSV_URL && SHEETS_CSV_URL.indexOf('docs.google.com') !== -1);
+    return sheetsOk || (!!SCRIPT_URL && SCRIPT_URL.indexOf('PASTE_YOUR') === -1);
   }
 
   function buildStateSnapshot(){
