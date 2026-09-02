@@ -659,6 +659,8 @@
           style="padding:4px 9px;border:1px solid #f0b429;border-radius:6px;background:#f0b429;color:#1c2530;font-size:11.5px;cursor:pointer;font-weight:600;display:none;">SET</button>
         <button id="planCopyLastBtn"
           style="padding:5px 9px;border:1px solid #2f6bc4;border-radius:6px;background:#2f6bc4;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;">Copy from last date</button>
+        <button id="planQueryWorkBtn" title="Auto-fill each plan row whose subcon has an active work site (DU ID + Site Name + Activity Remark = WORK) from clockin data"
+          style="padding:5px 9px;border:1px solid #16a34a;border-radius:6px;background:#16a34a;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;">Query Work</button>
         <button id="planSaveBtn"
           style="position:absolute; right:14px; top:50%; transform:translateY(-50%); z-index:2; padding:5px 14px;border:1px solid #4caf7d;border-radius:6px;background:#4caf7d;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;box-shadow:0 1px 4px rgba(0,0,0,.25);">Save</button>
         <span id="planSelInfo" style="font-size:11px; color:#a8d4f0; font-weight:700; display:none;"></span>
@@ -4433,6 +4435,99 @@ function _applyPlanCellStyle(el, col, val){
     });
   }
 
+  // Bulk "Query Work" — for every visible plan row whose subcon matches a
+  // currently-clocked-in team (dashClockinData with no clockOut), auto-fill:
+  //   - duId            ← active clockin DU ID (resolved against the tracker so
+  //                        the matching site exists in this dataset)
+  //   - siteName        ← matching tracker siteName
+  //   - activityRemark  ← 'WORK'
+  // Matching is case-insensitive substring on team ↔ subcon. If the same team
+  // is clocked in at multiple sites, the last entry seen in dashClockinData
+  // wins (Object.keys() iteration order). Documented limitation; future v2
+  // could rank by clockIn timestamp.
+  // The existing per-row Query button still works for surgical lookups.
+  function _runQueryWork(){
+    if (!Array.isArray(planRows) || planRows.length === 0) {
+      setPlanStatus('Plan not loaded');
+      return;
+    }
+    // 1. Build team → active duId map (only entries with name AND no clockOut).
+    const activeByTeam = Object.create(null);
+    if (dashClockinData && typeof dashClockinData === 'object') {
+      Object.keys(dashClockinData).forEach(function(k){
+        const ci = dashClockinData[k];
+        if (!ci || !ci.name || String(ci.clockOut || '').trim()) return;
+        const team = String(ci.team || '').trim();
+        if (!team) return;
+        activeByTeam[team.toLowerCase()] = k;
+      });
+    }
+
+    // 2. For each visible plan row, look up by subcon.
+    const visibleIdx = _visibleSortedIndices();
+    let filled = 0;
+    for (let n = 0; n < visibleIdx.length; n++) {
+      const i = visibleIdx[n];
+      const row = planRows[i];
+      if (!row) continue;
+      const subKey = String(row.subcon || '').trim().toLowerCase();
+      if (!subKey) continue;
+      // Substring match: a tracker team "Intisel - A" matches plan subcon "Intisel".
+      // Pick the first active duId whose team contains subKey, or vice-versa.
+      let activeDuId = activeByTeam[subKey] || null;
+      if (!activeDuId) {
+        const tEntry = Object.keys(activeByTeam).find(function(teamKey){
+          return teamKey && (teamKey.indexOf(subKey) !== -1 || subKey.indexOf(teamKey) !== -1);
+        });
+        if (tEntry) activeDuId = activeByTeam[tEntry];
+      }
+      if (!activeDuId) continue;
+      // Resolve the duId against dashTrackerData so siteName is available.
+      const site = (Array.isArray(dashTrackerData) ? dashTrackerData : []).find(function(s){
+        const du = String((s && s.duId) || '').trim();
+        return du && du.toUpperCase() === String(activeDuId).trim().toUpperCase();
+      });
+      const duId     = site ? String(site.duId || '').trim()     : String(activeDuId).trim();
+      const siteName = site ? String(site.siteName || '').trim() : '';
+      // Update model + DOM in place (no full re-render — preserves focus/scroll).
+      row.duId = duId;
+      row.siteName = siteName;
+      row.activityRemark = 'WORK';
+      _updatePlanCellInput(i, 'duId', duId);
+      _updatePlanCellInput(i, 'siteName', siteName);
+      _updatePlanCellInput(i, 'activityRemark', 'WORK');
+      // Highlight the row as a work-conflict site (already has a work team).
+      _setPlanRowWorkHighlight(i, true);
+      filled++;
+    }
+
+    planDirty = true;
+    _applySaveButtonState();
+    if (filled > 0) {
+      setPlanStatus('Query Work: filled ' + filled + ' row(s)');
+    } else {
+      setPlanStatus('Query Work: no active work sites match your roster');
+    }
+  }
+
+  // Update one plan-cell <input> or <select> in place without re-rendering the
+  // table. Sets the value, then dispatches an 'input' event so _onPlanCellEdit
+  // runs (which mirrors the value into the parent <td>'s data-val, flips
+  // planDirty = true, applies per-cell styling, and updates the Save button).
+  // Dispatching 'change' too for selects (programmatic .value changes don't
+  // fire 'change' natively, so we explicitly trigger it).
+  function _updatePlanCellInput(rowIdx, col, val){
+    const wrap = document.getElementById('planWrap');
+    if (!wrap) return;
+    const sel = 'input.plan-cell[data-row="' + rowIdx + '"][data-col="' + col + '"],' +
+                'select.plan-cell[data-row="' + rowIdx + '"][data-col="' + col + '"]';
+    const el = wrap.querySelector(sel);
+    if (!el) return;
+    el.value = val;
+    el.dispatchEvent(new Event('input',  { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
   function _onPlanCellEdit(e){
     const el = e.target;
     const rowIdx = Number(el.dataset.row);
@@ -4881,8 +4976,17 @@ function _applyPlanCellStyle(el, col, val){
 container.innerHTML = _planTableHtml();
     clearPlanSelection();
     _wirePlanTable(container);
+    _wirePlanResultRefresh(container);
     _wirePlanSortHeaders(container);
   }
+  });
+
+  // "Query Work" — auto-fill DU ID + Site Name + Activity Remark for every
+  // plan row whose subcon has an active work site (see _runQueryWork for the
+  // matching rules). Acts in place; reflects changes immediately. Marks the
+  // plan dirty; user still needs to click Save to persist.
+  document.getElementById('planQueryWorkBtn').addEventListener('click', function(){
+    _runQueryWork();
   });
 
   // ----- Add roster member (surge-only) -----
