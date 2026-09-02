@@ -4436,18 +4436,20 @@ function _applyPlanCellStyle(el, col, val){
   }
 
   // Bulk "Query Work" — for every visible plan row whose account name matches
-  // a currently-clocked-in entry in dashClockinData (name column = roster
-  // account; no clockOut = still working), auto-fill:
+  // a currently-clocked-in entry in dashClockinData (no clockOut = still
+  // working), auto-fill:
   //   - duId            ← active clockin DU ID (resolved against the tracker so
   //                        the matching site exists in this dataset)
   //   - siteName        ← matching tracker siteName
   //   - activityRemark  ← 'WORK'
-  // Matching is case-insensitive exact on account ↔ clockin.name. The Clockin
-  // sheet's "name" column holds the same account id that appears in PLAN_ROSTER
-  // (e.g. "intisel_tl_rahmat_32051919"), so a roster member clocked in at a
-  // site is directly associated with that row. If the same account appears in
-  // multiple clockin entries (rare — re-clocked-in same person), the last one
-  // seen in dashClockinData wins; documented limitation.
+  // Matching strategy: case-insensitive exact on account ↔ either the entry
+  // key (duId) OR its .name field. The Apps Script serves Clockin data keyed
+  // by duId, but in some sheets column A holds the account name (mislabeled
+  // "DU ID" in the header). Matching both gives full coverage; if the key is
+  // itself the account name, we still find the right entry by its .name from
+  // column B (or wherever the real "name" header is). If the same account
+  // appears in multiple clockin entries (rare — re-clocked-in same person),
+  // the last one seen in dashClockinData wins.
   // The per-row Query button still works for surgical lookups if a row didn't
   // get auto-filled.
   function _runQueryWork(){
@@ -4455,19 +4457,31 @@ function _applyPlanCellStyle(el, col, val){
       setPlanStatus('Plan not loaded');
       return;
     }
-    // 1. Build account-name → active duId map (only entries with name AND no clockOut).
+    // 1. Build account-name → active duId map. Scan entries where the person
+    //    is still clocked in (clockOut blank). Accept an entry if either the
+    //    key OR the .name field is non-empty.
     const activeByAccount = Object.create(null);
+    let totalScanned = 0;
+    let activeScanned = 0;
     if (dashClockinData && typeof dashClockinData === 'object') {
       Object.keys(dashClockinData).forEach(function(k){
+        totalScanned++;
         const ci = dashClockinData[k];
-        if (!ci || !ci.name || String(ci.clockOut || '').trim()) return;
-        const name = String(ci.name || '').trim();
-        if (!name) return;
-        activeByAccount[name.toLowerCase()] = k;
+        if (!ci) return;
+        if (String(ci.clockOut || '').trim()) return; // already clocked out
+        const keyStr  = String(k || '').trim();
+        const nameStr = String(ci.name || '').trim();
+        if (!keyStr && !nameStr) return;
+        activeScanned++;
+        // Register under both the key (in case it IS the account id) and the
+        // .name (the usual case). Last write wins on collision; documented.
+        if (keyStr)  activeByAccount[keyStr.toLowerCase()]  = k;
+        if (nameStr) activeByAccount[nameStr.toLowerCase()] = k;
       });
     }
+    try { console.log('[QueryWork] dashClockinData scanned=' + totalScanned + ' active=' + activeScanned + ' accountKeys=' + Object.keys(activeByAccount).length); } catch (_) {}
 
-    // 2. For each visible plan row, look up by account name.
+    // 2. For each visible plan row, look up by account name (case-insensitive).
     const visibleIdx = _visibleSortedIndices();
     let filled = 0;
     for (let n = 0; n < visibleIdx.length; n++) {
@@ -4500,9 +4514,9 @@ function _applyPlanCellStyle(el, col, val){
     planDirty = true;
     _applySaveButtonState();
     if (filled > 0) {
-      setPlanStatus('Query Work: filled ' + filled + ' row(s)');
+      setPlanStatus('Query Work: filled ' + filled + ' row(s) (matched ' + filled + '/' + visibleIdx.length + ' rows vs ' + activeScanned + ' active clockins)');
     } else {
-      setPlanStatus('Query Work: no active work sites match your roster');
+      setPlanStatus('Query Work: 0 matches — scanned ' + activeScanned + ' active clockin entries, ' + visibleIdx.length + ' plan rows. Open DevTools console for [QueryWork] log.');
     }
   }
 
