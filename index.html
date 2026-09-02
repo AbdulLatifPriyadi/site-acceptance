@@ -1606,10 +1606,9 @@ Remark = ${remark}`;
   let planCurrentDate = '';   // ISO YYYY-MM-DD currently being edited
   let planRows = [];          // in-memory mirror; index aligns with PLAN_ROSTER (always full 23)
   let planDirty = false;      // true after any cell edit, cleared on save / date switch (after confirm)
-  // Plan sort/filter state. Empty key = roster order, no filters.
+  // Plan sort state. Empty key = roster order.
   let _planSortKey = '';
   let _planSortDir = 'asc';   // 'asc' | 'desc'
-  let _planFilters = {};      // { colKey: 'substring filter (case-insensitive)' }
   // Plan roster delta (surge-managed additions + removals layered on top of PLAN_ROSTER base).
   // Mirror of the server's `planRoster` script property. Reconciles on dashboard init.
   let planRosterDelta = { added: [], removed: [] };
@@ -4094,7 +4093,7 @@ Remark = ${remark}`;
 
       container.innerHTML = _planTableHtml();
       _wirePlanTable(container);
-      _wirePlanSortAndFilter(container);
+      _wirePlanSortHeaders(container);
       // Pin Save to right edge (already absolute in inline style); keep #planWrap clear of the bar
       // even when the bar wraps to a 2nd row on narrow viewports.
       var _pb = document.getElementById('dashPlanBar');
@@ -4260,31 +4259,17 @@ Remark = ${remark}`;
   }
 
   // Compute the list of roster indices to show in the Plan table, after
-  // applying (in order): subcont visibility, text filters, then sort.
-  // _planSortKey === '' preserves roster order (stable).
+  // applying the subcont visibility filter, then sort. _planSortKey === ''
+  // preserves roster order (stable).
   function _visibleSortedIndices(){
     const roster = effectiveRoster();
     const mySub = mySubcont ? String(mySubcont).toLowerCase() : '';
-    let indices = [];
+    const indices = [];
     for (let i = 0; i < roster.length; i++) {
       const r = roster[i];
       if (!r) continue;
       if (mySub && String(r.subcon || '').toLowerCase() !== mySub) continue;
       indices.push(i);
-    }
-
-    const filters = _planFilters || {};
-    const filterKeys = Object.keys(filters).filter(function(k){ return filters[k]; });
-    if (filterKeys.length) {
-      indices = indices.filter(function(i){
-        const row = planRows[i] || {};
-        for (let k = 0; k < filterKeys.length; k++) {
-          const f = String(filters[filterKeys[k]] || '').toLowerCase();
-          const v = String((row && row[filterKeys[k]]) || '').toLowerCase();
-          if (v.indexOf(f) === -1) return false;
-        }
-        return true;
-      });
     }
 
     if (_planSortKey) {
@@ -4302,24 +4287,23 @@ Remark = ${remark}`;
   }
 
   // Re-render the table from the current planRows (no fetch). Used after
-  // sort/filter changes so the user sees the new ordering immediately
-  // without losing local edits or dirty state.
+  // sort changes so the user sees the new ordering immediately without
+  // losing local edits or dirty state.
   function _refreshPlanTableOnly(){
     const container = document.getElementById('dashPlan');
     if (!container) return;
     container.innerHTML = _planTableHtml();
     clearPlanSelection();
     _wirePlanTable(container);
-    _wirePlanSortAndFilter(container);
+    _wirePlanSortHeaders(container);
     const pb = document.getElementById('dashPlanBar');
     const pw = document.getElementById('planWrap');
     if (pb && pw) pw.style.top = pb.offsetHeight + 'px';
   }
 
-  // Bind click handlers on sortable <th> elements and input handlers on
-  // the per-column filter <input>s. Called after every table render so
-  // the freshly-injected DOM nodes get wired up.
-  function _wirePlanSortAndFilter(container){
+  // Bind click handlers on sortable <th> elements. Called after every table
+  // render so the freshly-injected DOM nodes get wired up.
+  function _wirePlanSortHeaders(container){
     if (!container) return;
     container.querySelectorAll('th[data-sort-key]').forEach(function(th){
       th.addEventListener('click', function(){
@@ -4331,14 +4315,6 @@ Remark = ${remark}`;
           _planSortKey = key;
           _planSortDir = 'asc';
         }
-        _refreshPlanTableOnly();
-      });
-    });
-    container.querySelectorAll('input.plan-filter').forEach(function(inp){
-      inp.addEventListener('input', function(){
-        const k = inp.getAttribute('data-col');
-        if (!k) return;
-        _planFilters[k] = inp.value || '';
         _refreshPlanTableOnly();
       });
     });
@@ -4495,7 +4471,7 @@ function _applyPlanCellStyle(el, col, val){
     const visibleIdx = _visibleSortedIndices();
 
     if (visibleIdx.length === 0) {
-      const msg = mySubcont ? 'No roster entries for your subcont.' : 'No rows match the current filters.';
+      const msg = 'No roster entries for your subcont.';
       return '<div id="planWrap" tabindex="0" style="overflow:auto;position:absolute;top:46px;left:0;right:0;bottom:0;user-select:none;-webkit-user-select:none;background:#fff;padding:30px;color:#6b7688;font-size:13px;">' + msg + '</div>';
     }
 
@@ -4527,25 +4503,14 @@ function _applyPlanCellStyle(el, col, val){
       }).join('') +
       '</tr>';
 
-    // Filter input row: one text input per data column (case-insensitive contains).
-    // Stays inside the sticky <thead> so it remains visible during scroll.
-    const filterRow = '<tr style="background:#eef1f3;">' +
-      displayHeaders.map(function(h){
-        const key = h[0];
-        if (key === 'del') {
-          return '<td style="padding:3px 4px; border-bottom:1px solid #d0d7de;"></td>';
-        }
-        const v = _planFilters[key] || '';
-        return '<td style="padding:3px 4px; border-bottom:1px solid #d0d7de;">' +
-          '<input type="text" class="plan-filter" data-col="' + key + '" value="' + escAttr(v) + '" placeholder="Filter…" style="width:100%; box-sizing:border-box; padding:2px 5px; border:1px solid #cfd7df; border-radius:4px; background:#fff; color:#24292f; font-size:10.5px; outline:none;">' +
-        '</td>';
-      }).join('') +
-    '</tr>';
+    // Filter input row: REMOVED (filter feature was removed per UX feedback — see
+    // git log ceade92→[next commit]). Each keystroke caused a full table re-render
+    // that stole focus from the input, making typing unusable. Only sort remains.
 
     return '<div id="planWrap" tabindex="0" style="overflow:auto;position:absolute;top:46px;left:0;right:0;bottom:0;user-select:none;-webkit-user-select:none;background:#fff;">' +
       '<table id="planData" style="width:100%; table-layout:fixed; border-collapse:collapse; font-size:11.5px; min-width:' + (showDel ? 1312 : 1280) + 'px;">' +
         '<colgroup>' + colgroup + '</colgroup>' +
-        '<thead style="position:sticky; top:0; z-index:3; background:#f6f8fa; box-shadow:0 2px 0 #d0d7de;">' + thead + filterRow + '</thead>' +
+        '<thead style="position:sticky; top:0; z-index:3; background:#f6f8fa; box-shadow:0 2px 0 #d0d7de;">' + thead + '</thead>' +
         '<tbody>' + rowsHtml + '</tbody>' +
       '</table>' +
     '</div>';
@@ -4811,7 +4776,7 @@ function _applyPlanCellStyle(el, col, val){
 container.innerHTML = _planTableHtml();
     clearPlanSelection();
     _wirePlanTable(container);
-    _wirePlanSortAndFilter(container);
+    _wirePlanSortHeaders(container);
   }
   });
 
