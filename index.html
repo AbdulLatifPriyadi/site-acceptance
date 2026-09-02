@@ -4097,9 +4097,17 @@ Remark = ${remark}`;
       _wirePlanSortHeaders(container);
       // Pin Save to right edge (already absolute in inline style); keep #planWrap clear of the bar
       // even when the bar wraps to a 2nd row on narrow viewports.
+      // NOTE: use _pb.offsetTop + _pb.offsetHeight, not just offsetHeight. The
+      // dashStatsBar (site-count chip bar) sits in normal flow above dashPlanBar
+      // inside .dash-body, so the plan bar's TOP is not at y=0. Without the
+      // offsetTop term, planWrap would start mid-bar and the sticky thead would
+      // be hidden behind the bar's wrapped tail. Stacking-context rules mean
+      // z-index alone can't rescue the thead (bar is z:100 in .dash-body;
+      // dashPlan containing the thead is z:auto → the whole dashPlan stacks
+      // below the bar regardless of inner z-indexes).
       var _pb = document.getElementById('dashPlanBar');
       var _pw = document.getElementById('planWrap');
-      if (_pb && _pw) _pw.style.top = _pb.offsetHeight + 'px';
+      if (_pb && _pw) _pw.style.top = (_pb.offsetTop + _pb.offsetHeight) + 'px';
     } finally {
       _hidePlanLoading();
     }
