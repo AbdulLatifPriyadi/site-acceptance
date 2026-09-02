@@ -4442,24 +4442,19 @@ function _applyPlanCellStyle(el, col, val){
   //                        the matching site exists in this dataset)
   //   - siteName        ← matching tracker siteName
   //   - activityRemark  ← 'WORK'
-  // Matching strategy: case-insensitive exact on account ↔ either the entry
-  // key (duId) OR its .name field. The Apps Script serves Clockin data keyed
-  // by duId, but in some sheets column A holds the account name (mislabeled
-  // "DU ID" in the header). Matching both gives full coverage; if the key is
-  // itself the account name, we still find the right entry by its .name from
-  // column B (or wherever the real "name" header is). If the same account
-  // appears in multiple clockin entries (rare — re-clocked-in same person),
-  // the last one seen in dashClockinData wins.
-  // The per-row Query button still works for surgical lookups if a row didn't
-  // get auto-filled.
+  // Matching strategy (in order, first hit wins per row):
+  //   1) Exact case-insensitive on account ↔ entry key (duId) OR .name
+  //   2) Fuzzy: case-insensitive substring of length >= 6 in either direction
+  //   3) Diagnostic console.log dumps the first few entries + lookups so we can
+  //      see exactly what's being compared if a match is unexpectedly missed.
   function _runQueryWork(){
     if (!Array.isArray(planRows) || planRows.length === 0) {
       setPlanStatus('Plan not loaded');
       return;
     }
-    // 1. Build account-name → active duId map. Scan entries where the person
-    //    is still clocked in (clockOut blank). Accept an entry if either the
-    //    key OR the .name field is non-empty.
+    // 1. Build account-name → active duId map. Each entry registers both its
+    //    key (Apps Script uppercases duId, so we lowercase to compare) and its
+    //    .name field under their lowercased forms.
     const activeByAccount = Object.create(null);
     let totalScanned = 0;
     let activeScanned = 0;
@@ -4473,24 +4468,61 @@ function _applyPlanCellStyle(el, col, val){
         const nameStr = String(ci.name || '').trim();
         if (!keyStr && !nameStr) return;
         activeScanned++;
-        // Register under both the key (in case it IS the account id) and the
-        // .name (the usual case). Last write wins on collision; documented.
         if (keyStr)  activeByAccount[keyStr.toLowerCase()]  = k;
         if (nameStr) activeByAccount[nameStr.toLowerCase()] = k;
       });
     }
-    try { console.log('[QueryWork] dashClockinData scanned=' + totalScanned + ' active=' + activeScanned + ' accountKeys=' + Object.keys(activeByAccount).length); } catch (_) {}
+    try {
+      console.log('[QueryWork] dashClockinData scanned=' + totalScanned +
+                  ' active=' + activeScanned +
+                  ' accountKeys=' + Object.keys(activeByAccount).length);
+      // Dump first 5 entries (key + name) so we can see what apps-script returned.
+      const sampleKeys = Object.keys(dashClockinData || {}).slice(0, 5);
+      sampleKeys.forEach(function(k){
+        const ci = dashClockinData[k] || {};
+        console.log('[QueryWork]   sample key=' + JSON.stringify(k) +
+                    ' name=' + JSON.stringify(ci.name) +
+                    ' clockOut=' + JSON.stringify(ci.clockOut));
+      });
+    } catch (_) {}
 
-    // 2. For each visible plan row, look up by account name (case-insensitive).
+    // 2. For each visible plan row, look up by account name. Fall back to
+    //    substring match (length >= 6) if exact match fails — this catches
+    //    accidental whitespace, casing artifacts, or short-prefix differences
+    //    in the .name field.
     const visibleIdx = _visibleSortedIndices();
     let filled = 0;
+    const debugLogged = { ok: 0, fuzzy: 0, miss: 0 };
     for (let n = 0; n < visibleIdx.length; n++) {
       const i = visibleIdx[n];
       const row = planRows[i];
       if (!row) continue;
       const accKey = String(row.account || '').trim().toLowerCase();
       if (!accKey) continue;
-      const activeDuId = activeByAccount[accKey];
+      let activeDuId = activeByAccount[accKey];
+      let matchKind = activeDuId ? 'ok' : null;
+      if (!activeDuId) {
+        // Fuzzy fallback: find any registered key whose lowercased form shares
+        // a 6+ char substring with accKey in either direction.
+        const fuzzy = Object.keys(activeByAccount).find(function(ak){
+          return ak && accKey && (ak.indexOf(accKey) !== -1 || accKey.indexOf(ak) !== -1) && Math.min(ak.length, accKey.length) >= 6;
+        });
+        if (fuzzy) { activeDuId = activeByAccount[fuzzy]; matchKind = 'fuzzy'; }
+      }
+      // Diagnostic: log first 3 misses so we can see what wasn't matching.
+      if (!activeDuId && debugLogged.miss < 3) {
+        debugLogged.miss++;
+        console.log('[QueryWork]   MISS planRow[' + i + '].account=' + JSON.stringify(row.account) +
+                    ' (looking up accKey=' + JSON.stringify(accKey) + ')');
+      } else if (activeDuId && (matchKind === 'fuzzy') && debugLogged.fuzzy < 3) {
+        debugLogged.fuzzy++;
+        console.log('[QueryWork]   FUZZY match planRow[' + i + '].account=' + JSON.stringify(row.account) +
+                    ' → ' + JSON.stringify(activeDuId));
+      } else if (activeDuId && (matchKind === 'ok') && debugLogged.ok < 3) {
+        debugLogged.ok++;
+        console.log('[QueryWork]   OK match planRow[' + i + '].account=' + JSON.stringify(row.account) +
+                    ' → ' + JSON.stringify(activeDuId));
+      }
       if (!activeDuId) continue;
       // Resolve the duId against dashTrackerData so siteName is available.
       const site = (Array.isArray(dashTrackerData) ? dashTrackerData : []).find(function(s){
@@ -4514,9 +4546,9 @@ function _applyPlanCellStyle(el, col, val){
     planDirty = true;
     _applySaveButtonState();
     if (filled > 0) {
-      setPlanStatus('Query Work: filled ' + filled + ' row(s) (matched ' + filled + '/' + visibleIdx.length + ' rows vs ' + activeScanned + ' active clockins)');
+      setPlanStatus('Query Work: filled ' + filled + ' row(s) — see [QueryWork] log for details');
     } else {
-      setPlanStatus('Query Work: 0 matches — scanned ' + activeScanned + ' active clockin entries, ' + visibleIdx.length + ' plan rows. Open DevTools console for [QueryWork] log.');
+      setPlanStatus('Query Work: 0 matches — scanned ' + activeScanned + ' active clockins, ' + visibleIdx.length + ' plan rows. Open DevTools console for [QueryWork] log.');
     }
   }
 
