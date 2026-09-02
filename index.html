@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -4401,7 +4401,7 @@ function _applyPlanCellStyle(el, col, val){
   // Does NOT fill the Result cell — the user manually applies via the select.
   // Reads DU ID live from planRows[rowIdx] so unsaved edits are picked up.
   function _runPlanResultQuery(btn){
-    var rowIdx = Number(btn.getAttribute('data-row');
+    var rowIdx = Number(btn.getAttribute('data-row'));
     if (!Number.isFinite(rowIdx) || !planRows[rowIdx]) return;
     var duId = planRows[rowIdx].duId;
     var result = _getRemarkForDuId(duId);
