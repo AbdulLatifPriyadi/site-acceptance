@@ -3925,7 +3925,9 @@ Remark = ${remark}`;
     try {
       const res = await fetchWithTimeout(SCRIPT_URL + '?type=plan&date=' + encodeURIComponent(date), 10000);
       if (!res.ok) return [];
-      return await res.json();
+      const json = await res.json();
+      try { console.log('[plan] fetchPlanData', date, 'rows:', (json || []).length, 'first:', (json && json[0]) || null); } catch (_) {}
+      return json;
     } catch (e) {
       console.warn('[plan] fetch failed', e);
       return [];

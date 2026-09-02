@@ -568,6 +568,15 @@ function getOrCreatePlanSheet() {
     ]]);
     sheet.setFrozenRows(1);
   }
+  // Force column A (date) to plain text so Sheet doesn't auto-convert
+  // 'YYYY-MM-DD' strings into Date objects (which break the strict-equality
+  // date filter in servePlan / servePlanDates).
+  var maxRows = Math.max(sheet.getLastRow(), sheet.getMaxRows());
+  if (maxRows > 1) {
+    sheet.getRange(2, 1, maxRows - 1, 1).setNumberFormat('@');
+  } else {
+    sheet.getRange('A2:A').setNumberFormat('@');
+  }
   return sheet;
 }
 
@@ -586,23 +595,37 @@ function servePlan(date) {
   var rows = [];
   for (var i = 0; i < values.length; i++) {
     var r = values[i];
-    if (want && String(r[0]) !== want) continue;
+    // Apps Script auto-detects the 'date' column as a Date type — normalize
+    // back to YYYY-MM-DD so the strict equality filter matches the client input.
+    var dateCell = _planDateCellToString(r[0]);
+    if (want && dateCell !== want) continue;
     rows.push({
-      date:             String(r[0]),
-      account:          String(r[1]),
-      subcon:           String(r[2]),
-      teamType:         String(r[3]),
-      resourceRemark:   String(r[4]),
-      duId:             String(r[5]),
-      siteName:         String(r[6]),
-      activityRemark:   String(r[7]),
-      dailyPlanActivity:String(r[8]),
+      date:             dateCell,
+      account:          String(r[1] || ''),
+      subcon:           String(r[2] || ''),
+      teamType:         String(r[3] || ''),
+      resourceRemark:   String(r[4] || ''),
+      duId:             String(r[5] || ''),
+      siteName:         String(r[6] || ''),
+      activityRemark:   String(r[7] || ''),
+      dailyPlanActivity:String(r[8] || ''),
       rowIdx:           r[9] === '' || r[9] === null || isNaN(Number(r[9])) ? -1 : Number(r[9])
     });
   }
   return ContentService
     .createTextOutput(JSON.stringify(rows))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+// Normalize a plan-date cell value to 'YYYY-MM-DD' string. Returns '' for empty.
+// Sheets auto-detects date-formatted strings into Date objects on write/read;
+// getValues() then returns Date, whose String() is the long form, not 'YYYY-MM-DD'.
+function _planDateCellToString(v) {
+  if (v === '' || v === null || v === undefined) return '';
+  if (Object.prototype.toString.call(v) === '[object Date]' && !isNaN(v.getTime())) {
+    return Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  }
+  return String(v);
 }
 
 // Serve a sorted-desc unique list of dates that have at least one plan row.
@@ -618,7 +641,7 @@ function servePlanDates() {
   var seen = {};
   var dates = [];
   for (var i = 0; i < data.length; i++) {
-    var d = String(data[i][0]);
+    var d = _planDateCellToString(data[i][0]);
     if (d && !seen[d]) { seen[d] = true; dates.push(d); }
   }
   dates.sort();
