@@ -4374,52 +4374,34 @@ function _applyPlanCellStyle(el, col, val){
     return remark ? { state: 'ok', remark: remark, team: team } : { state: 'empty', team: team };
   }
 
-  // Wire per-row Query buttons on a freshly rendered plan table. Called from
-  // renderPlanView after _wirePlanTable. Click handler looks up the Table tab
-  // for the row's DU ID and shows a tooltip preview — it does NOT fill the
-  // Result cell; the user can manually apply the result via the select.
+  // Wire per-row Query buttons via event delegation on #dashPlan. Called once
+  // on init. Delegation is used instead of per-element wiring so it survives table
+  // re-renders (no need to re-wire after innerHTML = _planTableHtml()).
+  // The Result <input> is wired by _wirePlanTable's input/change handlers and
+  // writes to activityRemark via _onPlanCellEdit.
   function _wirePlanResultRefresh(container){
     if (!container) return;
-    container.querySelectorAll('button.plan-result-query').forEach(function(btn){
-      btn.addEventListener('click', function(e){
-        e.preventDefault();
-        e.stopPropagation();
-        _runPlanResultQuery(btn);
-      });
-    });
-    // Also wire Result select changes to mirror into activityRemark + recolor.
-    container.querySelectorAll('select.plan-cell[data-col="result"]').forEach(function(sel){
-      sel.addEventListener('change', function(e){
-        e.stopPropagation();
-        var rowIdx = Number(sel.getAttribute('data-row'));
-        var val = sel.value;
-        if (!Number.isFinite(rowIdx) || !planRows[rowIdx]) return;
-        planRows[rowIdx].activityRemark = val;
-        // Sync activityRemark select in the same row if it exists.
-        var actSel = container.querySelector('select.plan-cell[data-row="' + rowIdx + '"][data-col="activityRemark"]');
-        if (actSel) {
-          actSel.value = val;
-          // Mirror style from activityRemark select to result select.
-          var actStyle = PLAN_ACTIVITY_STYLE[val] || null;
-          sel.style.background = actStyle ? actStyle.cell : '#fff';
-          sel.style.color = actStyle ? actStyle.text : '#24292f';
-          sel.style.fontWeight = actStyle ? '700' : '400';
-          actSel.style.background = sel.style.background;
-          actSel.style.color = sel.style.color;
-          actSel.style.fontWeight = sel.style.fontWeight;
-        }
-        planDirty = true;
-        _applySaveButtonState();
-        setPlanStatus('Unsaved changes');
-      });
-    });
+    // Remove old delegated handler if present to avoid duplicates on re-init.
+    if (container._planResultDelegated) {
+      container.removeEventListener('click', _planResultDelegatedHandler);
+    }
+    _planResultDelegatedHandler = function(e){
+      var btn = e.target.closest('button.plan-result-query');
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      _runPlanResultQuery(btn);
+    };
+    container.addEventListener('click', _planResultDelegatedHandler);
+    container._planResultDelegated = true;
   }
+  var _planResultDelegatedHandler = null;
 
   // Perform the Table tab lookup and show a tooltip preview on the Query button.
   // Does NOT fill the Result cell — the user manually applies via the select.
   // Reads DU ID live from planRows[rowIdx] so unsaved edits are picked up.
   function _runPlanResultQuery(btn){
-    var rowIdx = Number(btn.getAttribute('data-row'));
+    var rowIdx = Number(btn.getAttribute('data-row');
     if (!Number.isFinite(rowIdx) || !planRows[rowIdx]) return;
     var duId = planRows[rowIdx].duId;
     var result = _getRemarkForDuId(duId);
@@ -4604,7 +4586,8 @@ function _applyPlanCellStyle(el, col, val){
     const col    = el.dataset.col;
     if (!Number.isFinite(rowIdx) || !col || !planRows[rowIdx]) return;
     const val = String(el.value || '');
-    planRows[rowIdx][col] = val;
+    // Result column writes to activityRemark so Save persists it correctly.
+    planRows[rowIdx][col === 'result' ? 'activityRemark' : col] = val;
     planDirty = true;
     _applySaveButtonState();
     // Mirror into the parent <td>'s data-val so Ctrl+C copies the latest value
@@ -4689,23 +4672,17 @@ function _applyPlanCellStyle(el, col, val){
         '<button type="button" class="plan-del-row" data-account="' + escAttr(account) + '" title="Delete ' + escAttr(account) + ' from roster" style="background:transparent;border:1px solid #cfd7df;border-radius:4px;color:#6b7688;cursor:pointer;font-size:12px;padding:2px 6px;line-height:1;">✕</button>' +
       '</td>';
     }
-    // Result cell: an editable <select> (mirrors activityRemark options, styled green
-    // for WORK) with a small search-icon button on the right. The select writes
-    // to planRows[rowIdx].activityRemark directly. The Query button shows a
-    // tooltip preview from the Table tab — it does NOT fill the cell; the user
-    // can use the select to manually apply the result.
+    // Result cell: free-text <input> where the user types the activity remark
+    // directly. data-col="result" but _onPlanCellEdit maps it to activityRemark
+    // so Save persists it correctly. A small search-icon button sits on the right
+    // — clicking it looks up the Table tab and shows a tooltip preview (does NOT
+    // fill the input; the user manually types the result).
     function resultCell(rowIdx, activityRemark){
-      var actKey = String(activityRemark || '');
-      var actStyle = PLAN_ACTIVITY_STYLE[actKey] || null;
-      var selStyle = actStyle
-        ? 'flex:1;min-width:0;box-sizing:border-box;padding:4px 6px;border:1px solid #cfd7df;border-radius:4px;background:' + actStyle.cell + ';color:' + actStyle.text + ';font-size:11px;font-weight:700;cursor:pointer;outline:none;appearance:auto;-webkit-appearance:auto;'
-        : 'flex:1;min-width:0;box-sizing:border-box;padding:4px 6px;border:1px solid #cfd7df;border-radius:4px;background:#fff;color:#24292f;font-size:11px;cursor:pointer;outline:none;appearance:auto;-webkit-appearance:auto;';
+      var inputStyle = 'flex:1;min-width:0;box-sizing:border-box;padding:4px 6px;border:1px solid #cfd7df;border-radius:4px;background:#fff;color:#24292f;font-size:11px;outline:none;';
+      var btnStyle  = 'flex:0 0 auto;padding:3px 6px;border:1px solid #1f6feb;border-radius:4px;background:#1f6feb;color:#fff;font-size:11px;cursor:pointer;line-height:1.4;white-space:nowrap;';
       return '<div class="plan-result-wrap" style="display:flex;align-items:center;gap:4px;width:100%;">' +
-        '<select class="plan-cell" data-row="' + rowIdx + '" data-col="result" style="' + selStyle + '">' +
-        '<option value="">—</option>' +
-        PLAN_ACTIVITY_REMARK_OPTS.map(function(o){ return '<option value="' + o + '"' + (actKey === o ? ' selected' : '') + '>' + o + '</option>'; }).join('') +
-        '</select>' +
-        '<button type="button" class="plan-result-query" data-row="' + rowIdx + '" title="Preview from Table tab (click to see suggestion)" style="flex:0 0 auto;padding:3px 6px;border:1px solid #1f6feb;border-radius:4px;background:#1f6feb;color:#fff;font-size:11px;cursor:pointer;line-height:1.4;white-space:nowrap;">&#8981;</button>' +
+        '<input type="text" class="plan-cell" data-row="' + rowIdx + '" data-col="result" value="' + escAttr(activityRemark || '') + '" style="' + inputStyle + '" placeholder="—" spellcheck="false">' +
+        '<button type="button" class="plan-result-query" data-row="' + rowIdx + '" title="Preview from Table tab" style="' + btnStyle + '">&#8981;</button>' +
         '</div>';
     }
     function makeInputs(row, i){
