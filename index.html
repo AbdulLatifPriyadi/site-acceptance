@@ -660,9 +660,15 @@
         <button id="planSaveBtn"
           style="position:absolute; right:14px; top:50%; transform:translateY(-50%); z-index:2; padding:5px 14px;border:1px solid #4caf7d;border-radius:6px;background:#4caf7d;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;box-shadow:0 1px 4px rgba(0,0,0,.25);">Save</button>
         <span id="planSelInfo" style="font-size:11px; color:#a8d4f0; font-weight:700; display:none;"></span>
-        <span id="planStatus" style="margin-left:auto; padding-right:64px; font-size:11px; color:#b7c0c9; position:relative; z-index:3;"></span>
+        <span id="planStatus" style="margin-left:auto; padding-right:64px; font-size:11px; color:#b7c0c9; position:relative; z-index:3; pointer-events:none;"></span>
       </div>
       <div id="dashPlan" style="display:none; position:absolute; inset:0; overflow:auto; background:#fff; padding-top:46px;"></div>
+      <div id="planLoadingOverlay" style="display:none; position:absolute; inset:0; background:rgba(0,0,0,.5); z-index:50; align-items:center; justify-content:center;">
+        <div style="display:inline-flex; align-items:center; gap:8px; background:#fff; color:#1c2530; padding:10px 18px; border-radius:8px; box-shadow:0 4px 14px rgba(0,0,0,.3); font-size:12px; font-weight:600;">
+          <svg viewBox="0 0 24 24" width="16" height="16" style="animation:spin .8s linear infinite;"><circle cx="12" cy="12" r="9" fill="none" stroke="#cfd7df" stroke-width="3"/><path d="M21 12a9 9 0 0 0-9-9" fill="none" stroke="#2f6bc4" stroke-width="3" stroke-linecap="round"/></svg>
+          Loading plan…
+        </div>
+      </div>
       <button class="dash-var-toggle" id="dashVarToggle" title="Toggle variable reference" style="display:none;">_vars</button>
       <div class="dash-var-overlay" id="dashVarOverlay"></div>
       <div class="dash-legend" id="dashLegend"></div>
@@ -3745,6 +3751,7 @@ Remark = ${remark}`;
         return; // user cancelled — keep plan view
       }
       planDirty = false;
+      _applySaveButtonState();
     }
     const wasPlan = (dashView === 'plan');
     dashView = view;
@@ -3791,6 +3798,7 @@ Remark = ${remark}`;
             if (planDirty && !confirm('Surge changed the active date to ' + active + '. Discard unsaved changes and switch?')) return;
             planCurrentDate = active;
             planDirty = false;
+            _applySaveButtonState();
             setPlanStatus('');
             if (di) di.value = active;
             renderPlanView();
@@ -4037,6 +4045,7 @@ Remark = ${remark}`;
       if (planDirty && !confirm('Surge changed the active date to ' + active + '. Discard unsaved changes and switch?')) return;
       planCurrentDate = active;
       planDirty = false;
+      _applySaveButtonState();
       setPlanStatus('');
       const di = document.getElementById('planDateInput');
       if (di) di.value = active;
@@ -4057,26 +4066,36 @@ Remark = ${remark}`;
     let date = (dateInput && dateInput.value) ? dateInput.value : (planCurrentDate || todayISO());
     planCurrentDate = date;
     if (dateInput && dateInput.value !== date) dateInput.value = date;
+    // Reflect current dirty state immediately (button may still be showing the
+    // stale green from a prior edit when re-entering the tab).
+    _applySaveButtonState();
 
-    // Pull saved rows (best-effort; offline / 404 falls back to roster defaults)
-    let saved = [];
+    // Show loading overlay for the duration of the fetch + render.
+    _showPlanLoading();
     try {
-      saved = await fetchPlanData(date);
-    } catch (e) {
-      saved = [];
-    }
-    planRows = _assignSavedRows(effectiveRoster(), Array.isArray(saved) ? saved : []);
-    planDirty = false;
-    setPlanStatus('');
-    clearPlanSelection();
+      // Pull saved rows (best-effort; offline / 404 falls back to roster defaults)
+      let saved = [];
+      try {
+        saved = await fetchPlanData(date);
+      } catch (e) {
+        saved = [];
+      }
+      planRows = _assignSavedRows(effectiveRoster(), Array.isArray(saved) ? saved : []);
+      planDirty = false;
+      _applySaveButtonState();
+      setPlanStatus('');
+      clearPlanSelection();
 
-    container.innerHTML = _planTableHtml();
-    _wirePlanTable(container);
-    // Pin Save to right edge (already absolute in inline style); keep #planWrap clear of the bar
-    // even when the bar wraps to a 2nd row on narrow viewports.
-    var _pb = document.getElementById('dashPlanBar');
-    var _pw = document.getElementById('planWrap');
-    if (_pb && _pw) _pw.style.top = _pb.offsetHeight + 'px';
+      container.innerHTML = _planTableHtml();
+      _wirePlanTable(container);
+      // Pin Save to right edge (already absolute in inline style); keep #planWrap clear of the bar
+      // even when the bar wraps to a 2nd row on narrow viewports.
+      var _pb = document.getElementById('dashPlanBar');
+      var _pw = document.getElementById('planWrap');
+      if (_pb && _pw) _pw.style.top = _pb.offsetHeight + 'px';
+    } finally {
+      _hidePlanLoading();
+    }
   }
 
   // Wire cell edits + selection drag handlers on a freshly rendered plan table.
@@ -4213,6 +4232,7 @@ Remark = ${remark}`;
         }
         if (wrote) {
           planDirty = true;
+          _applySaveButtonState();
           setPlanStatus('Unsaved changes');
         }
       };
@@ -4262,6 +4282,7 @@ function _applyPlanCellStyle(el, col, val){
     const val = String(el.value || '');
     planRows[rowIdx][col] = val;
     planDirty = true;
+    _applySaveButtonState();
     // Mirror into the parent <td>'s data-val so Ctrl+C copies the latest value
     const td = el.closest('td');
     if (td) td.setAttribute('data-val', val);
@@ -4274,6 +4295,35 @@ function _applyPlanCellStyle(el, col, val){
     const el = document.getElementById('planStatus');
     if (el) el.textContent = text || '';
     try { console.log('[plan] status:', text || ''); } catch (_) {}
+  }
+
+  // Toggle Save button visual based on planDirty. Gray = nothing to save,
+  // green = unsaved changes pending. Also sets cursor accordingly.
+  function _applySaveButtonState(){
+    const btn = document.getElementById('planSaveBtn');
+    if (!btn) return;
+    if (planDirty) {
+      btn.style.background = '#4caf7d';
+      btn.style.borderColor = '#4caf7d';
+      btn.style.color = '#fff';
+      btn.style.cursor = 'pointer';
+    } else {
+      btn.style.background = '#6b7688';
+      btn.style.borderColor = '#6b7688';
+      btn.style.color = '#e6edf3';
+      btn.style.cursor = 'default';
+    }
+  }
+
+  // Show the Plan loading overlay (gray 50% + spinner). Resolves on next tick
+  // so the spinner paints before the synchronous-heavy fetch starts.
+  function _showPlanLoading(){
+    const ov = document.getElementById('planLoadingOverlay');
+    if (ov) ov.style.display = 'flex';
+  }
+  function _hidePlanLoading(){
+    const ov = document.getElementById('planLoadingOverlay');
+    if (ov) ov.style.display = 'none';
   }
 
   function _planTableHtml(){
@@ -4548,6 +4598,7 @@ function _applyPlanCellStyle(el, col, val){
       });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       planDirty = false;
+      _applySaveButtonState();
       setPlanStatus('Saved');
     } catch (e) {
       console.warn('[plan] save failed', e);
@@ -4580,6 +4631,7 @@ function _applyPlanCellStyle(el, col, val){
     }
     planCurrentDate = newDate;
     planDirty = false;
+    _applySaveButtonState();
     setPlanStatus('');
     // Browsing the date picker is now LOCAL only — subcont viewers don't auto-follow.
     // Subcont clients pick up the new date only when surge clicks the SET (broadcast) button.
@@ -4620,6 +4672,7 @@ function _applyPlanCellStyle(el, col, val){
       }
     }
     planDirty = true;
+    _applySaveButtonState();
     setPlanStatus('Copied from ' + prior + ' (unsaved)');
     // Re-render so the inputs reflect the new planRows.
     const container = document.getElementById('dashPlan');
