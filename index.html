@@ -646,7 +646,7 @@
           style="padding:5px 9px;border:1px solid #2f6bc4;border-radius:6px;background:#2f6bc4;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;">Export</button>
       </div>
       <div id="dashTable" style="display:none; position:absolute; inset:0; overflow:auto; background:#fff; padding-top:46px;"></div>
-      <div id="dashPlanBar" style="display:none; position:absolute; top:0; left:0; right:0; z-index:100; background:#1c2530; border-bottom:1px solid rgba(255,255,255,.1); padding:6px 14px; display:flex; align-items:center; gap:6px; flex-wrap:nowrap; overflow-x:auto;">
+      <div id="dashPlanBar" style="display:none; position:relative; top:0; left:0; right:0; z-index:100; background:#1c2530; border-bottom:1px solid rgba(255,255,255,.1); padding:6px 14px; display:flex; align-items:center; gap:6px; flex-wrap:wrap; overflow-x:auto;">
         <span style="font-size:13px; font-weight:800; color:#fff;">Daily Plan</span>
         <input type="date" id="planDateInput"
           style="padding:5px 9px; border:1px solid rgba(255,255,255,.2); border-radius:6px; background:#0d1117; color:#e6edf3; font-size:11.5px; outline:none;">
@@ -654,11 +654,11 @@
           style="padding:5px 9px;border:1px solid #8b5cf6;border-radius:6px;background:#8b5cf6;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;display:none;">+ Add member</button>
         <button id="planSetActiveBtn"
           title="Broadcast the picked date to all subcont viewers"
-          style="padding:5px 9px;border:1px solid #f0b429;border-radius:6px;background:#f0b429;color:#1c2530;font-size:11.5px;cursor:pointer;font-weight:600;display:none;">SET</button>
+          style="padding:4px 9px;border:1px solid #f0b429;border-radius:6px;background:#f0b429;color:#1c2530;font-size:11.5px;cursor:pointer;font-weight:600;display:none;">SET</button>
         <button id="planCopyLastBtn"
           style="padding:5px 9px;border:1px solid #2f6bc4;border-radius:6px;background:#2f6bc4;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;">Copy from last date</button>
         <button id="planSaveBtn"
-          style="padding:5px 9px;border:1px solid #4caf7d;border-radius:6px;background:#4caf7d;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;">Save</button>
+          style="position:absolute; right:14px; top:50%; transform:translateY(-50%); z-index:2; padding:5px 14px;border:1px solid #4caf7d;border-radius:6px;background:#4caf7d;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;box-shadow:0 1px 4px rgba(0,0,0,.25);">Save</button>
         <span id="planSelInfo" style="font-size:11px; color:#a8d4f0; font-weight:700; display:none;"></span>
         <span id="planStatus" style="margin-left:auto; font-size:11px; color:#b7c0c9;"></span>
       </div>
@@ -4068,6 +4068,11 @@ Remark = ${remark}`;
 
     container.innerHTML = _planTableHtml();
     _wirePlanTable(container);
+    // Pin Save to right edge (already absolute in inline style); keep #planWrap clear of the bar
+    // even when the bar wraps to a 2nd row on narrow viewports.
+    var _pb = document.getElementById('dashPlanBar');
+    var _pw = document.getElementById('planWrap');
+    if (_pb && _pw) _pw.style.top = _pb.offsetHeight + 'px';
   }
 
   // Wire cell edits + selection drag handlers on a freshly rendered plan table.
