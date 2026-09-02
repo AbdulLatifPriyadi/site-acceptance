@@ -665,7 +665,7 @@
         <span id="planStatus" style="margin-left:auto; padding-right:64px; font-size:11px; color:#b7c0c9; position:relative; z-index:3; pointer-events:none;"></span>
       </div>
       <div id="dashPlan" style="display:none; position:absolute; inset:0; overflow:auto; background:#fff; padding-top:46px;"></div>
-      <div id="planLoadingOverlay" style="display:none; position:absolute; inset:0; background:rgba(0,0,0,.5); z-index:50; align-items:center; justify-content:center;">
+      <div id="planLoadingOverlay" style="display:none; position:absolute; inset:0; background:rgba(0,0,0,.5); z-index:300; align-items:center; justify-content:center;">
         <div style="display:inline-flex; align-items:center; gap:8px; background:#fff; color:#1c2530; padding:10px 18px; border-radius:8px; box-shadow:0 4px 14px rgba(0,0,0,.3); font-size:12px; font-weight:600;">
           <svg viewBox="0 0 24 24" width="16" height="16" style="animation:spin .8s linear infinite;"><circle cx="12" cy="12" r="9" fill="none" stroke="#cfd7df" stroke-width="3"/><path d="M21 12a9 9 0 0 0-9-9" fill="none" stroke="#2f6bc4" stroke-width="3" stroke-linecap="round"/></svg>
           <span class="plan-loading-msg">Loading plan…</span>
@@ -4093,6 +4093,7 @@ Remark = ${remark}`;
 
       container.innerHTML = _planTableHtml();
       _wirePlanTable(container);
+      _wirePlanResultRefresh(container);
       _wirePlanSortHeaders(container);
       // Pin Save to right edge (already absolute in inline style); keep #planWrap clear of the bar
       // even when the bar wraps to a 2nd row on narrow viewports.
@@ -4343,6 +4344,62 @@ function _applyPlanCellStyle(el, col, val){
     }
   }
 
+  // Look up the remark for a given DU ID from the Table tab data.
+  // NOTE: uses getFilteredSites() — the currently filtered set — not the full
+  // tracker. That's fine here because the user can iterate per row: a site that
+  // exists in TRACKER_SHEET but is currently filtered out will simply report
+  // '(no match)' for that row. The user can clear filters and re-query.
+  // CAVEAT: getFilteredSites() returns a new array per call. Per-row Queries are
+  // sub-second on typical sheets; if it ever becomes slow, cache the result here.
+  function _getRemarkForDuId(duId){
+    const want = String(duId || '').trim();
+    if (!want) return { state: 'empty' }; // empty DU ID is treated as "site matched but no remark" semantically; UI shows '(empty)'
+    const sites = (typeof getFilteredSites === 'function') ? getFilteredSites() : [];
+    const match = sites.find(function(s){ return String((s && s.duId) || '').trim() === want; });
+    if (!match) return { state: 'no-match' };
+    const remark = (match && match.remark != null) ? String(match.remark) : '';
+    return remark ? { state: 'ok', remark: remark } : { state: 'empty' };
+  }
+
+  // Wire per-row Query buttons on a freshly rendered plan table. Called from
+  // renderPlanView after _wirePlanTable. Click handler mutates the cell in place
+  // (no full re-render) so any in-progress edits in other cells keep focus.
+  function _wirePlanResultRefresh(container){
+    if (!container) return;
+    container.querySelectorAll('button.plan-result-query').forEach(function(btn){
+      btn.addEventListener('click', function(e){
+        e.preventDefault();
+        e.stopPropagation();
+        _runPlanResultQuery(btn);
+      });
+    });
+  }
+
+  // Perform the DU-ID lookup and write the result into the cell's <span> +
+  // data-val + swap the button label. Reads DU ID live from planRows[rowIdx]
+  // so unsaved edits are picked up.
+  function _runPlanResultQuery(btn){
+    const rowIdx = Number(btn.getAttribute('data-row'));
+    if (!Number.isFinite(rowIdx) || !planRows[rowIdx]) return;
+    const duId = planRows[rowIdx].duId;
+    const td = btn.closest('td');
+    const span = td ? td.querySelector('span.plan-result-text') : null;
+    const result = _getRemarkForDuId(duId);
+    if (result.state === 'no-match') {
+      if (span) { span.textContent = '(no match)'; span.style.color = '#6b7688'; span.style.fontStyle = 'italic'; }
+      if (td) td.setAttribute('data-val', '');
+    } else if (result.state === 'empty') {
+      if (span) { span.textContent = '(empty)'; span.style.color = '#6b7688'; span.style.fontStyle = 'italic'; }
+      if (td) td.setAttribute('data-val', '');
+    } else {
+      if (span) { span.textContent = result.remark; span.style.color = '#24292f'; span.style.fontStyle = 'normal'; }
+      if (td) td.setAttribute('data-val', result.remark);
+    }
+    // Swap Query → ↻ so the user can re-query after editing the DU ID.
+    btn.textContent = '↻';
+    btn.setAttribute('title', 'Re-query (picks up unsaved DU ID changes)');
+  }
+
   function _onPlanCellEdit(e){
     const el = e.target;
     const rowIdx = Number(el.dataset.row);
@@ -4405,7 +4462,7 @@ function _applyPlanCellStyle(el, col, val){
     const colW = {
       account: 200, subcon: 130, teamType: 110, resourceRemark: 140,
       duId: 150, siteName: 170, activityRemark: 160, dailyPlanActivity: 160,
-      del: 32
+      result: 200, del: 32
     };
     const headers = [
       ['account',           'Account'],
@@ -4415,7 +4472,11 @@ function _applyPlanCellStyle(el, col, val){
       ['duId',              'DU ID'],
       ['siteName',          'Site Name'],
       ['activityRemark',    'Activity Remark'],
-      ['dailyPlanActivity', 'Daily Plan Activity']
+      ['dailyPlanActivity', 'Daily Plan Activity'],
+      // 'result' is sortable but with caveats: placeholder '—' sorts before
+      // real values, so empty rows cluster together at top or bottom depending
+      // on asc/desc. Acceptable for this feature.
+      ['result',            'Result']
     ];
     const showDel = !mySubcont; // surge-only delete column
     const inputBaseStyle = 'width:100%; box-sizing:border-box; padding:5px 7px; border:1px solid #cfd7df; border-radius:5px; background:#fff; color:#24292f; font-size:11.5px; outline:none;';
@@ -4429,6 +4490,13 @@ function _applyPlanCellStyle(el, col, val){
       return '<td data-row="' + rowIdx + '" data-col="del" style="padding:6px 4px; text-align:center;">' +
         '<button type="button" class="plan-del-row" data-account="' + escAttr(account) + '" title="Delete ' + escAttr(account) + ' from roster" style="background:transparent;border:1px solid #cfd7df;border-radius:4px;color:#6b7688;cursor:pointer;font-size:12px;padding:2px 6px;line-height:1;">✕</button>' +
       '</td>';
+    }
+    // Inner content for the per-row Result cell: shows a '—' placeholder + a small
+    // Query button that looks up the row's DU ID against getFilteredSites() (the
+    // Table tab data). Wrapped by cellTd() the same way the input/select cells are.
+    function resultCell(rowIdx){
+      return '<span class="plan-result-text" style="color:#6b7688; font-style:italic;">—</span>' +
+        '<button type="button" class="plan-result-query" data-row="' + rowIdx + '" title="Query Table tab for this row\'s DU ID" style="margin-left:8px; padding:2px 8px; border:1px solid #1f6feb; border-radius:4px; background:#1f6feb; color:#fff; font-size:10px; cursor:pointer; font-weight:600; line-height:1.4;">Query</button>';
     }
     function makeInputs(row, i){
       // Per-row subcon tint (uses dashSubcontColor → SUBCONT_COLOR_MAP, with palette fallback).
@@ -4459,7 +4527,11 @@ function _applyPlanCellStyle(el, col, val){
         ['dailyPlanActivity', '<select class="plan-cell" data-row="' + i + '" data-col="dailyPlanActivity" style="' + selectBaseStyle + '">' +
           '<option value="">—</option>' +
           PLAN_DAILY_PLAN_OPTS.map(function(o){ return '<option value="' + o + '"' + (row.dailyPlanActivity === o ? ' selected' : '') + '>' + o + '</option>'; }).join('') +
-          '</select>']
+          '</select>'],
+        // Result cell: not an editable input — uses cellTd's data-val slot as an
+        // empty placeholder. The Query button writes the actual value into the
+        // <span> + updates data-val in place (see _runPlanResultQuery).
+        ['result', resultCell(i)]
       ];
       let html = inputs.map(function(p){ return cellTd(p[1], i, p[0], row[p[0]] || ''); }).join('');
       if (showDel) html += delTd(i, row.account || '');
@@ -4508,9 +4580,9 @@ function _applyPlanCellStyle(el, col, val){
     // that stole focus from the input, making typing unusable. Only sort remains.
 
     return '<div id="planWrap" tabindex="0" style="overflow:auto;position:absolute;top:46px;left:0;right:0;bottom:0;user-select:none;-webkit-user-select:none;background:#fff;">' +
-      '<table id="planData" style="width:100%; table-layout:fixed; border-collapse:collapse; font-size:11.5px; min-width:' + (showDel ? 1312 : 1280) + 'px;">' +
+      '<table id="planData" style="width:100%; table-layout:fixed; border-collapse:collapse; font-size:11.5px; min-width:' + (showDel ? 1512 : 1480) + 'px;">' +
         '<colgroup>' + colgroup + '</colgroup>' +
-        '<thead style="position:sticky; top:0; z-index:3; background:#f6f8fa; box-shadow:0 2px 0 #d0d7de;">' + thead + '</thead>' +
+        '<thead style="position:sticky; top:0; z-index:200; background:#f6f8fa; box-shadow:0 2px 0 #d0d7de;">' + thead + '</thead>' +
         '<tbody>' + rowsHtml + '</tbody>' +
       '</table>' +
     '</div>';
