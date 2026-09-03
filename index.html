@@ -3835,8 +3835,10 @@ Remark = ${remark}`;
           if (di) di.value = planCurrentDate;
         }
       }
-      // Disable the date input for non-surge users (visible, read-only)
+      // Keep date input in sync with planCurrentDate (covers auto-login restore path)
       const di = document.getElementById('planDateInput');
+      if (di && di.value !== planCurrentDate) di.value = planCurrentDate;
+      // Disable the date input for non-surge users (visible, read-only)
       if (di) di.disabled = !!mySubcont;
       // Surge-only: show the + Add member button
       const addBtn = document.getElementById('planAddMemberBtn');
@@ -3851,6 +3853,8 @@ Remark = ${remark}`;
     } else {
       // map view — handled above
     }
+    // Persist last-view preference
+    try { localStorage.setItem('dashView', view); } catch(e) {}
   }
 
   let dashFilterPanelMinimized = false;
@@ -5242,6 +5246,7 @@ function _applyPlanCellStyle(el, col, val){
     if (newDate === planCurrentDate) { setPlanStatus('Already showing ' + newDate); return; }
     if (planDirty && !confirm('Discard unsaved changes for ' + (planCurrentDate || 'this date') + ' and load ' + newDate + '?')) return;
     planCurrentDate = newDate;
+    try { localStorage.setItem('planDate', newDate); } catch(e) {}
     planDirty = false;
     _applySaveButtonState();
     setPlanStatus('');
@@ -5606,6 +5611,39 @@ container.innerHTML = _planTableHtml();
     const saved = getSavedToken();
     const input = document.getElementById('loginInput');
     if(saved && input) input.value = saved;
+  })();
+
+  // Auto-login: if a saved token is valid, skip the login screen entirely.
+  (function(){
+    const saved = getSavedToken();
+    if (!saved) return;
+    const lower = saved.toLowerCase();
+    let valid = false;
+    if (lower === 'surge123') {
+      dashboardUnlocked = true; mySubcont = ''; valid = true;
+    } else if (lower === 'subcont+123') {
+      mySubcont = 'SUBCONT'; unlockedSubconts = { 'SUBCONT': true }; dashboardUnlocked = true; valid = true;
+    } else {
+      const matched = subcontNameFromToken(saved);
+      if (matched) { mySubcont = matched; unlockedSubconts = {}; unlockedSubconts[matched] = true; dashboardUnlocked = true; valid = true; }
+    }
+    if (valid) {
+      document.getElementById('loginScreen').style.display = 'none';
+      document.getElementById('dashboardScreen').style.display = 'flex';
+      document.getElementById('dashboardScreen').style.position = 'fixed';
+      document.getElementById('dashboardScreen').style.inset = '0';
+      document.getElementById('dashboardScreen').style.zIndex = '60';
+      document.getElementById('dashboardScreen').style.background = '#eef1f3';
+      document.body.classList.add('dashboard-mode');
+      openDashboard();
+      const lastView = localStorage.getItem('dashView') || 'map';
+      if (lastView === 'plan') {
+        planCurrentDate = localStorage.getItem('planDate') || todayISO();
+        const di = document.getElementById('planDateInput');
+        if (di) di.value = planCurrentDate;
+      }
+      setDashView(lastView);
+    }
   })();
 
   // Prefill plan roster delta from localStorage on page load (no flash of empty roster)
