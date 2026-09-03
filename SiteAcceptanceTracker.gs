@@ -165,11 +165,19 @@ function serveClockin() {
     var idxClockOut = colMap['clock out'] !== undefined ? colMap['clock out'] : -1;
     var idxTeam    = colMap['team']    !== undefined ? colMap['team']    :
                      colMap['subcont'] !== undefined ? colMap['subcont'] : -1;
+    var idxAccount = colMap['account']      !== undefined ? colMap['account']      :
+                     colMap['account id']   !== undefined ? colMap['account id']   :
+                     colMap['accountid']    !== undefined ? colMap['accountid']    : -1;
 
     // Partial match fallback
     if (idxDuId === -1) {
       for (var k in colMap) {
         if (k.indexOf('du') !== -1 && k.indexOf('id') !== -1) { idxDuId = colMap[k]; break; }
+      }
+    }
+    if (idxAccount === -1) {
+      for (var kAcc in colMap) {
+        if (kAcc.indexOf('account') !== -1) { idxAccount = colMap[kAcc]; break; }
       }
     }
     if (idxClockIn === -1) {
@@ -195,6 +203,7 @@ function serveClockin() {
       result[duId] = {
         name:     idxName     >= 0 ? String(row[idxName]     || '').trim() : '',
         team:     idxTeam     >= 0 ? String(row[idxTeam]     || '').trim() : '',
+        account:  idxAccount  >= 0 ? String(row[idxAccount]  || '').trim() : '',
         clockIn:  idxClockIn  >= 0 ? String(row[idxClockIn]  || '').trim() : '',
         clockOut: clockOut
       };
@@ -663,40 +672,130 @@ function handlePlanSave(body) {
       .setMimeType(ContentService.MimeType.JSON);
   }
 
-  // Delete all rows matching this date (reverse order to keep indices stable)
   var sh = getOrCreatePlanSheet();
   var last = sh.getLastRow();
+
+  // Flush any pending writes before reading — makes read-modify-write more atomic
+  // under concurrent access (one user saves while another is mid-save).
+  SpreadsheetApp.flush();
+
+  // --- 1. Read all existing data rows ---
+  var existing = [];
+  var existingRowNums = []; // parallel: sheet row numbers for each existing entry
   if (last > 1) {
-    var existing = sh.getRange(2, 1, last - 1, 1).getValues();
-    for (var i = existing.length - 1; i >= 0; i--) {
-      if (String(existing[i][0]) === date) sh.deleteRow(i + 2);
+    var vals = sh.getRange(2, 1, last - 1, 10).getValues();
+    for (var i = 0; i < vals.length; i++) {
+      var dateCell = _planDateCellToString(vals[i][0]);
+      existingRowNums.push(i + 2); // sheet row number (1-based)
+      existing.push(vals[i]);
     }
   }
 
-  // Write the new set if any
+  // --- 2. Build incoming map keyed by rowIdx; skip rows with no/empty rowIdx ---
+  var incomingByIdx = {};
+  for (var j = 0; j < rows.length; j++) {
+    var r = rows[j];
+    if (r.rowIdx === '' || r.rowIdx === null || r.rowIdx === undefined) continue;
+    var idx = Number(r.rowIdx);
+    incomingByIdx[idx] = [
+      date,
+      String(r.account            || ''),
+      String(r.subcon             || ''),
+      String(r.teamType           || ''),
+      String(r.resourceRemark     || ''),
+      String(r.duId               || ''),
+      String(r.siteName           || ''),
+      String(r.activityRemark     || ''),
+      String(r.dailyPlanActivity  || ''),
+      idx
+    ];
+  }
+
+  // --- 3. Merge: keep non-target-date rows; replace target-date rows by rowIdx ---
+  var merged = [];
+  var seenIncomingIdx = {}; // tracks which incoming rowIdxs we've consumed
+  for (var k = 0; k < existing.length; k++) {
+    var dateCellK = _planDateCellToString(existing[k][0]);
+    if (dateCellK !== date) {
+      // Row belongs to a different date — keep as-is.
+      merged.push(existing[k]);
+    } else {
+      // Row belongs to this date — replace by rowIdx if an incoming row matches.
+      var existingIdx = existing[k][9];
+      if (existingIdx !== '' && existingIdx !== null && existingIdx !== undefined && !isNaN(Number(existingIdx))) {
+        var key = Number(existingIdx);
+        if (incomingByIdx.hasOwnProperty(key) && !seenIncomingIdx.hasOwnProperty(key)) {
+          merged.push(incomingByIdx[key]);
+          seenIncomingIdx[key] = true;
+          continue;
+        }
+      }
+      // No incoming row matches this existing rowIdx — keep the existing row
+      // (another subcont's row that wasn't in this submission).
+      merged.push(existing[k]);
+    }
+  }
+
+  // --- 4. Append any incoming rows not yet consumed (new rowIdx values) ---
+  for (var m in incomingByIdx) {
+    if (!seenIncomingIdx.hasOwnProperty(m)) {
+      merged.push(incomingByIdx[m]);
+    }
+  }
+
+  // --- 5. Clear all rows for this date and rewrite the merged set ---
+  if (last > 1) {
+    var dateRows = [];
+    for (var n = 0; n < existing.length; n++) {
+      var d = _planDateCellToString(existing[n][0]);
+      if (d === date) dateRows.push(existingRowNums[n]);
+    }
+    if (dateRows.length > 0) {
+      // Sort ascending and build contiguous ranges to clear.
+      dateRows.sort(function(a, b) { return a - b; });
+      // Group into contiguous ranges to minimize setValues calls.
+      var rangesToClear = [];
+      var rangeStart = dateRows[0];
+      var rangePrev  = dateRows[0];
+      for (var p = 1; p <= dateRows.length; p++) {
+        if (p < dateRows.length && dateRows[p] === rangePrev + 1) {
+          rangePrev = dateRows[p];
+        } else {
+          // Close the current range [rangeStart, rangePrev] inclusive.
+          rangesToClear.push(sh.getRange(rangeStart, 1, rangePrev - rangeStart + 1, 10));
+          if (p < dateRows.length) {
+            rangeStart = rangePrev = dateRows[p];
+          }
+        }
+      }
+      for (var q = 0; q < rangesToClear.length; q++) {
+        rangesToClear[q].setValues(_blankRange(rangesToClear[q].getNumRows(), 10));
+      }
+    }
+  }
+
+  // --- 6. Write the merged set starting at row 2 ---
   var written = 0;
-  if (rows.length) {
-    var out = rows.map(function(r) {
-      return [
-        date,
-        String(r.account           || ''),
-        String(r.subcon            || ''),
-        String(r.teamType          || ''),
-        String(r.resourceRemark    || ''),
-        String(r.duId              || ''),
-        String(r.siteName          || ''),
-        String(r.activityRemark    || ''),
-        String(r.dailyPlanActivity || ''),
-        (r.rowIdx === '' || r.rowIdx === null || r.rowIdx === undefined) ? '' : Number(r.rowIdx)
-      ];
-    });
-    sh.getRange(sh.getLastRow() + 1, 1, out.length, 10).setValues(out);
-    written = out.length;
+  if (merged.length > 0) {
+    sh.getRange(2, 1, merged.length, 10).setValues(merged);
+    written = merged.length;
   }
 
   return ContentService
     .createTextOutput(JSON.stringify({ status: 'ok', written: written }))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+// Returns a 2D array of empty strings [rows x cols] for use with Range.setValues()
+// to blank out a range without using deleteRow (which leaves ghost rows).
+function _blankRange(rows, cols) {
+  var blank = [];
+  for (var i = 0; i < rows; i++) {
+    var row = [];
+    for (var j = 0; j < cols; j++) row.push('');
+    blank.push(row);
+  }
+  return blank;
 }
 
 // Serve the surge's active plan date (script-wide shared property).
