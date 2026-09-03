@@ -124,6 +124,8 @@ function doGet(e) {
       return serveActiveDate();
     } else if (type === 'planRoster') {
       return servePlanRoster();
+    } else if (type === 'planRosterEdits') {
+      return servePlanRosterEdits();
     } else {
       // Default: return full forward log
       return serveForwardLog();
@@ -397,6 +399,11 @@ function doPost(e) {
     // Handle plan roster delta save (surge-managed additions/removals)
     if (body.type === 'planRosterSave') {
       return handlePlanRosterSave(body);
+    }
+
+    // Handle plan roster field edits (account/subcon/teamType/resourceRemark propagation)
+    if (body.type === 'planRosterEdit') {
+      return handlePlanRosterEdit(body);
     }
 
     // Handle forward/submission
@@ -860,5 +867,41 @@ function handlePlanRosterSave(body) {
     JSON.stringify({ added: cleanAdded, removed: cleanRemoved }));
   return ContentService
     .createTextOutput(JSON.stringify({ status: 'ok', added: cleanAdded.length, removed: cleanRemoved.length }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+// Serve planRosterEdits: a map of account -> { account, subcon, teamType, resourceRemark }
+// overrides. Returns the raw JSON map stored in ScriptProperties.
+function servePlanRosterEdits() {
+  var raw = PropertiesService.getScriptProperties().getProperty('planRosterEdits') || '{}';
+  return ContentService
+    .createTextOutput(raw)
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+// Save plan roster field edits. The client sends an array of edit objects,
+// each containing account + the 4 editable roster fields. Merges into the
+// existing map: new values override old ones for the same account.
+function handlePlanRosterEdit(body) {
+  var edits = Array.isArray(body.edits) ? body.edits : [];
+  var props = {};
+  try {
+    var existing = PropertiesService.getScriptProperties().getProperty('planRosterEdits') || '{}';
+    props = JSON.parse(existing);
+  } catch (e) {
+    props = {};
+  }
+  for (var i = 0; i < edits.length; i++) {
+    var e = edits[i];
+    props[String(e.account || '').trim()] = {
+      account:        String(e.account        || '').trim(),
+      subcon:         String(e.subcon         || '').trim(),
+      teamType:       String(e.teamType       || '').trim(),
+      resourceRemark: String(e.resourceRemark || '').trim()
+    };
+  }
+  PropertiesService.getScriptProperties().setProperty('planRosterEdits', JSON.stringify(props));
+  return ContentService
+    .createTextOutput(JSON.stringify({ status: 'ok', count: edits.length }))
     .setMimeType(ContentService.MimeType.JSON);
 }
