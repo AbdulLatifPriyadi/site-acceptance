@@ -4368,7 +4368,8 @@ Remark = ${remark}`;
       _wirePlanTable(container);
       _wirePlanSortHeaders(container);
       // Pin Save to right edge (already absolute in inline style); keep #planWrap clear of the bar
-      // even when the bar wraps to a 2nd row on narrow viewports.
+      // even when the bar wraps to a 2nd row on narrow viewports. With statsBar hidden in Plan view,
+      // the bar is the first child of dashBody, so offsetHeight alone is the correct top.
       var _pb = document.getElementById('dashPlanBar');
       var _pw = document.getElementById('planWrap');
       if (_pb && _pw) _pw.style.top = _pb.offsetHeight + 'px';
@@ -4619,6 +4620,7 @@ Remark = ${remark}`;
     clearPlanSelection();
     _wirePlanTable(container);
     _wirePlanSortHeaders(container);
+    // With statsBar hidden, planBar is the first child of dashBody — use its offsetHeight as top.
     const pb = document.getElementById('dashPlanBar');
     const pw = document.getElementById('planWrap');
     if (pb && pw) pw.style.top = pb.offsetHeight + 'px';
@@ -4827,7 +4829,7 @@ function _applyPlanCellStyle(el, col, val){
 
     if (visibleIdx.length === 0) {
       const msg = 'No roster entries for your subcont.';
-      return '<div id="planWrap" tabindex="0" style="overflow:auto;position:absolute;top:46px;left:0;right:0;bottom:0;user-select:none;-webkit-user-select:none;background:#fff;padding:30px;color:#6b7688;font-size:13px;">' + msg + '</div>';
+      return '<div id="planWrap" tabindex="0" style="overflow:auto;position:absolute;top:0;left:0;right:0;bottom:0;user-select:none;-webkit-user-select:none;background:#fff;padding:30px;color:#6b7688;font-size:13px;">' + msg + '</div>';
     }
 
     const rowsHtml = visibleIdx.map(function(i){
@@ -4865,9 +4867,10 @@ function _applyPlanCellStyle(el, col, val){
     // git log ceade92→[next commit]). Each keystroke caused a full table re-render
     // that stole focus from the input, making typing unusable. Only sort remains.
 
-    return '<div id="planWrap" tabindex="0" style="overflow:auto;position:absolute;top:46px;left:0;right:0;bottom:0;user-select:none;-webkit-user-select:none;background:#fff;">' +
+    return '<div id="planWrap" tabindex="0" style="overflow:auto;position:absolute;top:0;left:0;right:0;bottom:0;user-select:none;-webkit-user-select:none;background:#fff;">' +
       '<table id="planData" style="width:100%; table-layout:fixed; border-collapse:collapse; font-size:11.5px; min-width:' + (showDel ? 1312 : 1280) + 'px;">' +
         '<colgroup>' + colgroup + '</colgroup>' +
+        '<thead style="position:sticky; top:0; z-index:3; background:#f6f8fa; box-shadow:0 2px 0 #d0d7de;">' + thead + '</thead>' +
         '<tbody>' + rowsHtml + '</tbody>' +
       '</table>' +
     '</div>';
