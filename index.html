@@ -92,7 +92,15 @@
     background:transparent; color:#fff; font-size:11.5px; font-weight:700; cursor:pointer;
   }
   .dash-mode-btn.active{ background:#fff; color:var(--ink); border-color:#fff; }
-  .dash-status{ font-size:11px; color:#b7c0c9; flex-shrink:0; }
+  .dash-status{ font-size:11px; color:#b7c0c9; flex-shrink:0; display:flex; align-items:center; gap:5px; }
+  .dash-refresh-dot{
+    display:inline-block; width:7px; height:7px; border-radius:50%;
+    background:#6b7688; flex-shrink:0; transition:background .2s;
+  }
+  .dash-refresh-dot.fetching{ background:#4caf7d; animation:pulse-dot 1.2s ease-in-out infinite; }
+  .dash-refresh-dot.hidden{ opacity:0; }
+  .dash-refresh-text{ color:#b7c0c9; white-space:nowrap; }
+  @keyframes pulse-dot{ 0%,100%{ opacity:1; transform:scale(1); } 50%{ opacity:.4; transform:scale(.7); } }
   .dash-topbar-right{ margin-left:auto; display:flex; align-items:center; gap:8px; }
   .dash-refresh-btn{
     flex-shrink:0; width:28px; height:28px; border:none; border-radius:7px;
@@ -1633,9 +1641,9 @@ Remark = ${remark}`;
   let planActiveDate = '';
   let planDatePollTimer = null;
   const PLAN_DATE_POLL_MS = 5000;
-  // Auto-refresh dashboard data every 60s
+  // Auto-refresh dashboard data every 10 min
   let dashRefreshTimer = null;
-  const DASH_REFRESH_MS = 60000;
+  const DASH_REFRESH_MS = 600000; // 10 minutes
   // ---------------------------
   let pivotSortKey = 'total';
   let pivotSortDir = 'desc';
@@ -3856,14 +3864,8 @@ Remark = ${remark}`;
     populateBatchOptions();
     renderChecklistFilters();
     renderStatsBar();
-    const count = dashTrackerData ? dashTrackerData.length : 0;
-    const cached = getTrackerCacheLocal();
-    if(count > 0 && cached && count === cached.length){
-      // This is the cached render (no fresh data arrived yet)
-      document.getElementById('dashStatus').textContent = `Showing cached data — refreshing... (${count} sites)`;
-    } else {
-      document.getElementById('dashStatus').textContent = count > 0 ? `${count} sites loaded` : 'No sites (upload Excel or check server)';
-    }
+    // Update "Last updated" indicator (do not override with plain text — indicator persists across re-renders).
+    _updateDashRefreshIndicator(false);
     try { refreshDashboardView(); } catch(e){ console.warn('renderDashboard view error:', e); }
   }
 
@@ -3872,6 +3874,7 @@ Remark = ${remark}`;
     _forceRefresh = true;
     const btn = document.getElementById('dashRefreshBtn');
     if(btn) btn.classList.add('refreshing');
+    _updateDashRefreshIndicator(true); // show pulsing dot
     try{
       const [tracker, msgLookup, clockin] = await Promise.all([fetchTrackerForMap(), buildMessageLookup(), fetchClockinData()]);
       dashTrackerData = tracker;
@@ -3881,6 +3884,7 @@ Remark = ${remark}`;
     }catch(e){ console.warn('Refresh failed:', e); }
     _forceRefresh = false;
     if(btn) btn.classList.remove('refreshing');
+    _setDashLastUpdated();
   }
 
   // ============================================================
@@ -4138,6 +4142,56 @@ Remark = ${remark}`;
 
   function stopDashRefresh(){
     if(dashRefreshTimer){ clearInterval(dashRefreshTimer); dashRefreshTimer = null; }
+    if(dashRefreshTickTimer){ clearInterval(dashRefreshTickTimer); dashRefreshTickTimer = null; }
+  }
+  // ----- Dashboard refresh indicator -----
+  // dashLastUpdated: Unix ms timestamp of last successful refresh
+  let dashLastUpdated = 0;
+  // dashRefreshTickTimer: interval handle for the "X ago" counter
+  let dashRefreshTickTimer = null;
+
+  // Format a duration in ms as a human-readable string.
+  function _formatDuration(ms){
+    if (ms < 0) return '';
+    const s = Math.floor(ms / 1000);
+    if (s < 5)  return 'just now';
+    if (s < 60) return s + 's ago';
+    const m = Math.floor(s / 60);
+    if (m < 60) return m + 'm ago';
+    const h = Math.floor(m / 60);
+    if (h < 24) return h + 'h ago';
+    return 'over a day ago';
+  }
+
+  // Update the dashStatus indicator: pulsing dot + "Last updated: X ago" text.
+  // Call with fetching=true to show the fetching state instead.
+  function _updateDashRefreshIndicator(fetching){
+    const el = document.getElementById('dashStatus');
+    if (!el) return;
+    if (fetching) {
+      el.innerHTML = '<span class="dash-refresh-dot fetching"></span><span class="dash-refresh-text" style="color:#9aa0a6;">Refreshing\u2026</span>';
+    } else {
+      const ago = _formatDuration(Date.now() - dashLastUpdated);
+      const label = dashLastUpdated > 0 ? 'Last updated: ' + ago : '';
+      el.innerHTML = '<span class="dash-refresh-dot' + (label ? '' : ' hidden') + '"></span><span class="dash-refresh-text">' + label + '</span>';
+    }
+  }
+
+  // Start the "X ago" ticker: updates the counter every second.
+  function _startDashRefreshTick(){
+    if (dashRefreshTickTimer) clearInterval(dashRefreshTickTimer);
+    dashRefreshTickTimer = setInterval(function(){
+      if (document.getElementById('dashboardScreen').style.display === 'none') return;
+      // Only update if not mid-fetch
+      const dot = document.querySelector('.dash-refresh-dot.fetching');
+      if (!dot) _updateDashRefreshIndicator(false);
+    }, 1000);
+  }
+
+  function _setDashLastUpdated(){
+    dashLastUpdated = Date.now();
+    _updateDashRefreshIndicator(false);
+    _startDashRefreshTick();
   }
   // ---------------------------------------------------
 
@@ -5380,7 +5434,7 @@ container.innerHTML = _planTableHtml();
         dashTrackerData = cachedTracker;
         dashMessageLookup = cachedMsg || {};
         dashClockinData = cachedClockin || {};
-        document.getElementById('dashStatus').textContent = `Showing cached data — refreshing... (${cachedTracker.length} sites)`;
+        document.getElementById('dashStatus').innerHTML = '<span class="dash-refresh-dot fetching"></span><span class="dash-refresh-text" style="color:#9aa0a6;">Cached \u2014 refreshing\u2026</span>';
         _renderDashboard();
         startDashRefresh();
 
@@ -5391,11 +5445,12 @@ container.innerHTML = _planTableHtml();
           dashMessageLookup = msg;
           dashClockinData = clockin || {};
           _renderDashboard();
+          _setDashLastUpdated();
           console.log('[initDashboard] Background refresh done:', dashTrackerData.length, 'sites');
         }).catch(e=>{ console.warn('[initDashboard] Background refresh failed:', e); });
       } else {
         // No cache — must wait for fresh data
-        document.getElementById('dashStatus').textContent = 'Loading...';
+        document.getElementById('dashStatus').innerHTML = '<span class="dash-refresh-dot fetching"></span><span class="dash-refresh-text" style="color:#9aa0a6;">Loading\u2026</span>';
         _forceRefresh = false;
         try {
           const [tracker, msgLookup, clockin] = await Promise.all([fetchTrackerForMap(), buildMessageLookup(), fetchClockinData()]);
@@ -5410,6 +5465,7 @@ container.innerHTML = _planTableHtml();
           dashClockinData = {};
         }
         _renderDashboard();
+        _setDashLastUpdated();
         startDashRefresh();
       }
       console.log('[initDashboard] Complete');
