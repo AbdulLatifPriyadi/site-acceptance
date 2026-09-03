@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -92,15 +92,7 @@
     background:transparent; color:#fff; font-size:11.5px; font-weight:700; cursor:pointer;
   }
   .dash-mode-btn.active{ background:#fff; color:var(--ink); border-color:#fff; }
-  .dash-status{ font-size:11px; color:#b7c0c9; flex-shrink:0; display:flex; align-items:center; gap:5px; }
-  .dash-refresh-dot{
-    display:inline-block; width:7px; height:7px; border-radius:50%;
-    background:#6b7688; flex-shrink:0; transition:background .2s;
-  }
-  .dash-refresh-dot.fetching{ background:#4caf7d; animation:pulse-dot 1.2s ease-in-out infinite; }
-  .dash-refresh-dot.hidden{ opacity:0; }
-  .dash-refresh-text{ color:#b7c0c9; white-space:nowrap; }
-  @keyframes pulse-dot{ 0%,100%{ opacity:1; transform:scale(1); } 50%{ opacity:.4; transform:scale(.7); } }
+  .dash-status{ font-size:11px; color:#b7c0c9; flex-shrink:0; }
   .dash-topbar-right{ margin-left:auto; display:flex; align-items:center; gap:8px; }
   .dash-refresh-btn{
     flex-shrink:0; width:28px; height:28px; border:none; border-radius:7px;
@@ -582,6 +574,145 @@
     padding:1px 4px; border-radius:3px; white-space:nowrap; pointer-events:none;
     max-width:80px; overflow:hidden; text-overflow:ellipsis;
   }
+}
+
+/* ===== MOBILE RESPONSIVE ===== */
+
+/* 1. Topbar (phone only) */
+@media (max-width: 480px) {
+  .dash-topbar { padding: 8px 10px; gap: 8px; }
+  .dash-topbar h1 { font-size: 13px; }
+  .dash-view-btn { padding: 5px 10px; font-size: 10px; }
+  .dash-mode-btn { padding: 5px 8px; font-size: 10px; }
+  .dash-back-btn { width: 36px; height: 36px; }
+}
+
+/* 2. Stats bar (phone only) */
+@media (max-width: 480px) {
+  #dashStatsBar { padding: 5px 10px; font-size: 10px; }
+  .dash-stat-chip { padding: 2px 7px; }
+  .dash-stat-chip .count { font-size: 11px; }
+}
+
+/* 3. Filter panel (≤768px) — collapsible bottom panel */
+@media (max-width: 768px) {
+  .dash-filter-panel {
+    position: fixed;
+    top: auto;
+    bottom: 0;
+    right: 0;
+    left: 0;
+    width: 100%;
+    max-width: none;
+    border-radius: 14px 14px 0 0;
+    max-height: 50vh;
+    box-shadow: 0 -4px 20px rgba(0,0,0,.25);
+    z-index: 1000;
+  }
+  .dash-filter-panel.minimized {
+    max-height: 42px;
+  }
+  .dash-filter-panel .dash-minimize-btn {
+    display: flex !important;
+    margin-left: auto;
+  }
+}
+
+/* 4. Legend (≤768px) */
+@media (max-width: 768px) {
+  .dash-legend {
+    bottom: 10px;
+    left: 10px;
+    max-width: 180px;
+    font-size: 10.5px;
+    padding: 8px 10px;
+  }
+  .dash-legend-dot { width: 9px; height: 9px; }
+}
+
+/* 5. Hover info box (≤768px) — bottom sheet */
+@media (max-width: 768px) {
+  .dash-hover-box {
+    position: fixed;
+    top: auto !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    border-radius: 14px 14px 0 0;
+    max-height: 45vh;
+    resize: none;
+  }
+}
+
+/* 6. Table horizontal scroll wrappers (≤768px) */
+@media (max-width: 768px) {
+  .pivot-table-wrap {
+    max-height: calc(100vh - 200px);
+    -webkit-overflow-scrolling: touch;
+  }
+  .sub-table-wrap {
+    -webkit-overflow-scrolling: touch;
+  }
+  .sub-edit-table { min-width: 600px; }
+}
+
+/* 7. Sub-cards (phone only) */
+@media (max-width: 480px) {
+  .sub-cards { margin: 16px 10px 32px; max-width: 100%; }
+  .sub-card-head { padding: 14px 14px 8px; }
+  .sub-name { font-size: 18px; }
+  .sub-total { font-size: 26px; }
+  .sub-avatar { width: 46px; height: 46px; font-size: 9px; }
+  .sub-rank { width: 40px; height: 40px; }
+  .sub-rank b { font-size: 14px; }
+  .sub-grid { margin: 10px 14px 0; }
+  .sub-cell .val { font-size: 20px; }
+}
+
+/* 8. Sub-table overlay (≤768px) */
+@media (max-width: 768px) {
+  .sub-table-overlay { padding: 10px; }
+  .sub-table-head { padding: 8px 10px; }
+  .sub-table-search { min-width: 0; flex: 1; }
+}
+
+/* 9. Plan view (≤768px) */
+@media (max-width: 768px) {
+  #dashPlanBar { padding: 6px 10px; gap: 6px; flex-wrap: wrap; }
+  #planDateInput { font-size: 12px; padding: 5px 8px; }
+  .plan-action-btn { padding: 5px 10px; font-size: 11px; }
+  #planData { min-width: 600px; }
+  #planData td, #planData th { padding: 6px 4px; font-size: 10px; }
+}
+
+/* 10. Touch target minimums (≤768px) */
+@media (max-width: 768px) {
+  .dash-view-btn { min-height: 44px; min-width: 44px; padding: 0 10px; }
+  .dash-mode-btn { min-height: 44px; min-width: 44px; padding: 0 8px; }
+  .dash-back-btn { min-height: 44px; min-width: 44px; }
+  .dash-refresh-btn { min-height: 44px; min-width: 44px; }
+  .dash-minimize-btn { min-height: 44px; min-width: 44px; }
+  .dash-color-toggle .dash-mode-btn { min-height: 44px; min-width: 44px; padding: 0 8px; }
+  .dash-filter-mini { min-height: 44px; font-size: 11px; }
+  .pivot-mode-btn { min-height: 44px; padding: 0 10px; }
+  .sub-card { min-height: 44px; }
+  .sub-table-close, .sub-table-save { min-height: 44px; min-width: 44px; padding: 0 12px; }
+  .plan-action-btn { min-height: 44px; }
+  .login-btn { min-height: 44px; }
+  .login-quick-btn { min-height: 44px; width: 44px; }
+  .login-input { min-height: 44px; font-size: 16px; }
+}
+
+/* 11. Graph view (≤768px) */
+@media (max-width: 768px) {
+  #dashGraph { padding: 12px 10px; }
+  .pivot-table { font-size: 10.5px; }
+  .pivot-table th, .pivot-table td { padding: 5px 6px; }
+  .pivot-heading { font-size: 13px; }
+}
+
 </style>
 </head>
 <body>
@@ -667,15 +798,13 @@
           style="padding:4px 9px;border:1px solid #f0b429;border-radius:6px;background:#f0b429;color:#1c2530;font-size:11.5px;cursor:pointer;font-weight:600;display:none;">SET</button>
         <button id="planCopyLastBtn"
           style="padding:5px 9px;border:1px solid #2f6bc4;border-radius:6px;background:#2f6bc4;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;">Copy from last date</button>
-        <button id="planQueryWorkBtn" title="Auto-fill each plan row whose account name is currently clocked in (DU ID + Site Name + Activity Remark = WORK) from clockin data"
-          style="padding:5px 9px;border:1px solid #16a34a;border-radius:6px;background:#16a34a;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;">Query Work</button>
         <button id="planSaveBtn"
           style="position:absolute; right:14px; top:50%; transform:translateY(-50%); z-index:2; padding:5px 14px;border:1px solid #4caf7d;border-radius:6px;background:#4caf7d;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;box-shadow:0 1px 4px rgba(0,0,0,.25);">Save</button>
         <span id="planSelInfo" style="font-size:11px; color:#a8d4f0; font-weight:700; display:none;"></span>
         <span id="planStatus" style="margin-left:auto; padding-right:64px; font-size:11px; color:#b7c0c9; position:relative; z-index:3; pointer-events:none;"></span>
       </div>
-      <div id="dashPlan" style="display:none; position:absolute; inset:0; overflow:auto; background:#fff;"></div>
-      <div id="planLoadingOverlay" style="display:none; position:absolute; inset:0; background:rgba(0,0,0,.5); z-index:300; align-items:center; justify-content:center;">
+      <div id="dashPlan" style="display:none; position:absolute; inset:0; overflow:auto; background:#fff; padding-top:46px;"></div>
+      <div id="planLoadingOverlay" style="display:none; position:absolute; inset:0; background:rgba(0,0,0,.5); z-index:50; align-items:center; justify-content:center;">
         <div style="display:inline-flex; align-items:center; gap:8px; background:#fff; color:#1c2530; padding:10px 18px; border-radius:8px; box-shadow:0 4px 14px rgba(0,0,0,.3); font-size:12px; font-weight:600;">
           <svg viewBox="0 0 24 24" width="16" height="16" style="animation:spin .8s linear infinite;"><circle cx="12" cy="12" r="9" fill="none" stroke="#cfd7df" stroke-width="3"/><path d="M21 12a9 9 0 0 0-9-9" fill="none" stroke="#2f6bc4" stroke-width="3" stroke-linecap="round"/></svg>
           <span class="plan-loading-msg">Loading plan…</span>
@@ -1584,12 +1713,6 @@ Remark = ${remark}`;
     'OTHER PROJECT':    null,
     'WAITING MATERIAL': null
   };
-  // Activities that block duId / siteName / dailyPlanActivity / result cells.
-  // Uses exact casing from PLAN_ACTIVITY_REMARK_OPTS ('Closing Only', not 'CLOSING ONLY').
-  const PLAN_BLOCKED_ACTIVITY = {
-    'IDLE': true, 'ON LEAVE': true, 'OTHER PROJECT': true,
-    'WAITING MATERIAL': true, 'Closing Only': true
-  };
   const GAP_STATUSES = ['ATP', 'ON AIR', 'Install', 'Commcase', 'DN Requested', 'PO Requested'];
   const SUB_TABLE_FIELDS = [
     { key:'batchRfi', label:'Batch RFI' },
@@ -1629,9 +1752,6 @@ Remark = ${remark}`;
   // Mirror of the server's `planRoster` script property. Reconciles on dashboard init.
   let planRosterDelta = { added: [], removed: [] };
   let planRosterDirty = false; // (reserved for future retry queue; not used in v1)
-  // Plan roster field edits: maps account name -> { account, subcon, teamType, resourceRemark }.
-  // Loaded from server on init; updated deltas POSTed on save. Applied in effectiveRoster().
-  let planRosterEdits = {};
   // Plan cell selection (mirrors Table view pattern for select + Ctrl+C)
   let planSelStart = null;
   let planSelEnd = null;
@@ -1641,9 +1761,6 @@ Remark = ${remark}`;
   let planActiveDate = '';
   let planDatePollTimer = null;
   const PLAN_DATE_POLL_MS = 5000;
-  // Auto-refresh dashboard data every 10 min
-  let dashRefreshTimer = null;
-  const DASH_REFRESH_MS = 600000; // 10 minutes
   // ---------------------------
   let pivotSortKey = 'total';
   let pivotSortDir = 'desc';
@@ -3789,7 +3906,7 @@ Remark = ${remark}`;
     document.getElementById('viewPlanBtn').classList.toggle('active', view === 'plan');
     document.getElementById('dashMap').style.display = view === 'map' ? '' : 'none';
     document.getElementById('dashLegend').style.display = view === 'map' ? '' : 'none';
-    document.getElementById('dashStatsBar').style.display = view === 'plan' ? 'none' : '';
+    document.getElementById('dashStatsBar').style.display = '';
     document.getElementById('dashGraph').style.display = view === 'graph' ? 'block' : 'none';
     document.getElementById('dashTable').style.display = view === 'table' ? 'block' : 'none';
     document.getElementById('dashTableBar').style.display = view === 'table' ? 'flex' : 'none';
@@ -3835,10 +3952,8 @@ Remark = ${remark}`;
           if (di) di.value = planCurrentDate;
         }
       }
-      // Keep date input in sync with planCurrentDate (covers auto-login restore path)
-      const di = document.getElementById('planDateInput');
-      if (di && di.value !== planCurrentDate) di.value = planCurrentDate;
       // Disable the date input for non-surge users (visible, read-only)
+      const di = document.getElementById('planDateInput');
       if (di) di.disabled = !!mySubcont;
       // Surge-only: show the + Add member button
       const addBtn = document.getElementById('planAddMemberBtn');
@@ -3853,8 +3968,6 @@ Remark = ${remark}`;
     } else {
       // map view — handled above
     }
-    // Persist last-view preference
-    try { localStorage.setItem('dashView', view); } catch(e) {}
   }
 
   let dashFilterPanelMinimized = false;
@@ -3868,8 +3981,14 @@ Remark = ${remark}`;
     populateBatchOptions();
     renderChecklistFilters();
     renderStatsBar();
-    // Update "Last updated" indicator (do not override with plain text — indicator persists across re-renders).
-    _updateDashRefreshIndicator(false);
+    const count = dashTrackerData ? dashTrackerData.length : 0;
+    const cached = getTrackerCacheLocal();
+    if(count > 0 && cached && count === cached.length){
+      // This is the cached render (no fresh data arrived yet)
+      document.getElementById('dashStatus').textContent = `Showing cached data — refreshing... (${count} sites)`;
+    } else {
+      document.getElementById('dashStatus').textContent = count > 0 ? `${count} sites loaded` : 'No sites (upload Excel or check server)';
+    }
     try { refreshDashboardView(); } catch(e){ console.warn('renderDashboard view error:', e); }
   }
 
@@ -3878,7 +3997,6 @@ Remark = ${remark}`;
     _forceRefresh = true;
     const btn = document.getElementById('dashRefreshBtn');
     if(btn) btn.classList.add('refreshing');
-    _updateDashRefreshIndicator(true); // show pulsing dot
     try{
       const [tracker, msgLookup, clockin] = await Promise.all([fetchTrackerForMap(), buildMessageLookup(), fetchClockinData()]);
       dashTrackerData = tracker;
@@ -3888,7 +4006,6 @@ Remark = ${remark}`;
     }catch(e){ console.warn('Refresh failed:', e); }
     _forceRefresh = false;
     if(btn) btn.classList.remove('refreshing');
-    _setDashLastUpdated();
   }
 
   // ============================================================
@@ -3908,7 +4025,7 @@ Remark = ${remark}`;
   }
 
   function defaultPlanRows(){
-    return effectiveRoster().map(function(r){
+    return PLAN_ROSTER.map(function(r){
       return {
         account:           r.account,
         subcon:            r.subcon,
@@ -4052,65 +4169,13 @@ Remark = ${remark}`;
     }
   }
 
-  // ----- Plan roster field edits (Feature 3: roster propagation) -----
-  async function fetchPlanRosterEdits() {
-    if (!serverConfigured()) return {};
-    try {
-      const res = await fetchWithTimeout(SCRIPT_URL + '?type=planRosterEdits', 10000);
-      if (!res.ok) return {};
-      const raw = await res.text();
-      return JSON.parse(raw);
-    } catch (e) { return {}; }
-  }
-
-  async function postPlanRosterEdits(edits) {
-    if (!serverConfigured()) return false;
-    try {
-      const res = await fetch(SCRIPT_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ type: 'planRosterEdit', edits: edits })
-      });
-      if (!res.ok) console.warn('[planRosterEdits] save failed: HTTP ' + res.status);
-      return res.ok;
-    } catch (e) {
-      console.warn('[planRosterEdits] save failed', e);
-      return false;
-    }
-  }
-
-  // Effective roster = PLAN_ROSTER base minus `removed`, plus `added`, plus `planRosterEdits`.
-  // planRosterEdits overrides base values for matching accounts (4 fields: account, subcon,
-  // teamType, resourceRemark). Edits take priority over added/removed deltas.
+  // Effective roster = PLAN_ROSTER base minus `removed`, plus `added`.
   // Pure / synchronous / cheap — called on every render.
   function effectiveRoster() {
     const removed = new Set((planRosterDelta.removed || []).map(String));
     const base    = PLAN_ROSTER.filter(function(r){ return !removed.has(r.account); });
     const added   = (planRosterDelta.added || []).filter(function(r){ return !removed.has(r.account); });
-    // Apply planRosterEdits on top: edit overrides base + added fields for matching accounts.
-    const edits   = planRosterEdits || {};
-    const merged  = base.map(function(r){
-      const edit = edits[String(r.account || '').trim()];
-      if (!edit) return r;
-      return {
-        account:        edit.account        !== undefined ? edit.account        : r.account,
-        subcon:         edit.subcon         !== undefined ? edit.subcon         : r.subcon,
-        teamType:       edit.teamType       !== undefined ? edit.teamType       : r.teamType,
-        resourceRemark: edit.resourceRemark !== undefined ? edit.resourceRemark : r.resourceRemark
-      };
-    });
-    // For added rows, also apply edits if the account matches.
-    const addedMerged = added.map(function(r){
-      const edit = edits[String(r.account || '').trim()];
-      if (!edit) return r;
-      return {
-        account:        edit.account        !== undefined ? edit.account        : r.account,
-        subcon:         edit.subcon         !== undefined ? edit.subcon         : r.subcon,
-        teamType:       edit.teamType       !== undefined ? edit.teamType       : r.teamType,
-        resourceRemark: edit.resourceRemark !== undefined ? edit.resourceRemark : r.resourceRemark
-      };
-    });
-    return merged.concat(addedMerged);
+    return base.concat(added);
   }
   // -------------------------------------------------------------------
 
@@ -4134,68 +4199,6 @@ Remark = ${remark}`;
 
   function stopPlanDatePolling(){
     if (planDatePollTimer) { clearInterval(planDatePollTimer); planDatePollTimer = null; }
-  }
-
-  function startDashRefresh(){
-    stopDashRefresh();
-    dashRefreshTimer = setInterval(async function(){
-      if(document.getElementById('dashboardScreen').style.display === 'none') return;
-      await _doRefresh();
-    }, DASH_REFRESH_MS);
-  }
-
-  function stopDashRefresh(){
-    if(dashRefreshTimer){ clearInterval(dashRefreshTimer); dashRefreshTimer = null; }
-    if(dashRefreshTickTimer){ clearInterval(dashRefreshTickTimer); dashRefreshTickTimer = null; }
-  }
-  // ----- Dashboard refresh indicator -----
-  // dashLastUpdated: Unix ms timestamp of last successful refresh
-  let dashLastUpdated = 0;
-  // dashRefreshTickTimer: interval handle for the "X ago" counter
-  let dashRefreshTickTimer = null;
-
-  // Format a duration in ms as a human-readable string.
-  function _formatDuration(ms){
-    if (ms < 0) return '';
-    const s = Math.floor(ms / 1000);
-    if (s < 5)  return 'just now';
-    if (s < 60) return s + 's ago';
-    const m = Math.floor(s / 60);
-    if (m < 60) return m + 'm ago';
-    const h = Math.floor(m / 60);
-    if (h < 24) return h + 'h ago';
-    return 'over a day ago';
-  }
-
-  // Update the dashStatus indicator: pulsing dot + "Last updated: X ago" text.
-  // Call with fetching=true to show the fetching state instead.
-  function _updateDashRefreshIndicator(fetching){
-    const el = document.getElementById('dashStatus');
-    if (!el) return;
-    if (fetching) {
-      el.innerHTML = '<span class="dash-refresh-dot fetching"></span><span class="dash-refresh-text" style="color:#9aa0a6;">Refreshing\u2026</span>';
-    } else {
-      const ago = _formatDuration(Date.now() - dashLastUpdated);
-      const label = dashLastUpdated > 0 ? 'Last updated: ' + ago : '';
-      el.innerHTML = '<span class="dash-refresh-dot' + (label ? '' : ' hidden') + '"></span><span class="dash-refresh-text">' + label + '</span>';
-    }
-  }
-
-  // Start the "X ago" ticker: updates the counter every second.
-  function _startDashRefreshTick(){
-    if (dashRefreshTickTimer) clearInterval(dashRefreshTickTimer);
-    dashRefreshTickTimer = setInterval(function(){
-      if (document.getElementById('dashboardScreen').style.display === 'none') return;
-      // Only update if not mid-fetch
-      const dot = document.querySelector('.dash-refresh-dot.fetching');
-      if (!dot) _updateDashRefreshIndicator(false);
-    }, 1000);
-  }
-
-  function _setDashLastUpdated(){
-    dashLastUpdated = Date.now();
-    _updateDashRefreshIndicator(false);
-    _startDashRefreshTick();
   }
   // ---------------------------------------------------
 
@@ -4229,26 +4232,12 @@ Remark = ${remark}`;
 
       container.innerHTML = _planTableHtml();
       _wirePlanTable(container);
-      _wirePlanResultRefresh(container);
       _wirePlanSortHeaders(container);
       // Pin Save to right edge (already absolute in inline style); keep #planWrap clear of the bar
       // even when the bar wraps to a 2nd row on narrow viewports.
-      // NOTE: use _pb.offsetTop + _pb.offsetHeight, not just offsetHeight. The
-      // dashStatsBar (site-count chip bar) sits in normal flow above dashPlanBar
-      // inside .dash-body, so the plan bar's TOP is not at y=0. Without the
-      // offsetTop term, planWrap would start mid-bar and the sticky thead would
-      // be hidden behind the bar's wrapped tail. Stacking-context rules mean
-      // z-index alone can't rescue the thead (bar is z:100 in .dash-body;
-      // dashPlan containing the thead is z:auto → the whole dashPlan stacks
-      // below the bar regardless of inner z-indexes).
-      var _sb = document.getElementById('dashStatsBar');
       var _pb = document.getElementById('dashPlanBar');
       var _pw = document.getElementById('planWrap');
-      var planBodyTop = (_pb ? _pb.offsetTop + _pb.offsetHeight : 0);
-      if (_pw) _pw.style.top = planBodyTop + 'px';
-      // Set #dashPlan padding-top to match the combined statsBar + planBar height,
-      // eliminating the white gap that appeared when statsBar content varied.
-      container.style.paddingTop = planBodyTop + 'px';
+      if (_pb && _pw) _pw.style.top = _pb.offsetHeight + 'px';
     } finally {
       _hidePlanLoading();
     }
@@ -4364,7 +4353,6 @@ Remark = ${remark}`;
             const tc = startCol + c;
             if (!bodyRows[tr] || !bodyRows[tr].cells[tc]) continue;       // truncate beyond visible grid
             const td = bodyRows[tr].cells[tc];
-            if (td.getAttribute('data-blocked') === '1') continue;         // skip blocked cells
             const input = td.querySelector('input.plan-cell, select.plan-cell');
             if (!input) continue;
             const val = cols[c];
@@ -4380,7 +4368,7 @@ Remark = ${remark}`;
             const rowIdx = Number(td.dataset.row);
             const colKey = td.dataset.col;
             if (planRows[rowIdx] && colKey) {
-              planRows[rowIdx][colKey === 'result' ? 'activityRemark' : colKey] = input.value;
+              planRows[rowIdx][colKey] = input.value;
               td.setAttribute('data-val', input.value);
               _applyPlanCellStyle(input, colKey, input.value);
               wrote = true;
@@ -4400,55 +4388,6 @@ Remark = ${remark}`;
       wrap.addEventListener('click',       _planClick);
       wrap.addEventListener('dblclick',    _planDblClick);
       wrap.addEventListener('paste',       _planPaste);
-
-      // Delete/Backspace clears selected cells (duId, siteName, dailyPlanActivity, result).
-      // Respects blocked cells (data-blocked="1") and won't intercept while an input is focused.
-      wrap.addEventListener('keydown', function(e){
-        if (dashView !== 'plan') return;
-        if (e.key !== 'Delete' && e.key !== 'Backspace') return;
-        const active = document.activeElement;
-        // Don't intercept while user is typing in a cell (native delete works in inputs)
-        if (active && active.classList.contains('plan-cell')) return;
-        if (!planSelStart || !planSelEnd) return;
-
-        // Column indices: 0=account,1=subcon,2=teamType,3=resourceRemark,4=duId,
-        // 5=siteName,6=activityRemark,7=dailyPlanActivity,8=result,9=del
-        const DEL_COLS = { 4: 'duId', 5: 'siteName', 7: 'dailyPlanActivity', 8: 'result' };
-        const tbl = document.getElementById('planData');
-        if (!tbl) return;
-        const bodyRows = tbl.tBodies[0] ? tbl.tBodies[0].rows : [];
-        const minRow = Math.min(planSelStart.row, planSelEnd.row);
-        const maxRow = Math.max(planSelStart.row, planSelEnd.row);
-        const minCol = Math.min(planSelStart.col, planSelEnd.col);
-        const maxCol = Math.max(planSelStart.col, planSelEnd.col);
-        let cleared = 0;
-        for (let r = minRow; r <= maxRow; r++) {
-          for (let c = minCol; c <= maxCol; c++) {
-            const colKey = DEL_COLS[c];
-            if (!colKey) continue;
-            const td = bodyRows[r] && bodyRows[r].cells[c];
-            if (!td || td.getAttribute('data-blocked') === '1') continue;
-            const input = td.querySelector('input.plan-cell, select.plan-cell');
-            if (!input || input.disabled) continue;
-            input.value = '';
-            // Mirror into planRows and trigger _onPlanCellEdit lifecycle.
-            // 'result' col (colKey=8) writes to activityRemark, matching _onPlanCellEdit.
-            const rowIdx = Number(td.dataset.row);
-            if (planRows[rowIdx]) {
-              planRows[rowIdx][colKey === 'result' ? 'activityRemark' : colKey] = '';
-              td.setAttribute('data-val', '');
-              _applyPlanCellStyle(input, td.dataset.col === 'result' ? 'result' : colKey, '');
-            }
-            cleared++;
-          }
-        }
-        if (cleared > 0) {
-          planDirty = true;
-          _applySaveButtonState();
-          setPlanStatus('Cleared ' + cleared + ' cell(s)');
-        }
-        e.preventDefault();
-      });
 
       // Finalize the drag on mouseup (mirrors Table view pattern)
       document.addEventListener('mouseup', function _planUpHandler(){
@@ -4498,9 +4437,7 @@ Remark = ${remark}`;
     _wirePlanSortHeaders(container);
     const pb = document.getElementById('dashPlanBar');
     const pw = document.getElementById('planWrap');
-    var planBodyTop = (pb ? pb.offsetTop + pb.offsetHeight : 0);
-    if (pw) pw.style.top = planBodyTop + 'px';
-    container.style.paddingTop = planBodyTop + 'px';
+    if (pb && pw) pw.style.top = pb.offsetHeight + 'px';
   }
 
   // Bind click handlers on sortable <th> elements. Called after every table
@@ -4542,236 +4479,7 @@ function _applyPlanCellStyle(el, col, val){
         el.style.color = '';
         el.style.fontWeight = '';
       }
-      // activityRemark drives blocked state (duId/siteName/dailyPlanActivity/result cells).
-      // Re-render the whole table so blocked styles + disabled attrs update correctly.
-      if (dashView === 'plan') _refreshPlanTableOnly();
     }
-  }
-
-  // Look up the remark for a given DU ID from the Table tab data.
-  // NOTE: uses getFilteredSites() — the currently filtered set — not the full
-  // tracker. That's fine here because the user can iterate per row: a site that
-  // exists in TRACKER_SHEET but is currently filtered out will simply report
-  // '(no match)' for that row. The user can clear filters and re-query.
-  // CAVEAT: getFilteredSites() returns a new array per call. Per-row Queries are
-  // sub-second on typical sheets; if it ever becomes slow, cache the result here.
-  // Also returns the matched site's `team` field (Tracker column M) so the
-  // caller can decide to highlight a row when a work team is already assigned.
-  function _getRemarkForDuId(duId){
-    const want = String(duId || '').trim();
-    if (!want) return { state: 'empty' }; // empty DU ID is treated as "site matched but no remark" semantically; UI shows '(empty)'
-    const sites = (typeof getFilteredSites === 'function') ? getFilteredSites() : [];
-    const match = sites.find(function(s){ return String((s && s.duId) || '').trim() === want; });
-    if (!match) return { state: 'no-match' };
-    const remark = (match && match.remark != null) ? String(match.remark) : '';
-    const team   = (match && match.team   != null) ? String(match.team).trim() : '';
-    return remark ? { state: 'ok', remark: remark, team: team } : { state: 'empty', team: team };
-  }
-
-  // Wire per-row Query buttons via event delegation on #dashPlan. Called once
-  // on init. Delegation is used instead of per-element wiring so it survives table
-  // re-renders (no need to re-wire after innerHTML = _planTableHtml()).
-  // The Result <input> is wired by _wirePlanTable's input/change handlers and
-  // writes to activityRemark via _onPlanCellEdit.
-  function _wirePlanResultRefresh(container){
-    if (!container) return;
-    // Remove old delegated handler if present to avoid duplicates on re-init.
-    if (container._planResultDelegated) {
-      container.removeEventListener('click', _planResultDelegatedHandler);
-    }
-    _planResultDelegatedHandler = function(e){
-      var btn = e.target.closest('button.plan-result-query');
-      if (!btn) return;
-      e.preventDefault();
-      e.stopPropagation();
-      _runPlanResultQuery(btn);
-    };
-    container.addEventListener('click', _planResultDelegatedHandler);
-    container._planResultDelegated = true;
-  }
-  var _planResultDelegatedHandler = null;
-
-  // Perform the Table tab lookup and show a tooltip preview on the Query button.
-  // Does NOT fill the Result cell — the user manually applies via the select.
-  // Reads DU ID live from planRows[rowIdx] so unsaved edits are picked up.
-  function _runPlanResultQuery(btn){
-    var rowIdx = Number(btn.getAttribute('data-row'));
-    if (!Number.isFinite(rowIdx) || !planRows[rowIdx]) return;
-    var duId = planRows[rowIdx].duId;
-    var result = _getRemarkForDuId(duId);
-    var tip;
-    if (result.state === 'no-match') {
-      tip = '(no match)';
-    } else if (result.state === 'empty') {
-      tip = '(empty remark in Table tab)';
-    } else {
-      tip = 'Table tab: ' + result.remark + (result.team ? ' [' + result.team + ']' : '');
-    }
-    btn.setAttribute('title', tip);
-    // Briefly highlight the button to confirm the lookup ran.
-    btn.style.background = '#1550b5';
-    setTimeout(function(){ btn.style.background = '#1f6feb'; }, 400);
-  }
-
-  // Apply or clear a red 2px inset outline on every cell of the plan row whose
-  // first <td data-row=rowIdx>. Uses box-shadow (not border) so it composites
-  // cleanly over the table's border-collapse:collapse layout.
-  function _setPlanRowWorkHighlight(rowIdx, on){
-    const wrap = document.getElementById('planWrap');
-    if (!wrap) return;
-    const cell = wrap.querySelector('td[data-row="' + rowIdx + '"]');
-    const tr = cell ? cell.closest('tr') : null;
-    if (!tr) return;
-    const tds = tr.querySelectorAll('td');
-    tds.forEach(function(td){
-      td.style.boxShadow = on ? 'inset 0 0 0 2px #e0574f' : '';
-    });
-  }
-
-  // Bulk "Query Work" — for every visible plan row whose account name matches
-  // a currently-clocked-in entry in dashClockinData (no clockOut = still
-  // working), auto-fill:
-  //   - duId            ← active clockin DU ID (resolved against the tracker so
-  //                        the matching site exists in this dataset)
-  //   - siteName        ← matching tracker siteName
-  //   - activityRemark  ← 'WORK'
-  // Matching strategy (in order, first hit wins per row):
-  //   1) Exact case-insensitive on account ↔ ci.account (Apps Script exposes the
-  //      Clockin sheet's column A "Account" id; this matches plan rows cleanly
-  //      when both sides use the same snake_case id)
-  //   2) Fuzzy: case-insensitive substring of length >= 6 in either direction
-  //      — falls back across ci.account, key (duId), and .name
-  //   3) Diagnostic console.log dumps the first few entries + lookups so we can
-  //      see exactly what's being compared if a match is unexpectedly missed.
-  function _runQueryWork(){
-    if (!Array.isArray(planRows) || planRows.length === 0) {
-      setPlanStatus('Plan not loaded');
-      return;
-    }
-    // 1. Build account-name → active duId map. Each entry registers the new
-    //    ci.account first (plan accounts match this exactly when Apps Script
-    //    exposes the column-A id), then key (Apps Script uppercases duId, so we
-    //    lowercase to compare), then .name. Account is registered FIRST so it
-    //    wins on collision; key + name remain registered as fallback.
-    const activeByAccount = Object.create(null);
-    let totalScanned = 0;
-    let activeScanned = 0;
-    if (dashClockinData && typeof dashClockinData === 'object') {
-      Object.keys(dashClockinData).forEach(function(k){
-        totalScanned++;
-        const ci = dashClockinData[k];
-        if (!ci) return;
-        if (String(ci.clockOut || '').trim()) return; // already clocked out
-        const keyStr    = String(k || '').trim();
-        const nameStr   = String(ci.name    || '').trim();
-        const accountStr = String(ci.account || '').trim();
-        if (!keyStr && !nameStr && !accountStr) return;
-        activeScanned++;
-        if (accountStr) activeByAccount[accountStr.toLowerCase()] = k;
-        if (keyStr)     activeByAccount[keyStr.toLowerCase()]     = k;
-        if (nameStr)    activeByAccount[nameStr.toLowerCase()]    = k;
-      });
-    }
-    try {
-      console.log('[QueryWork] dashClockinData scanned=' + totalScanned +
-                  ' active=' + activeScanned +
-                  ' accountKeys=' + Object.keys(activeByAccount).length);
-      // Dump first 5 entries (account + name + team) so we can see what
-      // apps-script returned — the account column is critical for matching.
-      const sampleKeys = Object.keys(dashClockinData || {}).slice(0, 5);
-      sampleKeys.forEach(function(k){
-        const ci = dashClockinData[k] || {};
-        console.log('[QueryWork]   sample key=' + JSON.stringify(k) +
-                    ' account=' + JSON.stringify(ci.account) +
-                    ' name=' + JSON.stringify(ci.name) +
-                    ' team=' + JSON.stringify(ci.team) +
-                    ' clockOut=' + JSON.stringify(ci.clockOut));
-      });
-    } catch (_) {}
-
-    // 2. For each visible plan row, look up by account name. Fall back to
-    //    substring match (length >= 6) if exact match fails — this catches
-    //    accidental whitespace, casing artifacts, or short-prefix differences
-    //    in the .name field.
-    const visibleIdx = _visibleSortedIndices();
-    let filled = 0;
-    const debugLogged = { ok: 0, fuzzy: 0, miss: 0 };
-    for (let n = 0; n < visibleIdx.length; n++) {
-      const i = visibleIdx[n];
-      const row = planRows[i];
-      if (!row) continue;
-      const accKey = String(row.account || '').trim().toLowerCase();
-      if (!accKey) continue;
-      let activeDuId = activeByAccount[accKey];
-      let matchKind = activeDuId ? 'ok' : null;
-      if (!activeDuId) {
-        // Fuzzy fallback: find any registered key whose lowercased form shares
-        // a 6+ char substring with accKey in either direction.
-        const fuzzy = Object.keys(activeByAccount).find(function(ak){
-          return ak && accKey && (ak.indexOf(accKey) !== -1 || accKey.indexOf(ak) !== -1) && Math.min(ak.length, accKey.length) >= 6;
-        });
-        if (fuzzy) { activeDuId = activeByAccount[fuzzy]; matchKind = 'fuzzy'; }
-      }
-      // Diagnostic: log first 3 misses so we can see what wasn't matching.
-      if (!activeDuId && debugLogged.miss < 3) {
-        debugLogged.miss++;
-        console.log('[QueryWork]   MISS planRow[' + i + '].account=' + JSON.stringify(row.account) +
-                    ' (looking up accKey=' + JSON.stringify(accKey) + ')');
-      } else if (activeDuId && (matchKind === 'fuzzy') && debugLogged.fuzzy < 3) {
-        debugLogged.fuzzy++;
-        console.log('[QueryWork]   FUZZY match planRow[' + i + '].account=' + JSON.stringify(row.account) +
-                    ' → ' + JSON.stringify(activeDuId));
-      } else if (activeDuId && (matchKind === 'ok') && debugLogged.ok < 3) {
-        debugLogged.ok++;
-        console.log('[QueryWork]   OK match planRow[' + i + '].account=' + JSON.stringify(row.account) +
-                    ' → ' + JSON.stringify(activeDuId));
-      }
-      if (!activeDuId) continue;
-      // Resolve the duId against dashTrackerData so siteName is available.
-      const site = (Array.isArray(dashTrackerData) ? dashTrackerData : []).find(function(s){
-        const du = String((s && s.duId) || '').trim();
-        return du && du.toUpperCase() === String(activeDuId).trim().toUpperCase();
-      });
-      const duId     = site ? String(site.duId || '').trim()     : String(activeDuId).trim();
-      const siteName = site ? String(site.siteName || '').trim() : '';
-      // Update model + DOM in place (no full re-render — preserves focus/scroll).
-      row.duId = duId;
-      row.siteName = siteName;
-      row.activityRemark = 'WORK';
-      _updatePlanCellInput(i, 'duId', duId);
-      _updatePlanCellInput(i, 'siteName', siteName);
-      _updatePlanCellInput(i, 'activityRemark', 'WORK');
-      _updatePlanCellInput(i, 'result', 'WORK');
-      // Highlight the row as a work-conflict site (already has a work team).
-      _setPlanRowWorkHighlight(i, true);
-      filled++;
-    }
-
-    planDirty = true;
-    _applySaveButtonState();
-    if (filled > 0) {
-      setPlanStatus('Query Work: filled ' + filled + ' row(s) — see [QueryWork] log for details');
-    } else {
-      setPlanStatus('Query Work: 0 matches — scanned ' + activeScanned + ' active clockins, ' + visibleIdx.length + ' plan rows. Open DevTools console for [QueryWork] log.');
-    }
-  }
-
-  // Update one plan-cell <input> or <select> in place without re-rendering the
-  // table. Sets the value, then dispatches an 'input' event so _onPlanCellEdit
-  // runs (which mirrors the value into the parent <td>'s data-val, flips
-  // planDirty = true, applies per-cell styling, and updates the Save button).
-  // Dispatching 'change' too for selects (programmatic .value changes don't
-  // fire 'change' natively, so we explicitly trigger it).
-  function _updatePlanCellInput(rowIdx, col, val){
-    const wrap = document.getElementById('planWrap');
-    if (!wrap) return;
-    const sel = 'input.plan-cell[data-row="' + rowIdx + '"][data-col="' + col + '"],' +
-                'select.plan-cell[data-row="' + rowIdx + '"][data-col="' + col + '"]';
-    const el = wrap.querySelector(sel);
-    if (!el) return;
-    el.value = val;
-    el.dispatchEvent(new Event('input',  { bubbles: true }));
-    el.dispatchEvent(new Event('change', { bubbles: true }));
   }
 
   function _onPlanCellEdit(e){
@@ -4780,8 +4488,7 @@ function _applyPlanCellStyle(el, col, val){
     const col    = el.dataset.col;
     if (!Number.isFinite(rowIdx) || !col || !planRows[rowIdx]) return;
     const val = String(el.value || '');
-    // Result column writes to activityRemark so Save persists it correctly.
-    planRows[rowIdx][col === 'result' ? 'activityRemark' : col] = val;
+    planRows[rowIdx][col] = val;
     planDirty = true;
     _applySaveButtonState();
     // Mirror into the parent <td>'s data-val so Ctrl+C copies the latest value
@@ -4837,7 +4544,7 @@ function _applyPlanCellStyle(el, col, val){
     const colW = {
       account: 200, subcon: 130, teamType: 110, resourceRemark: 140,
       duId: 150, siteName: 170, activityRemark: 160, dailyPlanActivity: 160,
-      result: 200, del: 32
+      del: 32
     };
     const headers = [
       ['account',           'Account'],
@@ -4847,42 +4554,20 @@ function _applyPlanCellStyle(el, col, val){
       ['duId',              'DU ID'],
       ['siteName',          'Site Name'],
       ['activityRemark',    'Activity Remark'],
-      ['dailyPlanActivity', 'Daily Plan Activity'],
-      // 'result' is sortable but with caveats: placeholder '—' sorts before
-      // real values, so empty rows cluster together at top or bottom depending
-      // on asc/desc. Acceptable for this feature.
-      ['result',            'Result']
+      ['dailyPlanActivity', 'Daily Plan Activity']
     ];
     const showDel = !mySubcont; // surge-only delete column
     const inputBaseStyle = 'width:100%; box-sizing:border-box; padding:5px 7px; border:1px solid #cfd7df; border-radius:5px; background:#fff; color:#24292f; font-size:11.5px; outline:none;';
     const selectBaseStyle = inputBaseStyle + ' cursor:pointer;';
 
     // Build cell content helpers (data-val mirrors the visible cell value for Ctrl+C).
-    function cellTd(content, rowIdx, colKey, val, blocked){
-      var tdStyle = 'padding:6px 8px;' + (blocked ? 'background:#f0f0f0;' : '');
-      return '<td data-row="' + rowIdx + '" data-col="' + colKey + '" data-val="' + escAttr(val) + '" data-blocked="' + (blocked ? '1' : '0') + '" style="' + tdStyle + '">' + content + '</td>';
+    function cellTd(content, rowIdx, colKey, val){
+      return '<td data-row="' + rowIdx + '" data-col="' + colKey + '" data-val="' + escAttr(val) + '" style="padding:6px 8px;">' + content + '</td>';
     }
     function delTd(rowIdx, account){
       return '<td data-row="' + rowIdx + '" data-col="del" style="padding:6px 4px; text-align:center;">' +
         '<button type="button" class="plan-del-row" data-account="' + escAttr(account) + '" title="Delete ' + escAttr(account) + ' from roster" style="background:transparent;border:1px solid #cfd7df;border-radius:4px;color:#6b7688;cursor:pointer;font-size:12px;padding:2px 6px;line-height:1;">✕</button>' +
       '</td>';
-    }
-    // Result cell: free-text <input> where the user types the activity remark
-    // directly. data-col="result" but _onPlanCellEdit maps it to activityRemark
-    // so Save persists it correctly. A small search-icon button sits on the right
-    // — clicking it looks up the Table tab and shows a tooltip preview (does NOT
-    // fill the input; the user manually types the result).
-    // When blocked, renders as a plain grey div (no input/button).
-    function resultCell(rowIdx, activityRemark, blocked){
-      if (blocked) {
-        return '<div style="box-sizing:border-box;padding:5px 7px;background:#e8eaec;color:#9aa0a6;font-size:11px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + escAttr(activityRemark || '') + '">' + escHtml(activityRemark || '—') + '</div>';
-      }
-      var inputStyle = 'flex:1;min-width:0;box-sizing:border-box;padding:4px 6px;border:1px solid #cfd7df;border-radius:4px;background:#fff;color:#24292f;font-size:11px;outline:none;';
-      var btnStyle  = 'flex:0 0 auto;padding:3px 6px;border:1px solid #1f6feb;border-radius:4px;background:#1f6feb;color:#fff;font-size:11px;cursor:pointer;line-height:1.4;white-space:nowrap;';
-      return '<div class="plan-result-wrap" style="display:flex;align-items:center;gap:4px;width:100%;">' +
-        '<input type="text" class="plan-cell" data-row="' + rowIdx + '" data-col="result" value="' + escAttr(activityRemark || '') + '" style="' + inputStyle + '" placeholder="—" spellcheck="false">' +
-        '<button type="button" class="plan-result-query" data-row="' + rowIdx + '" title="Preview from Table tab" style="' + btnStyle + '">&#8981;</button>' +
-        '</div>';
     }
     function makeInputs(row, i){
       // Per-row subcon tint (uses dashSubcontColor → SUBCONT_COLOR_MAP, with palette fallback).
@@ -4895,11 +4580,6 @@ function _applyPlanCellStyle(el, col, val){
       const actSelectStyle = actStyle
         ? (inputBaseStyle + ' background:' + actStyle.cell + '; color:' + actStyle.text + '; font-weight:700; cursor:pointer;')
         : selectBaseStyle;
-      // Blocked cells (duId, siteName, dailyPlanActivity, result) are greyed out and disabled
-      // when activityRemark is a non-working state.
-      const isBlocked = !!PLAN_BLOCKED_ACTIVITY[actKey];
-      const blockedInputStyle = 'width:100%;box-sizing:border-box;padding:5px 7px;border:1px solid #cfd7df;border-radius:5px;background:#e8eaec;color:#9aa0a6;font-size:11.5px;outline:none;cursor:not-allowed;';
-      const blockedSelectStyle = blockedInputStyle + ' cursor:not-allowed;';
       const inputs = [
         ['account', '<input type="text" class="plan-cell" data-row="' + i + '" data-col="account" value="' + escAttr(row.account) + '" style="' + inputBaseStyle + '">'],
         ['subcon',  '<input type="text" class="plan-cell plan-subcon" data-row="' + i + '" data-col="subcon"  value="' + escAttr(row.subcon)  + '" style="' + subStyle + '">'],
@@ -4909,24 +4589,18 @@ function _applyPlanCellStyle(el, col, val){
         ['resourceRemark', '<select class="plan-cell" data-row="' + i + '" data-col="resourceRemark" style="' + selectBaseStyle + '">' +
           PLAN_RESOURCE_REMARK_OPTS.map(function(o){ return '<option value="' + o + '"' + (row.resourceRemark === o ? ' selected' : '') + '>' + o + '</option>'; }).join('') +
           '</select>'],
-        ['duId',     '<input type="text" class="plan-cell" data-row="' + i + '" data-col="duId" value="' + escAttr(row.duId) + '" style="' + (isBlocked ? blockedInputStyle : inputBaseStyle) + '"' + (isBlocked ? ' disabled tabindex="-1" readonly' : '') + '>'],
-        ['siteName', '<input type="text" class="plan-cell" data-row="' + i + '" data-col="siteName" value="' + escAttr(row.siteName) + '" style="' + (isBlocked ? blockedInputStyle : inputBaseStyle) + '"' + (isBlocked ? ' disabled tabindex="-1" readonly' : '') + '>'],
+        ['duId',     '<input type="text" class="plan-cell" data-row="' + i + '" data-col="duId" value="' + escAttr(row.duId) + '" style="' + inputBaseStyle + '">'],
+        ['siteName', '<input type="text" class="plan-cell" data-row="' + i + '" data-col="siteName" value="' + escAttr(row.siteName) + '" style="' + inputBaseStyle + '">'],
         ['activityRemark', '<select class="plan-cell" data-row="' + i + '" data-col="activityRemark" style="' + actSelectStyle + '">' +
           '<option value="">—</option>' +
           PLAN_ACTIVITY_REMARK_OPTS.map(function(o){ return '<option value="' + o + '"' + (row.activityRemark === o ? ' selected' : '') + '>' + o + '</option>'; }).join('') +
           '</select>'],
-        ['dailyPlanActivity', '<select class="plan-cell" data-row="' + i + '" data-col="dailyPlanActivity" style="' + (isBlocked ? blockedSelectStyle : selectBaseStyle) + '"' + (isBlocked ? ' disabled tabindex="-1"' : '') + '>' +
+        ['dailyPlanActivity', '<select class="plan-cell" data-row="' + i + '" data-col="dailyPlanActivity" style="' + selectBaseStyle + '">' +
           '<option value="">—</option>' +
           PLAN_DAILY_PLAN_OPTS.map(function(o){ return '<option value="' + o + '"' + (row.dailyPlanActivity === o ? ' selected' : '') + '>' + o + '</option>'; }).join('') +
-          '</select>'],
-        // Result cell: editable input + query button normally; greyed text div when blocked.
-        ['result', resultCell(i, row.activityRemark, isBlocked)]
+          '</select>']
       ];
-      let html = inputs.map(function(p){
-        // Result column: use activityRemark for data-val so Ctrl+C works correctly.
-        var val = (p[0] === 'result') ? (row.activityRemark || '') : (row[p[0]] || '');
-        return cellTd(p[1], i, p[0], val, isBlocked);
-      }).join('');
+      let html = inputs.map(function(p){ return cellTd(p[1], i, p[0], row[p[0]] || ''); }).join('');
       if (showDel) html += delTd(i, row.account || '');
       return html;
     }
@@ -4942,10 +4616,7 @@ function _applyPlanCellStyle(el, col, val){
 
     const rowsHtml = visibleIdx.map(function(i){
       const row = planRows[i] || {};
-      const actKey = String(row.activityRemark || '');
-      const rowBlocked = !!PLAN_BLOCKED_ACTIVITY[actKey];
-      const trStyle = 'border-bottom:1px solid #eef1f3;' + (rowBlocked ? 'background:#f0f0f0;' : '');
-      return '<tr style="' + trStyle + '" data-blocked="' + (rowBlocked ? '1' : '0') + '">' + makeInputs(row, i) + '</tr>';
+      return '<tr style="border-bottom:1px solid #eef1f3;">' + makeInputs(row, i) + '</tr>';
     }).join('');
 
     let displayHeaders = headers.slice();
@@ -4976,9 +4647,9 @@ function _applyPlanCellStyle(el, col, val){
     // that stole focus from the input, making typing unusable. Only sort remains.
 
     return '<div id="planWrap" tabindex="0" style="overflow:auto;position:absolute;top:46px;left:0;right:0;bottom:0;user-select:none;-webkit-user-select:none;background:#fff;">' +
-      '<table id="planData" style="width:100%; table-layout:fixed; border-collapse:collapse; font-size:11.5px; min-width:' + (showDel ? 1512 : 1480) + 'px;">' +
+      '<table id="planData" style="width:100%; table-layout:fixed; border-collapse:collapse; font-size:11.5px; min-width:' + (showDel ? 1312 : 1280) + 'px;">' +
         '<colgroup>' + colgroup + '</colgroup>' +
-        '<thead style="position:sticky; top:0; z-index:200; background:#f6f8fa; box-shadow:0 2px 0 #d0d7de;">' + thead + '</thead>' +
+        '<thead style="position:sticky; top:0; z-index:3; background:#f6f8fa; box-shadow:0 2px 0 #d0d7de;">' + thead + '</thead>' +
         '<tbody>' + rowsHtml + '</tbody>' +
       '</table>' +
     '</div>';
@@ -4988,12 +4659,6 @@ function _applyPlanCellStyle(el, col, val){
     return String(s == null ? '' : s)
       .replace(/&/g, '&amp;')
       .replace(/"/g, '&quot;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
-  }
-  function escHtml(s){
-    return String(s == null ? '' : s)
-      .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;');
   }
@@ -5159,50 +4824,6 @@ function _applyPlanCellStyle(el, col, val){
       planDirty = false;
       _applySaveButtonState();
       setPlanStatus('Saved');
-
-      // Feature 3: detect roster field edits and persist them for future dates.
-      // Compare planRows against the base roster (PLAN_ROSTER + removed/added, but
-      // WITHOUT planRosterEdits) so we detect changes from their original values.
-      const ROSTER_FIELDS = ['account', 'subcon', 'teamType', 'resourceRemark'];
-      const removedSet = new Set((planRosterDelta.removed || []).map(String));
-      const addedMap = {};
-      (planRosterDelta.added || []).forEach(function(r){ addedMap[r.account] = r; });
-      const edits = [];
-      for (let i = 0; i < planRows.length; i++) {
-        const local = planRows[i];
-        if (!local) continue;
-        // Find the base roster entry for this slot.
-        let base;
-        if (i < PLAN_ROSTER.length) {
-          const r = PLAN_ROSTER[i];
-          base = removedSet.has(r.account) ? null : r;
-        } else {
-          const addedList = planRosterDelta.added || [];
-          base = addedList[i - PLAN_ROSTER.length] || null;
-        }
-        if (!base) continue;
-        // Check if any of the 4 roster fields differ.
-        let changed = false;
-        for (let fi = 0; fi < ROSTER_FIELDS.length; fi++) {
-          const fk = ROSTER_FIELDS[fi];
-          if (String(local[fk] || '') !== String(base[fk] || '')) { changed = true; break; }
-        }
-        if (changed) {
-          edits.push({
-            account:        local.account        || '',
-            subcon:         local.subcon         || '',
-            teamType:       local.teamType       || '',
-            resourceRemark: local.resourceRemark || ''
-          });
-        }
-      }
-      if (edits.length > 0) {
-        // Merge into local planRosterEdits and POST to server.
-        edits.forEach(function(e){ planRosterEdits[e.account] = e; });
-        postPlanRosterEdits(edits).then(function(ok){
-          console.log('[planRosterEdits] saved', edits.length, 'accounts:', ok ? 'ok' : 'failed');
-        });
-      }
     } catch (e) {
       console.warn('[plan] save failed', e);
       setPlanStatus('Save failed: ' + (e && e.message ? e.message : String(e)));
@@ -5246,7 +4867,6 @@ function _applyPlanCellStyle(el, col, val){
     if (newDate === planCurrentDate) { setPlanStatus('Already showing ' + newDate); return; }
     if (planDirty && !confirm('Discard unsaved changes for ' + (planCurrentDate || 'this date') + ' and load ' + newDate + '?')) return;
     planCurrentDate = newDate;
-    try { localStorage.setItem('planDate', newDate); } catch(e) {}
     planDirty = false;
     _applySaveButtonState();
     setPlanStatus('');
@@ -5295,17 +4915,8 @@ function _applyPlanCellStyle(el, col, val){
 container.innerHTML = _planTableHtml();
     clearPlanSelection();
     _wirePlanTable(container);
-    _wirePlanResultRefresh(container);
     _wirePlanSortHeaders(container);
   }
-  });
-
-  // "Query Work" — auto-fill DU ID + Site Name + Activity Remark for every
-  // plan row whose subcon has an active work site (see _runQueryWork for the
-  // matching rules). Acts in place; reflects changes immediately. Marks the
-  // plan dirty; user still needs to click Save to persist.
-  document.getElementById('planQueryWorkBtn').addEventListener('click', function(){
-    _runQueryWork();
   });
 
   // ----- Add roster member (surge-only) -----
@@ -5439,9 +5050,8 @@ container.innerHTML = _planTableHtml();
         dashTrackerData = cachedTracker;
         dashMessageLookup = cachedMsg || {};
         dashClockinData = cachedClockin || {};
-        document.getElementById('dashStatus').innerHTML = '<span class="dash-refresh-dot fetching"></span><span class="dash-refresh-text" style="color:#9aa0a6;">Cached \u2014 refreshing\u2026</span>';
+        document.getElementById('dashStatus').textContent = `Showing cached data — refreshing... (${cachedTracker.length} sites)`;
         _renderDashboard();
-        startDashRefresh();
 
         // Fetch fresh data in background
         _forceRefresh = false;
@@ -5450,12 +5060,11 @@ container.innerHTML = _planTableHtml();
           dashMessageLookup = msg;
           dashClockinData = clockin || {};
           _renderDashboard();
-          _setDashLastUpdated();
           console.log('[initDashboard] Background refresh done:', dashTrackerData.length, 'sites');
         }).catch(e=>{ console.warn('[initDashboard] Background refresh failed:', e); });
       } else {
         // No cache — must wait for fresh data
-        document.getElementById('dashStatus').innerHTML = '<span class="dash-refresh-dot fetching"></span><span class="dash-refresh-text" style="color:#9aa0a6;">Loading\u2026</span>';
+        document.getElementById('dashStatus').textContent = 'Loading...';
         _forceRefresh = false;
         try {
           const [tracker, msgLookup, clockin] = await Promise.all([fetchTrackerForMap(), buildMessageLookup(), fetchClockinData()]);
@@ -5470,8 +5079,6 @@ container.innerHTML = _planTableHtml();
           dashClockinData = {};
         }
         _renderDashboard();
-        _setDashLastUpdated();
-        startDashRefresh();
       }
       console.log('[initDashboard] Complete');
     } finally {
@@ -5572,7 +5179,6 @@ container.innerHTML = _planTableHtml();
 
   function closeDashboard(){
     stopPlanDatePolling();
-    stopDashRefresh();
     hideHoverBox();
     document.body.classList.remove('dashboard-mode');
     document.getElementById('dashboardScreen').style.display = 'none';
@@ -5613,39 +5219,6 @@ container.innerHTML = _planTableHtml();
     if(saved && input) input.value = saved;
   })();
 
-  // Auto-login: if a saved token is valid, skip the login screen entirely.
-  (function(){
-    const saved = getSavedToken();
-    if (!saved) return;
-    const lower = saved.toLowerCase();
-    let valid = false;
-    if (lower === 'surge123') {
-      dashboardUnlocked = true; mySubcont = ''; valid = true;
-    } else if (lower === 'subcont+123') {
-      mySubcont = 'SUBCONT'; unlockedSubconts = { 'SUBCONT': true }; dashboardUnlocked = true; valid = true;
-    } else {
-      const matched = subcontNameFromToken(saved);
-      if (matched) { mySubcont = matched; unlockedSubconts = {}; unlockedSubconts[matched] = true; dashboardUnlocked = true; valid = true; }
-    }
-    if (valid) {
-      document.getElementById('loginScreen').style.display = 'none';
-      document.getElementById('dashboardScreen').style.display = 'flex';
-      document.getElementById('dashboardScreen').style.position = 'fixed';
-      document.getElementById('dashboardScreen').style.inset = '0';
-      document.getElementById('dashboardScreen').style.zIndex = '60';
-      document.getElementById('dashboardScreen').style.background = '#eef1f3';
-      document.body.classList.add('dashboard-mode');
-      openDashboard();
-      const lastView = localStorage.getItem('dashView') || 'map';
-      if (lastView === 'plan') {
-        planCurrentDate = localStorage.getItem('planDate') || todayISO();
-        const di = document.getElementById('planDateInput');
-        if (di) di.value = planCurrentDate;
-      }
-      setDashView(lastView);
-    }
-  })();
-
   // Prefill plan roster delta from localStorage on page load (no flash of empty roster)
   planRosterDelta = loadPlanRosterDeltaLocal();
   // Reconcile with server asynchronously (server-wins on first load).
@@ -5661,20 +5234,6 @@ container.innerHTML = _planTableHtml();
       }
     }
   }).catch(function(e){ console.warn('[planRoster] initial fetch failed', e); });
-
-  // Load plan roster field edits from server (Feature 3: roster propagation).
-  // planRosterEdits is applied synchronously inside effectiveRoster() so the
-  // table renders with edits baked in even before this fetch resolves.
-  fetchPlanRosterEdits().then(function(edits){
-    if (edits && typeof edits === 'object') {
-      planRosterEdits = edits;
-      console.log('[planRosterEdits] loaded', Object.keys(planRosterEdits).length, 'accounts');
-      // Re-render plan if already open so the edits appear immediately.
-      if (typeof dashView !== 'undefined' && dashView === 'plan' && typeof renderPlanView === 'function') {
-        try { renderPlanView(); } catch(e){ console.warn('[planRosterEdits] post-fetch render failed', e); }
-      }
-    }
-  }).catch(function(e){ console.warn('[planRosterEdits] initial fetch failed', e); });
 
   // Show ready message on page load
   showLoginDebug('Page ready. Enter token and click Enter Dashboard.');
