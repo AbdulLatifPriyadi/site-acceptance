@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<!--
+====================================================================
+  LOCAL TEST FILE — DO NOT DEPLOY TO PRODUCTION
+====================================================================
+  This is a standalone test version of index.html with MOCK DATA.
+  Open this file directly in a browser (double-click) — no Apps Script needed.
+
+  How it works:
+    - Intercepts all fetch() calls to SCRIPT_URL
+    - Returns realistic mock data (tracker, plan, clockin, etc.)
+    - You can edit this file to add more mock data as needed
+
+  To update after changes to index.html:
+    1. Copy the mock block from index.html line 1867 (after PLAN_ROSTER];)
+       to the same spot in this file
+    2. Or regenerate: bash scripts/build-test.sh (if available)
+
+  All other changes in index.html will NOT appear here automatically.
+  You must manually sync the mock block after PLAN_ROSTER.
+====================================================================
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Site Acceptance Diagram — TEST MODE</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+/* TEST MODE banner */
+body::before {
+  content: 'TEST MODE — Mock Data Active';
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  background: #f0883e;
+  color: #fff;
+  text-align: center;
+  font-size: 12px;
+  font-family: monospace;
+  padding: 3px;
+  z-index: 99999;
+  letter-spacing: 1px;
+}
+</style>
+<script>
+// ============================================================
+// MOCK DATA — intercepts all fetch() calls to SCRIPT_URL
+// ============================================================
+
+// --- Mock tracker data (map + table) ---
+var MOCK_TRACKER = [
+  { batchRfi:'BATCH-A', batchCsg:'CSG-01', tpId:'TP001', surgeId:'SURG-001', duId:'32CMH_0057_CSG', siteName:'PTI_DESA_UTAMA', subcontPlan:'Intisel', gap:'GAP-A', remark:'OK - installed', team:'Team 1', city:'Bandung', tp:'Telkom', km:'12', peOwner:'John Doe', lat:-6.9175, lng:107.6191, ring:'Ring A', seq:'1' },
+  { batchRfi:'BATCH-A', batchCsg:'CSG-01', tpId:'TP002', surgeId:'SURG-002', duId:'32CMH_0024_CSG', siteName:'TBG_BAROS', subcontPlan:'NIM', gap:'GAP-B', remark:'Pending ATP', team:'Team 2', city:'Bandung', tp:'Telkom', km:'8', peOwner:'Jane Doe', lat:-6.9148, lng:107.6172, ring:'Ring B', seq:'2' },
+  { batchRfi:'BATCH-A', batchCsg:'CSG-02', tpId:'TP003', surgeId:'SURG-003', duId:'32BDG_0224_NEW', siteName:'TBG_GURUMINDA', subcontPlan:'PAB', gap:'', remark:'Material delay', team:'Team 1', city:'Bandung', tp:'Telkom', km:'15', peOwner:'Bob Smith', lat:-6.9210, lng:107.6100, ring:'Ring C', seq:'3' },
+  { batchRfi:'BATCH-B', batchCsg:'CSG-02', tpId:'TP004', surgeId:'SURG-004', duId:'32SKB_0072_NEW', siteName:'PTI_PASAR_PELABUHAN', subcontPlan:'ADW', gap:'GAP-C', remark:'OK', team:'Team 3', city:'Sukabumi', tp:'Telkom', km:'22', peOwner:'Alice Lee', lat:-6.9250, lng:107.6050, ring:'Ring D', seq:'4' },
+  { batchRfi:'BATCH-B', batchCsg:'CSG-03', tpId:'TP005', surgeId:'SURG-005', duId:'32TNG_0011_CSG', siteName:'TNG_TANJUNG', subcontPlan:'CAA', gap:'GAP-A', remark:'Integration done', team:'Team 2', city:'Tanggerang', tp:'Telkom', km:'30', peOwner:'Charlie Ng', lat:-6.9300, lng:107.5900, ring:'Ring A', seq:'5' },
+  { batchRfi:'BATCH-C', batchCsg:'CSG-03', tpId:'TP006', surgeId:'SURG-006', duId:'32CMH_0099_WL', siteName:'CMH_KOMP_PLUIT', subcontPlan:'TRITAMA', gap:'', remark:'Work in progress', team:'Team 1', city:'Bandung', tp:'Telkom', km:'5', peOwner:'David Tan', lat:-6.9100, lng:107.6150, ring:'Ring E', seq:'6' },
+  { batchRfi:'BATCH-C', batchCsg:'CSG-04', tpId:'TP007', surgeId:'SURG-007', duId:'32BDG_0333_NEW', siteName:'BDG_OFFICE_TLT', subcontPlan:'INNOVIS', gap:'GAP-B', remark:'Closing only', team:'Team 4', city:'Bandung', tp:'Telkom', km:'10', peOwner:'Eve Wong', lat:-6.9000, lng:107.6200, ring:'Ring F', seq:'7' },
+  { batchRfi:'', batchCsg:'', tpId:'TP008', surgeId:'', duId:'32CMH_0010_CSG', siteName:'CMH_DAGO', subcontPlan:'Intisel', gap:'GAP-A', remark:'', team:'Team 1', city:'Bandung', tp:'Telkom', km:'3', peOwner:'Frank Lee', lat:-6.9050, lng:107.6100, ring:'Ring G', seq:'8' },
+  { batchRfi:'BATCH-D', batchCsg:'CSG-04', tpId:'TP009', surgeId:'SURG-008', duId:'32SKB_0055_WL', siteName:'SKB_MALL', subcontPlan:'Poca', gap:'GAP-C', remark:'ATP passed', team:'Team 3', city:'Sukabumi', tp:'Telkom', km:'18', peOwner:'Grace Ho', lat:-6.9280, lng:107.6080, ring:'Ring H', seq:'9' },
+  { batchRfi:'BATCH-D', batchCsg:'', tpId:'TP010', surgeId:'', duId:'32TNG_0077_NEW', siteName:'TNG_CITY_CENTER', subcontPlan:'INDOHR', gap:'', remark:'Waiting material', team:'Team 2', city:'Tanggerang', tp:'Telkom', km:'25', peOwner:'Henry Wu', lat:-6.9350, lng:107.5850, ring:'Ring I', seq:'10' }
+];
+
+// --- Mock plan data ---
+var MOCK_PLAN = [
+  { date:'2026-09-04', account:'adw_tl_agung_32092512', subcon:'ADW', teamType:'CSG', resourceRemark:'Dedicated/Shared', duId:'32CMH_0057_CSG', siteName:'PTI_DESA_UTAMA', activityRemark:'WORK', dailyPlanActivity:'Integration', result:'', rowIdx:16 },
+  { date:'2026-09-04', account:'caa_tl_rezar_32020226', subcon:'CAA', teamType:'WL', resourceRemark:'Dedicated/Shared', duId:'32CMH_0024_CSG', siteName:'TBG_BAROS', activityRemark:'WORK', dailyPlanActivity:'Install', result:'Done, waiting ATP', rowIdx:23 },
+  { date:'2026-09-04', account:'pab_tl_fajarfm_33091410', subcon:'PAB', teamType:'WL', resourceRemark:'Dedicated/Shared', duId:'32BDG_0224_NEW', siteName:'TBG_GURUMINDA', activityRemark:'OTHER PROJECT', dailyPlanActivity:'', result:'', rowIdx:9 },
+  { date:'2026-09-04', account:'nim_tl_gustira_32053405', subcon:'NIM', teamType:'WL', resourceRemark:'Dedicated/Shared', duId:'32CMH_0099_WL', siteName:'CMH_KOMP_PLUIT', activityRemark:'WORK', dailyPlanActivity:'MOS+Install', result:'', rowIdx:3 },
+  { date:'2026-09-04', account:'intisel_tl_rahmat_32051919', subcon:'Intisel', teamType:'WL', resourceRemark:'Dedicated/Shared', duId:'32SKB_0072_NEW', siteName:'PTI_PASAR_PELABUHAN', activityRemark:'WORK', dailyPlanActivity:'ATP', result:'', rowIdx:0 },
+  { date:'2026-09-04', account:'intisel_tl_deni_32053528', subcon:'Intisel', teamType:'WL', resourceRemark:'Dedicated/Shared', duId:'32TNG_0011_CSG', siteName:'TNG_TANJUNG', activityRemark:'IDLE', dailyPlanActivity:'', result:'Site locked, rescheduled', rowIdx:1 },
+  { date:'2026-09-04', account:'inv_tl_sandi_32042901', subcon:'INNOVIS', teamType:'WL', resourceRemark:'Dedicated/Shared', duId:'32BDG_0333_NEW', siteName:'BDG_OFFICE_TLT', activityRemark:'Closing Only', dailyPlanActivity:'MOS', result:'', rowIdx:22 }
+];
+
+// --- Mock clockin data ---
+var MOCK_CLOCKIN = {
+  '32CMH_0057_CSG': { name:'Agung (ADW)', team:'CSG', clockIn:'07:30', clockOut:'' },
+  '32CMH_0024_CSG': { name:'Rezar (CAA)', team:'WL', clockIn:'08:00', clockOut:'' },
+  '32BDG_0224_NEW': { name:'Fajar (PAB)', team:'WL', clockIn:'07:45', clockOut:'17:00' },
+  '32CMH_0099_WL':  { name:'Gustira (NIM)', team:'WL', clockIn:'07:15', clockOut:'' },
+  '32SKB_0072_NEW': { name:'Rahmat (Intisel)', team:'WL', clockIn:'08:30', clockOut:'' }
+};
+
+// --- Intercept fetch() ---
+var _origFetch = window.fetch;
+window.fetch = function(url, options) {
+  var urlStr = typeof url === 'string' ? url : url.url || '';
+  var isPost = options && options.method === 'POST';
+
+  // Parse type from URL for GET, or body for POST
+  var type = '';
+  if (!isPost) {
+    var m = urlStr.match(/type=([^&]+)/);
+    if (m) type = m[1];
+  } else {
+    try {
+      var body = JSON.parse(options.body || '{}');
+      type = body.type || '';
+    } catch(e) {}
+  }
+
+  // Build mock response
+  var data;
+  if (type === 'tracker' || urlStr.includes('type=tracker')) {
+    data = MOCK_TRACKER;
+  } else if (type === 'plan' || urlStr.includes('type=plan&')) {
+    data = MOCK_PLAN;
+  } else if (type === 'planDates') {
+    data = ['2026-09-04', '2026-09-03', '2026-09-02', '2026-09-01'];
+  } else if (type === 'activeDate') {
+    data = { date: '2026-09-04' };
+  } else if (type === 'planRoster') {
+    data = { added: [], removed: [] };
+  } else if (type === 'planRosterEdits') {
+    data = {};
+  } else if (type === 'clockin') {
+    data = MOCK_CLOCKIN;
+  } else if (type === 'clockinSubmit') {
+    data = { status: 'ok' };
+  } else {
+    // Full log / messages
+    data = [];
+  }
+
+  var res = new Response(JSON.stringify(data), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' }
+  });
+  res.ok = true;
+  return Promise.resolve(res);
+};
+// Also override fetchWithTimeout (used by plan/data fetches)
+window.fetchWithTimeout = function(url, timeout) {
+  return window.fetch(url);
+};
+</script>
+</head>
+<body>
+<div id="dashboardScreen" style="display:none;">
+<!-- Rest of body content inserted by the main script below -->
+</div>
+<script>
+// ============================================================
+// BODY CONTENT — copied from index.html (trimmed)
+// The actual body content should be copy-pasted from index.html here.
+// For a complete test file, copy the entire <body> content from index.html
+// and paste it below this comment.
+// ============================================================
+
+// TEMPORARY: Minimal body for standalone testing
+document.getElementById('dashboardScreen').style.display = 'block';
+document.body.insertAdjacentHTML('beforeend', '<div style="padding:20px;font-family:monospace;font-size:14px;">' +
+  '<h2>TEST MODE — index-test.html</h2>' +
+  '<p>This is a minimal placeholder. For full testing:</p>' +
+  '<ol>' +
+    '<li>Copy ALL content from &lt;body&gt; in index.html (everything between &lt;body&gt; and &lt;/body&gt;)</li>' +
+    '<li>Paste it here, replacing the temporary content above</li>' +
+    '<li>Make sure the mock fetch() interceptor is at the TOP of &lt;head&gt;</li>' +
+    '<li>Open this file in browser (double-click)</li>' +
+  '</ol>' +
+  '<p><strong>Mock data available:</strong></p>' +
+  '<ul>' +
+    '<li>10 tracker sites (with lat/lng)</li>' +
+    '<li>7 plan rows for 2026-09-04</li>' +
+    '<li>5 clockin entries</li>' +
+    '<li>Plan dates: 2026-09-01 to 2026-09-04</li>' +
+  '</ul>' +
+  '<p style="color:#666;">See the deployment comments at the top of index.html for workflow instructions.</p>' +
+  '<button onclick="alert(\'Mock save — no data sent!\')" style="padding:8px 16px;background:#4caf7d;color:#fff;border:none;border-radius:4px;cursor:pointer;">Test Save Button</button>' +
+  '</div>'
+);
+</script>
+</body>
+</html>

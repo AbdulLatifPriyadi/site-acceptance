@@ -10,25 +10,38 @@
     git checkout dev          (you're already on dev)
     Make your changes in index.html / SiteAcceptanceTracker.gs
 
-  Step 2 — Test locally (copy-paste to Apps Script test version):
-    2a. In VS Code: Ctrl+A → Ctrl+C on index.html content
-    2b. Open https://script.google.com → your SiteAcceptanceTracker project
-    2c. Click the HTML file in the editor → Ctrl+A → Ctrl+V (replace all)
-    2d. Do the same for SiteAcceptanceTracker.gs
-    2e. Deploy → Manage deployments → pencil icon → Version: "New version" → Deploy
-    2f. Copy the "Test URL" (separate URL for testing)
-    2g. Open the Test URL and verify your changes work
+  Step 2 — Test locally with index-test.html (no Apps Script needed):
+    2a. Open index-test.html in a browser (double-click the file)
+    2b. Test your changes visually — uses mock data, no server needed
+    2c. NOTE: index-test.html is a SEPARATE file from index.html.
+        Changes to index.html are NOT automatically reflected here.
+        After making changes to index.html, manually copy the mock block
+        from index.html (see inline instructions in index-test.html) to
+        keep it in sync.
 
-  Step 3 — Promote to production (when happy with testing):
+  Step 3 — Test with Apps Script (full functionality):
+    3a. Copy index.html content → paste into Apps Script HTML file
+    3b. Copy SiteAcceptanceTracker.gs content → paste into Apps Script .gs
+    3c. Deploy → Manage deployments → pencil → Version: New version → Deploy
+    3d. Open the "Test URL" from "Test deployments"
+
+  Step 4 — Promote to production (when happy with testing):
     git checkout main
     git merge dev
-    Repeat step 2b–2e but use the PRODUCTION Apps Script project URL
+    Copy updated files from VS Code to the PRODUCTION Apps Script project
+    Repeat step 3c but use the PRODUCTION Apps Script project
 
   Branch overview:
     dev  → test / staging (current branch)
     main → production
 
-  DO NOT push directly to main without testing on dev first.
+  DO NOT push directly to main without testing first.
+
+  LOCAL BACKUPS:
+    Backups are stored in the /backups/ folder.
+    To create a timestamped backup of current index.html + .gs:
+    bash scripts/backup.sh        (run from site-acceptance/ directory)
+    Or manually: cp index.html backups/index_YYYY-MM-DD.html
 ====================================================================
 -->
 <html lang="en">
