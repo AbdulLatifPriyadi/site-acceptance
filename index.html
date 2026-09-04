@@ -5296,20 +5296,22 @@ function _applyPlanCellStyle(el, col, val){
       return;
     }
 
-    // Build reverse lookup: account -> duId from clockin data
-    // Method 1: match by account field
+    // Build lookup: account -> duId from clockin data
     var clockinByAccount = {};
-    // Method 2: match by extracted name (for accounts that don't have ci.account populated)
-    var clockinByName = {};
     Object.keys(dashClockinData).forEach(function(duId) {
       var ci = dashClockinData[duId];
-      // By account field
       if (ci && ci.account) {
         var acctKey = String(ci.account).trim().toLowerCase();
         clockinByAccount[acctKey] = duId;
       }
-      // By name: extract first word from "Name (Subcont)" format
+    });
+
+    // Build lookup: person name -> duId from clockin data (fallback)
+    var clockinByName = {};
+    Object.keys(dashClockinData).forEach(function(duId) {
+      var ci = dashClockinData[duId];
       if (ci && ci.name) {
+        // Extract first word: "Agung (ADW)" -> "agung"
         var nameKey = String(ci.name).split(' ')[0].trim().toLowerCase();
         clockinByName[nameKey] = duId;
       }
@@ -5325,6 +5327,7 @@ function _applyPlanCellStyle(el, col, val){
 
     var filled = 0;
     var noMatch = 0;
+    var debugInfo = [];
     for (var i = 0; i < planRows.length; i++) {
       var row = planRows[i];
       if (!row) continue;
@@ -5332,19 +5335,19 @@ function _applyPlanCellStyle(el, col, val){
       // Skip rows that already have a DU ID
       if (row.duId && row.duId.trim()) continue;
 
-      // Method 1: match by account name
       var acctKey = String(row.account || '').trim().toLowerCase();
+
+      // Method 1: direct account match
       var duId = clockinByAccount[acctKey];
 
-      // Method 2: fallback — extract name from account (e.g. "adw_tl_agung_32092512" -> "agung")
+      // Method 2: extract name from account string and match against clock-in name
+      // e.g. "caa_tl_rezar_32020226" -> "rezar" -> matches "Rezar (CAA)"
       if (!duId && acctKey) {
-        // Extract name part: skip prefix like "adw_tl_", "nim_tl_", "intisel_tl_", etc.
-        var namePart = acctKey.replace(/^(adw_tl_|nim_tl_|intisel_tl_|caa_tl_|pab_tl_|pab_mb_|inv_tl_|tal_tl_|dedi_|chr_|andri_)/, '');
-        // Remove trailing _number (e.g. "_32092512")
-        namePart = namePart.replace(/_[0-9]+$/, '');
-        // Remove dots (e.g. "reza.r" -> "rezar")
-        namePart = namePart.replace(/\./g, '');
-        duId = clockinByName[namePart];
+        var nameKey = acctKey
+          .replace(/^(adw_tl_|nim_tl_|intisel_tl_|caa_tl_|pab_tl_|pab_mb_|inv_tl_|tal_tl_|dedi_|chr_|andri_)/, '')
+          .replace(/[0-9_]+$/, '')
+          .replace(/\./g, '');
+        duId = clockinByName[nameKey] || clockinByName[acctKey.split('_')[0]];
       }
 
       if (!duId) { noMatch++; continue; }
@@ -5355,9 +5358,15 @@ function _applyPlanCellStyle(el, col, val){
     }
 
     if (filled === 0 && noMatch > 0) {
-      setPlanStatus('No matches found — check accounts match clock-in sheet');
+      // Show which accounts couldn't be matched
+      var unmatched = [];
+      for (var i = 0; i < planRows.length; i++) {
+        var r = planRows[i];
+        if (r && !(r.duId && r.duId.trim()) && r.account) unmatched.push(r.account);
+      }
+      setPlanStatus('No matches — ' + noMatch + ' rows with no clock-in. Check: ' + unmatched.slice(0, 3).join(', '));
     } else {
-      setPlanStatus('Filled ' + filled + ' row(s) from clock-in data' + (noMatch > 0 ? ' (' + noMatch + ' skipped)' : ''));
+      setPlanStatus('Filled ' + filled + ' row(s)' + (noMatch > 0 ? ' (' + noMatch + ' no match)' : ''));
     }
 
     planDirty = true;
