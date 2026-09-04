@@ -566,8 +566,9 @@ function handleBulkEdit(body) {
 // DAILY PLAN TAB
 // Sheet name: "plan"
 // Columns: date, account, subcon, teamType, resourceRemark,
-//          duId, siteName, activityRemark, dailyPlanActivity, rowIdx
-// rowIdx is the 10th column (0-based index 9) — it preserves the
+//          duId, siteName, activityRemark, dailyPlanActivity, result, rowIdx
+// result is the 10th column (0-based index 9) — user-entered daily result text.
+// rowIdx is the 11th column (0-based index 10) — preserves the
 // client-side roster position so copy-from-last-date matches
 // correctly even after a user reorders or duplicates rows.
 // ============================================================
@@ -578,9 +579,9 @@ function getOrCreatePlanSheet() {
   var sheet = ss.getSheetByName('plan');
   if (!sheet) {
     sheet = ss.insertSheet('plan');
-    sheet.getRange(1, 1, 1, 10).setValues([[
+    sheet.getRange(1, 1, 1, 11).setValues([[
       'date', 'account', 'subcon', 'teamType', 'resourceRemark',
-      'duId', 'siteName', 'activityRemark', 'dailyPlanActivity', 'rowIdx'
+      'duId', 'siteName', 'activityRemark', 'dailyPlanActivity', 'result', 'rowIdx'
     ]]);
     sheet.setFrozenRows(1);
   }
@@ -606,7 +607,7 @@ function servePlan(date) {
       .createTextOutput(JSON.stringify([]))
       .setMimeType(ContentService.MimeType.JSON);
   }
-  var values = sh.getRange(2, 1, last - 1, 10).getValues();
+  var values = sh.getRange(2, 1, last - 1, 11).getValues();
   var want = date ? String(date) : '';
   var rows = [];
   for (var i = 0; i < values.length; i++) {
@@ -625,7 +626,8 @@ function servePlan(date) {
       siteName:         String(r[6] || ''),
       activityRemark:   String(r[7] || ''),
       dailyPlanActivity:String(r[8] || ''),
-      rowIdx:           r[9] === '' || r[9] === null || isNaN(Number(r[9])) ? -1 : Number(r[9])
+      result:           String(r[9] || ''),
+      rowIdx:           r[10] === '' || r[10] === null || isNaN(Number(r[10])) ? -1 : Number(r[10])
     });
   }
   return ContentService
@@ -653,7 +655,7 @@ function servePlanDates() {
       .createTextOutput(JSON.stringify([]))
       .setMimeType(ContentService.MimeType.JSON);
   }
-  var data = sh.getRange(2, 1, last - 1, 1).getValues();
+  var data = sh.getRange(2, 1, last - 1, 11).getValues();
   var seen = {};
   var dates = [];
   for (var i = 0; i < data.length; i++) {
@@ -690,7 +692,7 @@ function handlePlanSave(body) {
   var existing = [];
   var existingRowNums = []; // parallel: sheet row numbers for each existing entry
   if (last > 1) {
-    var vals = sh.getRange(2, 1, last - 1, 10).getValues();
+    var vals = sh.getRange(2, 1, last - 1, 11).getValues();
     for (var i = 0; i < vals.length; i++) {
       var dateCell = _planDateCellToString(vals[i][0]);
       existingRowNums.push(i + 2); // sheet row number (1-based)
@@ -714,6 +716,7 @@ function handlePlanSave(body) {
       String(r.siteName           || ''),
       String(r.activityRemark     || ''),
       String(r.dailyPlanActivity  || ''),
+      String(r.result             || ''),
       idx
     ];
   }
@@ -769,14 +772,14 @@ function handlePlanSave(body) {
           rangePrev = dateRows[p];
         } else {
           // Close the current range [rangeStart, rangePrev] inclusive.
-          rangesToClear.push(sh.getRange(rangeStart, 1, rangePrev - rangeStart + 1, 10));
+          rangesToClear.push(sh.getRange(rangeStart, 1, rangePrev - rangeStart + 1, 11));
           if (p < dateRows.length) {
             rangeStart = rangePrev = dateRows[p];
           }
         }
       }
       for (var q = 0; q < rangesToClear.length; q++) {
-        rangesToClear[q].setValues(_blankRange(rangesToClear[q].getNumRows(), 10));
+        rangesToClear[q].setValues(_blankRange(rangesToClear[q].getNumRows(), 11));
       }
     }
   }
@@ -784,7 +787,7 @@ function handlePlanSave(body) {
   // --- 6. Write the merged set starting at row 2 ---
   var written = 0;
   if (merged.length > 0) {
-    sh.getRange(2, 1, merged.length, 10).setValues(merged);
+    sh.getRange(2, 1, merged.length, 11).setValues(merged);
     written = merged.length;
   }
 

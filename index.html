@@ -1759,8 +1759,8 @@ Remark = ${remark}`;
   let planCurrentDate = '';   // ISO YYYY-MM-DD currently being edited
   let planRows = [];          // in-memory mirror; index aligns with PLAN_ROSTER (always full 23)
   let planDirty = false;      // true after any cell edit, cleared on save / date switch (after confirm)
-  // Plan sort state. Empty key = roster order.
-  let _planSortKey = '';
+  // Plan sort state. Default sort by subcon.
+  let _planSortKey = 'subcon';
   let _planSortDir = 'asc';   // 'asc' | 'desc'
   // Plan roster delta (surge-managed additions + removals layered on top of PLAN_ROSTER base).
   // Mirror of the server's `planRoster` script property. Reconciles on dashboard init.
@@ -4076,7 +4076,7 @@ Remark = ${remark}`;
         return {
           account: r.account, subcon: r.subcon, teamType: r.teamType,
           resourceRemark: r.resourceRemark,
-          duId: '', siteName: '', activityRemark: '', dailyPlanActivity: ''
+          duId: '', siteName: '', activityRemark: '', dailyPlanActivity: '', result: ''
         };
       }
       return {
@@ -4087,7 +4087,8 @@ Remark = ${remark}`;
         duId:              src.duId              != null ? String(src.duId)              : '',
         siteName:          src.siteName          != null ? String(src.siteName)          : '',
         activityRemark:    src.activityRemark    != null ? String(src.activityRemark)    : '',
-        dailyPlanActivity: src.dailyPlanActivity != null ? String(src.dailyPlanActivity) : ''
+        dailyPlanActivity: src.dailyPlanActivity != null ? String(src.dailyPlanActivity) : '',
+        result:            src.result            != null ? String(src.result)            : ''
       };
     });
   }
@@ -4367,6 +4368,7 @@ Remark = ${remark}`;
       container.innerHTML = _planTableHtml();
       _wirePlanTable(container);
       _wirePlanSortHeaders(container);
+      _wirePlanResultRefresh(container);
       // Pin Save to right edge (already absolute in inline style); keep #planWrap clear of the bar
       // even when the bar wraps to a 2nd row on narrow viewports. With statsBar hidden in Plan view,
       // the bar is the first child of dashBody, so offsetHeight alone is the correct top.
@@ -4504,7 +4506,7 @@ Remark = ${remark}`;
             const rowIdx = Number(td.dataset.row);
             const colKey = td.dataset.col;
             if (planRows[rowIdx] && colKey) {
-              planRows[rowIdx][colKey === 'result' ? 'activityRemark' : colKey] = input.value;
+              planRows[rowIdx][colKey] = input.value;
               td.setAttribute('data-val', input.value);
               _applyPlanCellStyle(input, colKey, input.value);
               wrote = true;
@@ -4556,10 +4558,9 @@ Remark = ${remark}`;
             if (!input || input.disabled) continue;
             input.value = '';
             // Mirror into planRows and trigger _onPlanCellEdit lifecycle.
-            // 'result' col (colKey=8) writes to activityRemark, matching _onPlanCellEdit.
             const rowIdx = Number(td.dataset.row);
             if (planRows[rowIdx]) {
-              planRows[rowIdx][colKey === 'result' ? 'activityRemark' : colKey] = '';
+              planRows[rowIdx][colKey] = '';
               td.setAttribute('data-val', '');
               _applyPlanCellStyle(input, td.dataset.col === 'result' ? 'result' : colKey, '');
             }
@@ -4620,6 +4621,7 @@ Remark = ${remark}`;
     clearPlanSelection();
     _wirePlanTable(container);
     _wirePlanSortHeaders(container);
+    _wirePlanResultRefresh(container);
     // With statsBar hidden, planBar is the first child of dashBody — use its offsetHeight as top.
     const pb = document.getElementById('dashPlanBar');
     const pw = document.getElementById('planWrap');
@@ -4643,6 +4645,53 @@ Remark = ${remark}`;
         _refreshPlanTableOnly();
       });
     });
+  }
+
+  // Wire the Preview button via event delegation on #dashPlan.
+  // Called from renderPlanView, _refreshPlanTableOnly, and Copy-from-last handler.
+  var _planResultDelegatedHandler = null;
+
+  function _wirePlanResultRefresh(container){
+    if (!container) return;
+    if (container._planResultDelegated) {
+      container.removeEventListener('click', _planResultDelegatedHandler);
+    }
+    _planResultDelegatedHandler = function(e){
+      var btn = e.target.closest('button.plan-result-query');
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      _runPlanResultQuery(btn);
+    };
+    container.addEventListener('click', _planResultDelegatedHandler);
+    container._planResultDelegated = true;
+  }
+
+  // Look up the remark for the current row's DU ID from dashTrackerData.
+  function _runPlanResultQuery(btn){
+    var rowIdx = Number(btn.getAttribute('data-row'));
+    if (!Number.isFinite(rowIdx) || !planRows[rowIdx]) return;
+    var duId = planRows[rowIdx].duId;
+    if (!duId) {
+      btn.setAttribute('title', '(no DU ID in this row)');
+      return;
+    }
+    // Find matching site in tracker data
+    var match = dashTrackerData.find(function(s){
+      return s && String(s.duId || '').trim().toUpperCase() === String(duId || '').trim().toUpperCase();
+    });
+    var tip;
+    if (!match) {
+      tip = '(no match in Table tab)';
+    } else if (match.remark) {
+      tip = 'Table: ' + match.remark + (match.team ? ' [' + match.team + ']' : '');
+    } else {
+      tip = '(empty remark in Table tab)';
+    }
+    btn.setAttribute('title', tip);
+    // Brief highlight
+    btn.style.background = '#1550b5';
+    setTimeout(function(){ btn.style.background = '#1f6feb'; }, 400);
   }
 
 
@@ -4759,20 +4808,19 @@ function _applyPlanCellStyle(el, col, val){
         '<button type="button" class="plan-del-row" data-account="' + escAttr(account) + '" title="Delete ' + escAttr(account) + ' from roster" style="background:transparent;border:1px solid #cfd7df;border-radius:4px;color:#6b7688;cursor:pointer;font-size:12px;padding:2px 6px;line-height:1;">✕</button>' +
       '</td>';
     }
-    // Result cell: free-text <input> where the user types the activity remark
-    // directly. data-col="result" but _onPlanCellEdit maps it to activityRemark
-    // so Save persists it correctly. A small search-icon button sits on the right
-    // — clicking it looks up the Table tab and shows a tooltip preview (does NOT
-    // fill the input; the user manually types the result).
+    // Result cell: free-text <input> where the user types the daily result text.
+    // data-col="result" — persisted to the 11th sheet column.
+    // A small search-icon button sits on the right — clicking it looks up the
+    // Table tab and shows a tooltip preview (does NOT fill the input).
     // When blocked, renders as a plain grey div (no input/button).
-    function resultCell(rowIdx, activityRemark, blocked){
+    function resultCell(rowIdx, result, blocked){
       if (blocked) {
-        return '<div style="box-sizing:border-box;padding:5px 7px;background:#e8eaec;color:#9aa0a6;font-size:11px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + escAttr(activityRemark || '') + '">' + escHtml(activityRemark || '—') + '</div>';
+        return '<div style="box-sizing:border-box;padding:5px 7px;background:#e8eaec;color:#9aa0a6;font-size:11px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + escAttr(result || '') + '">' + escHtml(result || '—') + '</div>';
       }
-      var inputStyle = 'flex:1;min-width:0;box-sizing:border-box;padding:4px 6px;border:1px solid #cfd7df;border-radius:4px;background:#fff;color:#24292f;font-size:11px;outline:none;';
+      var inputStyle = 'width:100%;flex:1;min-width:0;box-sizing:border-box;padding:4px 6px;border:1px solid #cfd7df;border-radius:4px;background:#fff;color:#24292f;font-size:11px;outline:none;';
       var btnStyle  = 'flex:0 0 auto;padding:3px 6px;border:1px solid #1f6feb;border-radius:4px;background:#1f6feb;color:#fff;font-size:11px;cursor:pointer;line-height:1.4;white-space:nowrap;';
       return '<div class="plan-result-wrap" style="display:flex;align-items:center;gap:4px;width:100%;">' +
-        '<input type="text" class="plan-cell" data-row="' + rowIdx + '" data-col="result" value="' + escAttr(activityRemark || '') + '" style="' + inputStyle + '" placeholder="—" spellcheck="false">' +
+        '<input type="text" class="plan-cell" data-row="' + rowIdx + '" data-col="result" value="' + escAttr(result || '') + '" style="' + inputStyle + '" placeholder="—" spellcheck="false">' +
         '<button type="button" class="plan-result-query" data-row="' + rowIdx + '" title="Preview from Table tab" style="' + btnStyle + '">&#8981;</button>' +
         '</div>';
     }
@@ -4812,11 +4860,11 @@ function _applyPlanCellStyle(el, col, val){
           PLAN_DAILY_PLAN_OPTS.map(function(o){ return '<option value="' + o + '"' + (row.dailyPlanActivity === o ? ' selected' : '') + '>' + o + '</option>'; }).join('') +
           '</select>'],
         // Result cell: editable input + query button normally; greyed text div when blocked.
-        ['result', resultCell(i, row.activityRemark, isBlocked)]
+        ['result', resultCell(i, row.result, isBlocked)]
       ];
       let html = inputs.map(function(p){
-        // Result column: use activityRemark for data-val so Ctrl+C works correctly.
-        var val = (p[0] === 'result') ? (row.activityRemark || '') : (row[p[0]] || '');
+        // Result column: use result for data-val so Ctrl+C copies the correct value.
+        var val = row[p[0]] || '';
         return cellTd(p[1], i, p[0], val, isBlocked);
       }).join('');
       if (showDel) html += delTd(i, row.account || '');
@@ -5027,7 +5075,7 @@ function _applyPlanCellStyle(el, col, val){
           return {
             account: r.account, subcon: r.subcon, teamType: r.teamType,
             resourceRemark: r.resourceRemark,
-            duId: '', siteName: '', activityRemark: '', dailyPlanActivity: ''
+            duId: '', siteName: '', activityRemark: '', dailyPlanActivity: '', result: ''
           };
         });
       } else {
@@ -5184,11 +5232,12 @@ function _applyPlanCellStyle(el, col, val){
     // Re-render so the inputs reflect the new planRows.
     const container = document.getElementById('dashPlan');
     if (container) {
-container.innerHTML = _planTableHtml();
-    clearPlanSelection();
-    _wirePlanTable(container);
-    _wirePlanSortHeaders(container);
-  }
+      container.innerHTML = _planTableHtml();
+      clearPlanSelection();
+      _wirePlanTable(container);
+      _wirePlanSortHeaders(container);
+      _wirePlanResultRefresh(container);
+    }
   });
 
   // ----- Add roster member (surge-only) -----
