@@ -1,4 +1,36 @@
 ﻿<!DOCTYPE html>
+<!--
+====================================================================
+  DEPLOYMENT GUIDE
+====================================================================
+
+  WORKFLOW: dev branch (test) → main branch (production)
+
+  Step 1 — Edit on DEV branch:
+    git checkout dev          (you're already on dev)
+    Make your changes in index.html / SiteAcceptanceTracker.gs
+
+  Step 2 — Test locally (copy-paste to Apps Script test version):
+    2a. In VS Code: Ctrl+A → Ctrl+C on index.html content
+    2b. Open https://script.google.com → your SiteAcceptanceTracker project
+    2c. Click the HTML file in the editor → Ctrl+A → Ctrl+V (replace all)
+    2d. Do the same for SiteAcceptanceTracker.gs
+    2e. Deploy → Manage deployments → pencil icon → Version: "New version" → Deploy
+    2f. Copy the "Test URL" (separate URL for testing)
+    2g. Open the Test URL and verify your changes work
+
+  Step 3 — Promote to production (when happy with testing):
+    git checkout main
+    git merge dev
+    Repeat step 2b–2e but use the PRODUCTION Apps Script project URL
+
+  Branch overview:
+    dev  → test / staging (current branch)
+    main → production
+
+  DO NOT push directly to main without testing on dev first.
+====================================================================
+-->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
