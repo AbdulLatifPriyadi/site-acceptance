@@ -850,7 +850,9 @@
           title="Broadcast the picked date to all subcont viewers"
           style="padding:4px 9px;border:1px solid #f0b429;border-radius:6px;background:#f0b429;color:#1c2530;font-size:11.5px;cursor:pointer;font-weight:600;display:none;">SET</button>
         <button id="planCopyLastBtn"
-          style="padding:5px 9px;border:1px solid #2f6bc4;border-radius:6px;background:#2f6bc4;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;">Copy from last date</button>
+          style="padding:5px 9px;border:1px solid #2f6bc4;border-radius:6px;background:#2f6feb;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;">Copy from last date</button>
+        <button id="planQueryWorkBtn" title="Fill DU ID &amp; Site Name from current clock-in data"
+          style="padding:5px 9px;border:1px solid #4caf7d;border-radius:6px;background:#1a7f4b;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;">Query work</button>
         <button id="planSaveBtn"
           style="position:absolute; right:14px; top:50%; transform:translateY(-50%); z-index:2; padding:5px 14px;border:1px solid #4caf7d;border-radius:6px;background:#4caf7d;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;box-shadow:0 1px 4px rgba(0,0,0,.25);">Save</button>
         <span id="planSelInfo" style="font-size:11px; color:#a8d4f0; font-weight:700; display:none;"></span>
@@ -5277,6 +5279,71 @@ function _applyPlanCellStyle(el, col, val){
     setPlanStatus('Copied from ' + prior + ' (unsaved)');
     // Re-render so the inputs reflect the new planRows.
     const container = document.getElementById('dashPlan');
+    if (container) {
+      container.innerHTML = _planTableHtml();
+      clearPlanSelection();
+      _wirePlanTable(container);
+      _wirePlanSortHeaders(container);
+      _wirePlanResultRefresh(container);
+    }
+  });
+
+  // ----- Query work: fill DU ID & Site Name from clock-in data -----
+  document.getElementById('planQueryWorkBtn').addEventListener('click', function(){
+    if (!planCurrentDate) { setPlanStatus('Pick a date first'); return; }
+    if (!dashClockinData || Object.keys(dashClockinData).length === 0) {
+      setPlanStatus('No clock-in data available');
+      return;
+    }
+
+    // Build reverse lookup: account -> { duId, siteName }
+    // First, build account -> duId from clockin data
+    var clockinByAccount = {};
+    Object.keys(dashClockinData).forEach(function(duId) {
+      var ci = dashClockinData[duId];
+      if (ci && ci.account) {
+        var acctKey = String(ci.account).trim().toLowerCase();
+        clockinByAccount[acctKey] = duId;
+      }
+    });
+
+    // Build duId -> siteName from tracker data
+    var siteNameByDuId = {};
+    (dashTrackerData || []).forEach(function(site) {
+      if (site.duId) {
+        siteNameByDuId[String(site.duId).trim().toUpperCase()] = site.siteName || '';
+      }
+    });
+
+    var filled = 0;
+    var noMatch = 0;
+    for (var i = 0; i < planRows.length; i++) {
+      var row = planRows[i];
+      if (!row) continue;
+
+      // Only fill rows with empty DU ID (optionally skip already-filled rows)
+      if (row.duId && row.duId.trim()) continue;
+
+      var acctKey = String(row.account || '').trim().toLowerCase();
+      var duId = clockinByAccount[acctKey];
+      if (!duId) { noMatch++; continue; }
+
+      row.duId = duId;
+      row.siteName = siteNameByDuId[duId.trim().toUpperCase()] || '';
+      filled++;
+    }
+
+    if (filled === 0 && noMatch > 0) {
+      setPlanStatus('No matches found — check accounts match clock-in sheet');
+    } else {
+      setPlanStatus('Filled ' + filled + ' row(s) from clock-in data' + (noMatch > 0 ? ' (' + noMatch + ' skipped)' : ''));
+    }
+
+    planDirty = true;
+    _applySaveButtonState();
+
+    // Re-render so the inputs reflect the new values.
+    var container = document.getElementById('dashPlan');
     if (container) {
       container.innerHTML = _planTableHtml();
       clearPlanSelection();
