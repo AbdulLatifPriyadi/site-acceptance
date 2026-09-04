@@ -5350,6 +5350,10 @@ function _applyPlanCellStyle(el, col, val){
       _wirePlanTable(container);
       _wirePlanSortHeaders(container);
       _wirePlanResultRefresh(container);
+      // Recalculate planWrap top so the header stays visible.
+      var pb = document.getElementById('dashPlanBar');
+      var pw = document.getElementById('planWrap');
+      if (pb && pw) pw.style.top = pb.offsetHeight + 'px';
     }
   });
 
