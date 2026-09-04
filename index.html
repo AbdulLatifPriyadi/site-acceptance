@@ -5296,14 +5296,22 @@ function _applyPlanCellStyle(el, col, val){
       return;
     }
 
-    // Build reverse lookup: account -> { duId, siteName }
-    // First, build account -> duId from clockin data
+    // Build reverse lookup: account -> duId from clockin data
+    // Method 1: match by account field
     var clockinByAccount = {};
+    // Method 2: match by extracted name (for accounts that don't have ci.account populated)
+    var clockinByName = {};
     Object.keys(dashClockinData).forEach(function(duId) {
       var ci = dashClockinData[duId];
+      // By account field
       if (ci && ci.account) {
         var acctKey = String(ci.account).trim().toLowerCase();
         clockinByAccount[acctKey] = duId;
+      }
+      // By name: extract first word from "Name (Subcont)" format
+      if (ci && ci.name) {
+        var nameKey = String(ci.name).split(' ')[0].trim().toLowerCase();
+        clockinByName[nameKey] = duId;
       }
     });
 
@@ -5321,11 +5329,24 @@ function _applyPlanCellStyle(el, col, val){
       var row = planRows[i];
       if (!row) continue;
 
-      // Only fill rows with empty DU ID (optionally skip already-filled rows)
+      // Skip rows that already have a DU ID
       if (row.duId && row.duId.trim()) continue;
 
+      // Method 1: match by account name
       var acctKey = String(row.account || '').trim().toLowerCase();
       var duId = clockinByAccount[acctKey];
+
+      // Method 2: fallback — extract name from account (e.g. "adw_tl_agung_32092512" -> "agung")
+      if (!duId && acctKey) {
+        // Extract name part: skip prefix like "adw_tl_", "nim_tl_", "intisel_tl_", etc.
+        var namePart = acctKey.replace(/^(adw_tl_|nim_tl_|intisel_tl_|caa_tl_|pab_tl_|pab_mb_|inv_tl_|tal_tl_|dedi_|chr_|andri_)/, '');
+        // Remove trailing _number (e.g. "_32092512")
+        namePart = namePart.replace(/_[0-9]+$/, '');
+        // Remove dots (e.g. "reza.r" -> "rezar")
+        namePart = namePart.replace(/\./g, '');
+        duId = clockinByName[namePart];
+      }
+
       if (!duId) { noMatch++; continue; }
 
       row.duId = duId;
