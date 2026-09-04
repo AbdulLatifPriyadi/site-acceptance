@@ -296,12 +296,12 @@
   .sub-rank span{ font-size:8px; letter-spacing:1px; color:#6b7688; font-weight:700; }
   .sub-stack{ margin:6px 20px 0; height:14px; border-radius:7px; overflow:hidden; display:flex; border:1px solid #dde3ec; }
   .sub-stack span{ height:100%; }
-  .sub-grid{ display:grid; grid-template-columns:repeat(5,1fr); gap:1px; background:#dde3ec; margin:14px 20px 0; border-radius:8px; overflow:hidden; }
-  .sub-cell{ background:#fff; padding:12px 4px; text-align:center; }
-  .sub-cell .swatch{ width:8px; height:8px; border-radius:2px; display:inline-block; margin-bottom:6px; }
-  .sub-cell .val{ font-size:28px; font-weight:800; line-height:1; }
+  .sub-grid{ display:grid; grid-template-columns:repeat(6,1fr); gap:1px; background:#dde3ec; margin:14px 20px 0; border-radius:8px; overflow:hidden; }
+  .sub-cell{ background:#fff; padding:10px 4px; text-align:center; min-width:0; }
+  .sub-cell .swatch{ width:8px; height:8px; border-radius:2px; display:inline-block; margin-bottom:4px; }
+  .sub-cell .val{ font-size:22px; font-weight:800; line-height:1; }
   .sub-cell .name{ font-size:9px; letter-spacing:.5px; color:#6b7688; text-transform:uppercase; margin-top:3px; }
-  .sub-cell .pct{ font-size:9px; color:#6b7688; }
+  .sub-cell .pct{ font-size:8px; color:#6b7688; }
   .sub-foot{ display:flex; justify-content:space-between; padding:14px 20px 16px; border-top:1px solid #dde3ec; margin-top:14px; font-size:11px; }
   .sub-foot .muted{ color:#6b7688; }
 
@@ -1835,11 +1835,11 @@ Remark = ${remark}`;
   const GAP_COL_STYLE = {
     'ATP':         { head:'#4caf7d', cell:'#d8f3e3' },
     'ON AIR':      { head:'#2f6bc4', cell:'#d6e6f8' },
-    'Install':    { head:'#e8a33d', cell:'#fde9c8' },
-    'Commcase':    { head:'#e0574f', cell:'#f8d4d2' },
-    'PO Requested':{ head:'#9aa0a6', cell:'#e8eaec' },
-    'DN Requested':{ head:'#9aa0a6', cell:'#e8eaec' },
-    'Other':      { head:'#9aa0a6', cell:'#e8eaec' },
+    'SVQC':        { head:'#8a5cc9', cell:'#ede9f8' },
+    'Install':     { head:'#e8a33d', cell:'#fde9c8' },
+    'Commcase':     { head:'#e0574f', cell:'#f8d4d2' },
+    'PO/DN Requested':{ head:'#9a4de8', cell:'#ede9f8' },
+    'Other':       { head:'#c9cdd0', cell:'#e8eaec' },
     'Total':       { head:'#1c2530', cell:'#f5f6f7' }
   };
   const PLAN_ACTIVITY_STYLE = {
@@ -1855,7 +1855,7 @@ Remark = ${remark}`;
     'IDLE': true, 'ON LEAVE': true, 'OTHER PROJECT': true,
     'WAITING MATERIAL': true, 'Closing Only': true
   };
-  const GAP_STATUSES = ['ATP', 'ON AIR', 'Install', 'Commcase', 'DN Requested', 'PO Requested'];
+  const GAP_STATUSES = ['ATP', 'ON AIR', 'SVQC', 'Install', 'Commcase', 'PO/DN Requested'];
   const SUB_TABLE_FIELDS = [
     { key:'batchRfi', label:'Batch RFI' },
     { key:'tpId', label:'TP ID' },
@@ -2006,11 +2006,12 @@ Remark = ${remark}`;
   function dashGapColor(gap){
     const g = String(gap || '').toLowerCase();
     if(g.includes('comcase') || g.includes('commcase')) return '#e0574f';
-    if(g.includes('po requested') || g.includes('po request')) return '#9aa0a6';
-    if(g.includes('dn requested') || g.includes('dn request') || g.includes('dn_request')) return '#9aa0a6';
+    if(g.includes('po requested') || g.includes('po request') || g.includes('po_request') ||
+       g.includes('dn requested') || g.includes('dn request') || g.includes('dn_request')) return '#9a4de8';
     if(g.includes('install')) return '#e8a33d';
     if(g.includes('on air') || g.includes('onair')) return '#2f6bc4';
     if(g.includes('atp')) return '#4caf7d';
+    if(g.includes('svqc')) return '#8a5cc9';
     return '#c9cdd0';
   }
 
@@ -2215,8 +2216,8 @@ Remark = ${remark}`;
     let rows;
     if(dashColorMode === 'gap'){
       rows = [
-        ['#4caf7d','ATP'], ['#2f6bc4','ON AIR'], ['#e8a33d','Install'],
-        ['#e0574f','Commcase'], ['#9aa0a6','PO Requested / DN Requested'], ['#c9cdd0','Other / blank']
+        ['#4caf7d','ATP'], ['#2f6bc4','ON AIR'], ['#8a5cc9','SVQC'], ['#e8a33d','Install'],
+        ['#e0574f','Commcase'], ['#9a4de8','PO/DN Req.'], ['#c9cdd0','Other']
       ];
     } else {
       const seen = {};
@@ -2241,16 +2242,17 @@ Remark = ${remark}`;
     const gapValues = {};
     sites.forEach(s => { const g = String(s.gap || '').trim(); gapValues[g] = (gapValues[g] || 0) + 1; });
     console.log('[renderStatsBar] unique gap values:', gapValues);
-    const counts = { ATP:0, 'ON AIR':0, Install:0, Commcase:0, 'DN Requested':0, 'PO Requested':0, Other:0 };
+    const counts = { ATP:0, 'ON AIR':0, SVQC:0, Install:0, Commcase:0, 'PO/DN Requested':0, Other:0 };
     sites.forEach(s => { counts[matchGapStatus(s.gap)]++; });
+    counts['PO/DN Requested'] = (counts['PO Requested'] || 0) + (counts['DN Requested'] || 0);
     const chips = [
       { color:'#4caf7d', label:'ATP', key:'ATP' },
       { color:'#2f6bc4', label:'ON AIR', key:'ON AIR' },
+      { color:'#8a5cc9', label:'SVQC', key:'SVQC' },
       { color:'#e8a33d', label:'Install', key:'Install' },
       { color:'#e0574f', label:'Commcase', key:'Commcase' },
-      { color:'#9a4de8', label:'DN Req', key:'DN Requested' },
-      { color:'#4dd6e8', label:'PO Req', key:'PO Requested' },
-      { color:'#9aa0a6', label:'Other', key:'Other' },
+      { color:'#9a4de8', label:'PO/DN Req.', key:'PO/DN Requested' },
+      { color:'#c9cdd0', label:'Other', key:'Other' }
     ];
     el.innerHTML = chips.map(c => `
       <span class="dash-stat-chip">
@@ -2508,12 +2510,13 @@ Remark = ${remark}`;
 
   function matchGapStatus(gap){
     const g = String(gap || '').toLowerCase();
-    if(g.includes('commcase') || g.includes('comcase')) return 'Commcase';
-    if(g.includes('dn requested') || g.includes('dn request') || g.includes('dn_request')) return 'DN Requested';
-    if(g.includes('po requested') || g.includes('po request') || g.includes('po_request')) return 'PO Requested';
+    if(g.includes('po requested') || g.includes('po request') || g.includes('po_request') ||
+       g.includes('dn requested') || g.includes('dn request') || g.includes('dn_request')) return 'PO/DN Requested';
     if(g.includes('install')) return 'Install';
     if(g.includes('on air') || g.includes('onair')) return 'ON AIR';
     if(g.includes('atp')) return 'ATP';
+    if(g.includes('svqc')) return 'SVQC';
+    if(g.includes('commcase') || g.includes('comcase')) return 'Commcase';
     return 'Other';
   }
 
@@ -3589,8 +3592,8 @@ Remark = ${remark}`;
       if((e.ctrlKey||e.metaKey)&&e.key==='c'&&selectedCardNames.size>0){
         e.preventDefault();
         const sel=ranked.filter(function(item){return selectedCardNames.has(item.name);});
-        const hdr='Subcont	ATP	On Air	Install	Comcase	PO Req.	Total	Integrated%';
-        const rows=sel.map(function(item){return item.name+'	'+item.atp+'	'+item.onair+'	'+item.install+'	'+item.commcase+'	'+item.po+'	'+item.total+'	'+Math.round((item.atp+item.onair)/item.total*100)+'%';});
+      const hdr='Subcont	ATP	On Air	SVQC	Install	Comcase	PO Req.	Total	Integrated%';
+      const rows=sel.map(function(item){return item.name+'\t'+item.atp+'\t'+item.onair+'\t'+(item.svqc||0)+'\t'+item.install+'\t'+item.commcase+'\t'+item.po+'\t'+item.total+'\t'+Math.round((item.atp+item.onair)/item.total*100)+'%';});
         const text=[hdr].concat(rows).join('\n');
         try{navigator.clipboard.writeText(text);}catch(err){
           const ta=document.createElement('textarea');ta.value=text;ta.style.cssText='position:fixed;opacity:0';document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);
@@ -3687,13 +3690,14 @@ Remark = ${remark}`;
     const groups = {};
     sites.forEach(site=>{
       const name = String(site.subcontPlan || 'Unknown').trim() || 'Unknown';
-      if(!groups[name]) groups[name] = { name, atp:0, onair:0, install:0, commcase:0, po:0, total:0 };
+      if(!groups[name]) groups[name] = { name, atp:0, onair:0, svqc:0, install:0, commcase:0, po:0, total:0 };
       const g = matchGapStatus(site.gap);
       if(g === 'ATP') groups[name].atp++;
       else if(g === 'ON AIR') groups[name].onair++;
+      else if(g === 'SVQC') groups[name].svqc++;
       else if(g === 'Install') groups[name].install++;
       else if(g === 'Commcase') groups[name].commcase++;
-      else if(g === 'PO Requested' || g === 'DN Requested') groups[name].po++;
+      else if(g === 'PO/DN Requested') groups[name].po++;
       groups[name].total++;
     });
     const ranked = Object.values(groups).sort((a,b)=> b.total - a.total);
@@ -3701,6 +3705,7 @@ Remark = ${remark}`;
     const stages = [
       { key:'atp', label:'ATP', color:'#2fa84f' },
       { key:'onair', label:'ON AIR', color:'#2f80ed' },
+      { key:'svqc', label:'SVQC', color:'#8a5cc9' },
       { key:'install', label:'Install', color:'#f2994a' },
       { key:'commcase', label:'Commcase', color:'#e0453c' },
       { key:'po', label:'PO/DN Req.', color:'#98a2b3' }
@@ -3724,6 +3729,7 @@ Remark = ${remark}`;
       }).join('');
       const atpPct = Math.round(item.atp/total*100);
       const onairPct = Math.round(item.onair/total*100);
+      const svqcPct = Math.round((item.svqc||0)/total*100);
       const integrated = Math.round((item.atp+item.onair)/total*100);
       const color = dashSubcontColor(item.name);
       return `<div class="sub-card" data-subcont="${escapeHtml(item.name)}">
@@ -3748,7 +3754,7 @@ Remark = ${remark}`;
         <div class="sub-grid">${cells}</div>
         <div class="sub-foot">
           <div class="muted">${dateStr}</div>
-          <div><span style="color:#2fa84f;font-weight:800">${atpPct}%</span> + <span style="color:#2f80ed;font-weight:800">${onairPct}%</span> = Integrated <span style="color:#d4a017;font-weight:800">${integrated}%</span></div>
+          <div><span style="color:#2fa84f;font-weight:800">${atpPct}%</span> + <span style="color:#2f80ed;font-weight:800">${onairPct}%</span> + <span style="color:#8a5cc9;font-weight:800">${svqcPct}%</span> = Integrated <span style="color:#d4a017;font-weight:800">${integrated}%</span></div>
         </div>
       </div>`;
     }).join('') + `</div>`;
@@ -3868,14 +3874,14 @@ Remark = ${remark}`;
     const GAP_CELL_COLORS = {
       'ATP':          { bg:'#d8f3e3', text:'#1a5c2e' },
       'ON AIR':       { bg:'#d6e6f8', text:'#1a3d7c' },
+      'SVQC':         { bg:'#ede9f8', text:'#3d2a6b' },
       'Install':      { bg:'#fde9c8', text:'#8c4a0a' },
       'Commcase':     { bg:'#f8d4d2', text:'#8c1a14' },
-      'PO Requested':{ bg:'#e8eaec', text:'#555' },
-      'DN Requested':{ bg:'#e8eaec', text:'#555' },
+      'PO/DN Requested': { bg:'#ede9f8', text:'#3d2a6b' },
       'Other':        { bg:'#e8eaec', text:'#555' }
     };
     // GAP dropdown options for editing
-    const GAP_OPTIONS = ['ATP', 'ON AIR', 'Install', 'Commcase', 'DN Requested', 'PO Requested'];
+    const GAP_OPTIONS = ['ATP', 'ON AIR', 'SVQC', 'Install', 'Commcase', 'PO/DN Requested'];
 
     const head = '<tr>' + SUB_TABLE_FIELDS.map(f=> `<th>${escapeHtml(f.label)}</th>`).join('') + '</tr>';
     const filterHeadRow = '<tr style="background:#2d3748;">' + filterRow + '</tr>';
@@ -3889,7 +3895,7 @@ Remark = ${remark}`;
             ? `background:${GAP_CELL_COLORS[current] ? GAP_CELL_COLORS[current].bg : '#e8eaec'};color:${GAP_CELL_COLORS[current] ? GAP_CELL_COLORS[current].text : '#555'}`
             : `background:#f5f6f7;color:#888`;
           return `<td style="${colorStyle}"><select data-i="${i}" data-k="${f.key}" ${editable?'':'disabled'} style="width:100%;${colorStyle}">${
-            ['ATP','ON AIR','Install','Commcase','DN Requested','PO Requested','Other'].map(g=> `<option value="${escapeHtml(g)}" ${current===g?'selected':''}>${escapeHtml(g)}</option>`).join('')
+            ['ATP','ON AIR','SVQC','Install','Commcase','PO/DN Requested','Other'].map(g=> `<option value="${escapeHtml(g)}" ${current===g?'selected':''}>${escapeHtml(g)}</option>`).join('')
           }</select></td>`;
         }
         const roStyle = editable ? '' : 'background:#f5f6f7;color:#888;border-color:#e0e0e0;cursor:default';
@@ -5377,14 +5383,24 @@ function _applyPlanCellStyle(el, col, val){
       return;
     }
 
-    // Build reverse lookup: account -> { duId, siteName }
-    // First, build account -> duId from clockin data
+    // Build lookup: account -> duId from clockin data
     var clockinByAccount = {};
     Object.keys(dashClockinData).forEach(function(duId) {
       var ci = dashClockinData[duId];
       if (ci && ci.account) {
         var acctKey = String(ci.account).trim().toLowerCase();
         clockinByAccount[acctKey] = duId;
+      }
+    });
+
+    // Build lookup: person name -> duId from clockin data (fallback)
+    var clockinByName = {};
+    Object.keys(dashClockinData).forEach(function(duId) {
+      var ci = dashClockinData[duId];
+      if (ci && ci.name) {
+        // Extract first word: "Agung (ADW)" -> "agung"
+        var nameKey = String(ci.name).split(' ')[0].trim().toLowerCase();
+        clockinByName[nameKey] = duId;
       }
     });
 
@@ -5398,15 +5414,29 @@ function _applyPlanCellStyle(el, col, val){
 
     var filled = 0;
     var noMatch = 0;
+    var debugInfo = [];
     for (var i = 0; i < planRows.length; i++) {
       var row = planRows[i];
       if (!row) continue;
 
-      // Only fill rows with empty DU ID (optionally skip already-filled rows)
+      // Skip rows that already have a DU ID
       if (row.duId && row.duId.trim()) continue;
 
       var acctKey = String(row.account || '').trim().toLowerCase();
+
+      // Method 1: direct account match
       var duId = clockinByAccount[acctKey];
+
+      // Method 2: extract name from account string and match against clock-in name
+      // e.g. "caa_tl_rezar_32020226" -> "rezar" -> matches "Rezar (CAA)"
+      if (!duId && acctKey) {
+        var nameKey = acctKey
+          .replace(/^(adw_tl_|nim_tl_|intisel_tl_|caa_tl_|pab_tl_|pab_mb_|inv_tl_|tal_tl_|dedi_|chr_|andri_)/, '')
+          .replace(/[0-9_]+$/, '')
+          .replace(/\./g, '');
+        duId = clockinByName[nameKey] || clockinByName[acctKey.split('_')[0]];
+      }
+
       if (!duId) { noMatch++; continue; }
 
       row.duId = duId;
@@ -5415,9 +5445,15 @@ function _applyPlanCellStyle(el, col, val){
     }
 
     if (filled === 0 && noMatch > 0) {
-      setPlanStatus('No matches found — check accounts match clock-in sheet');
+      // Show which accounts couldn't be matched
+      var unmatched = [];
+      for (var i = 0; i < planRows.length; i++) {
+        var r = planRows[i];
+        if (r && !(r.duId && r.duId.trim()) && r.account) unmatched.push(r.account);
+      }
+      setPlanStatus('No matches — ' + noMatch + ' rows with no clock-in. Check: ' + unmatched.slice(0, 3).join(', '));
     } else {
-      setPlanStatus('Filled ' + filled + ' row(s) from clock-in data' + (noMatch > 0 ? ' (' + noMatch + ' skipped)' : ''));
+      setPlanStatus('Filled ' + filled + ' row(s)' + (noMatch > 0 ? ' (' + noMatch + ' no match)' : ''));
     }
 
     planDirty = true;
