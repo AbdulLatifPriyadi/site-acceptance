@@ -4782,7 +4782,7 @@ function _applyPlanCellStyle(el, col, val){
     const colW = {
       account: 200, subcon: 130, teamType: 110, resourceRemark: 140,
       duId: 150, siteName: 170, activityRemark: 160, dailyPlanActivity: 160,
-      del: 32
+      result: 160, del: 32
     };
     const headers = [
       ['account',           'Account'],
@@ -4792,7 +4792,8 @@ function _applyPlanCellStyle(el, col, val){
       ['duId',              'DU ID'],
       ['siteName',          'Site Name'],
       ['activityRemark',    'Activity Remark'],
-      ['dailyPlanActivity', 'Daily Plan Activity']
+      ['dailyPlanActivity', 'Daily Plan Activity'],
+      ['result',            'Result']
     ];
     const showDel = !mySubcont; // surge-only delete column
     const inputBaseStyle = 'width:100%; box-sizing:border-box; padding:5px 7px; border:1px solid #cfd7df; border-radius:5px; background:#fff; color:#24292f; font-size:11.5px; outline:none;';
@@ -4817,7 +4818,7 @@ function _applyPlanCellStyle(el, col, val){
       if (blocked) {
         return '<div style="box-sizing:border-box;padding:5px 7px;background:#e8eaec;color:#9aa0a6;font-size:11px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + escAttr(result || '') + '">' + escHtml(result || '—') + '</div>';
       }
-      var inputStyle = 'width:100%;flex:1;min-width:0;box-sizing:border-box;padding:4px 6px;border:1px solid #cfd7df;border-radius:4px;background:#fff;color:#24292f;font-size:11px;outline:none;';
+      var inputStyle = 'flex:1 1 0;box-sizing:border-box;padding:4px 6px;border:1px solid #cfd7df;border-radius:4px;background:#fff;color:#24292f;font-size:11px;outline:none;';
       var btnStyle  = 'flex:0 0 auto;padding:3px 6px;border:1px solid #1f6feb;border-radius:4px;background:#1f6feb;color:#fff;font-size:11px;cursor:pointer;line-height:1.4;white-space:nowrap;';
       return '<div class="plan-result-wrap" style="display:flex;align-items:center;gap:4px;width:100%;">' +
         '<input type="text" class="plan-cell" data-row="' + rowIdx + '" data-col="result" value="' + escAttr(result || '') + '" style="' + inputStyle + '" placeholder="—" spellcheck="false">' +
@@ -4916,7 +4917,7 @@ function _applyPlanCellStyle(el, col, val){
     // that stole focus from the input, making typing unusable. Only sort remains.
 
     return '<div id="planWrap" tabindex="0" style="overflow:auto;position:absolute;top:0;left:0;right:0;bottom:0;user-select:none;-webkit-user-select:none;background:#fff;">' +
-      '<table id="planData" style="width:100%; table-layout:fixed; border-collapse:collapse; font-size:11.5px; min-width:' + (showDel ? 1312 : 1280) + 'px;">' +
+        '<table id="planData" style="width:100%; table-layout:fixed; border-collapse:collapse; font-size:11.5px; min-width:' + (showDel ? 1472 : 1440) + 'px;">' +
         '<colgroup>' + colgroup + '</colgroup>' +
         '<thead style="position:sticky; top:0; z-index:3; background:#f6f8fa; box-shadow:0 2px 0 #d0d7de;">' + thead + '</thead>' +
         '<tbody>' + rowsHtml + '</tbody>' +
