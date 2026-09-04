@@ -3513,7 +3513,7 @@ Remark = ${remark}`;
         e.preventDefault();
         const sel=ranked.filter(function(item){return selectedCardNames.has(item.name);});
       const hdr='Subcont	ATP	On Air	SVQC	Install	Comcase	PO Req.	Total	Integrated%';
-      const rows=sel.map(function(item){return item.name+'	'+item.atp+'	'+item.onair+'	'+(item.svqc||0)+'	'+item.install+'	'+item.commcase+'	'+item.po+'	'+item.total+'	'+Math.round((item.atp+item.onair+item.svqc)/item.total*100)+'%';});
+      const rows=sel.map(function(item){return item.name+'\t'+item.atp+'\t'+item.onair+'\t'+(item.svqc||0)+'\t'+item.install+'\t'+item.commcase+'\t'+item.po+'\t'+item.total+'\t'+Math.round((item.atp+item.onair)/item.total*100)+'%';});
         const text=[hdr].concat(rows).join('\n');
         try{navigator.clipboard.writeText(text);}catch(err){
           const ta=document.createElement('textarea');ta.value=text;ta.style.cssText='position:fixed;opacity:0';document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);
@@ -3649,6 +3649,7 @@ Remark = ${remark}`;
       }).join('');
       const atpPct = Math.round(item.atp/total*100);
       const onairPct = Math.round(item.onair/total*100);
+      const svqcPct = Math.round((item.svqc||0)/total*100);
       const integrated = Math.round((item.atp+item.onair)/total*100);
       const color = dashSubcontColor(item.name);
       return `<div class="sub-card" data-subcont="${escapeHtml(item.name)}">
@@ -3673,7 +3674,7 @@ Remark = ${remark}`;
         <div class="sub-grid">${cells}</div>
         <div class="sub-foot">
           <div class="muted">${dateStr}</div>
-          <div><span style="color:#2fa84f;font-weight:800">${atpPct}%</span> + <span style="color:#2f80ed;font-weight:800">${onairPct}%</span> = Integrated <span style="color:#d4a017;font-weight:800">${integrated}%</span></div>
+          <div><span style="color:#2fa84f;font-weight:800">${atpPct}%</span> + <span style="color:#2f80ed;font-weight:800">${onairPct}%</span> + <span style="color:#8a5cc9;font-weight:800">${svqcPct}%</span> = Integrated <span style="color:#d4a017;font-weight:800">${integrated}%</span></div>
         </div>
       </div>`;
     }).join('') + `</div>`;
