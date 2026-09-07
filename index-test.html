@@ -2576,9 +2576,7 @@ Remark = ${remark}`;
 
   function renderTableView(){
     const container = document.getElementById('dashTable');
-    console.log('[renderTableView] dashTrackerData.length =', (dashTrackerData||[]).length, '| tableSearch =', JSON.stringify(tableSearch));
     const sites = getFilteredSites();
-    console.log('[renderTableView] getFilteredSites() =', sites.length);
     const allCols = ["batchRfi","tpId","duId","siteName","subcontPlan","gap","remark","city","lat","lng"];
     const colLabels = {"batchRfi":"Batch RFI","tpId":"TP Site ID","duId":"DU ID","siteName":"Site Name","subcontPlan":"Subcont Plan","gap":"GAP Analysis","remark":"Remark","city":"City","lat":"Latitude","lng":"Longitude"};
     const colWidths = { batchRfi:90, tpId:115, duId:155, siteName:165, subcontPlan:105, gap:125, remark:145, city:95, lat:100, lng:100 };
@@ -2607,7 +2605,6 @@ Remark = ${remark}`;
     let filtered = workOnlyFiltered;
     if (tableSearch.trim()) {
       const lines = tableSearch.trim().split(/\s+/).filter(Boolean);
-      if(lines.length > 1) console.log('[SEARCH] lines count:', lines.length, '| lines:', lines);
       if (lines.length === 1) {
         // Single-line search: search across all columns
         const s2 = lines[0].toLowerCase();
@@ -2624,16 +2621,24 @@ Remark = ${remark}`;
           (s.lng != null ? String(s.lng) : '').toLowerCase().includes(s2)
         );
       } else {
-        // Multi-line: match DU IDs (each line = one DU ID to find)
-        const duSet = new Set(lines.map(l => l.trim().toUpperCase()));
-        console.log('[MULTI] searching for', duSet.size, 'DU IDs, lines:', lines, 'duSet:', [...duSet]);
+        // Multi-line: each token must match at least one field (case-insensitive)
+        const tokens = lines.map(l => l.toLowerCase());
         filtered = workOnlyFiltered.filter(s => {
-          const id = String(s.duId || '').trim().toUpperCase();
-          const match = duSet.has(id);
-          if(match) console.log('[MULTI] MATCHED:', id);
-          return match;
+          return tokens.every(t => {
+            return (
+              (s.duId || '').toLowerCase().includes(t) ||
+              (s.siteName || '').toLowerCase().includes(t) ||
+              (s.tpId || '').toLowerCase().includes(t) ||
+              (s.batchRfi || '').toLowerCase().includes(t) ||
+              (s.subcontPlan || '').toLowerCase().includes(t) ||
+              (s.gap || '').toLowerCase().includes(t) ||
+              (s.remark || '').toLowerCase().includes(t) ||
+              (s.city || '').toLowerCase().includes(t) ||
+              (s.lat != null ? String(s.lat).toLowerCase() : '').includes(t) ||
+              (s.lng != null ? String(s.lng).toLowerCase() : '').includes(t)
+            );
+          });
         });
-        console.log('[MULTI] filtered count:', filtered.length, '| workOnlyFiltered total:', workOnlyFiltered.length);
       }
     }
 
