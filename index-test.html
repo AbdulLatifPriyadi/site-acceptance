@@ -2606,7 +2606,7 @@ Remark = ${remark}`;
     // Apply search (supports multi-line paste — one DU ID per line)
     let filtered = workOnlyFiltered;
     if (tableSearch.trim()) {
-      const lines = tableSearch.split('\n').map(l => l.trim()).filter(Boolean);
+      const lines = tableSearch.trim().split(/\s+/).filter(Boolean);
       if(lines.length > 1) console.log('[SEARCH] lines count:', lines.length, '| lines:', lines);
       if (lines.length === 1) {
         // Single-line search: search across all columns
