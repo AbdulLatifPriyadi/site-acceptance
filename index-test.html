@@ -789,7 +789,10 @@ var MOCK_TRACKER = [
   { batchRfi:'BATCH-C', batchCsg:'CSG-04', tpId:'TP007', surgeId:'SURG-007', duId:'32BDG_0333_NEW', siteName:'BDG_OFFICE_TLT', subcontPlan:'INNOVIS', gap:'GAP-B', remark:'Closing only', team:'Team 4', city:'Bandung', tp:'Telkom', km:'10', peOwner:'Eve Wong', lat:-6.9000, lng:107.6200, ring:'Ring F', seq:'7' },
   { batchRfi:'', batchCsg:'', tpId:'TP008', surgeId:'', duId:'32CMH_0010_CSG', siteName:'CMH_DAGO', subcontPlan:'Intisel', gap:'GAP-A', remark:'', team:'Team 1', city:'Bandung', tp:'Telkom', km:'3', peOwner:'Frank Lee', lat:-6.9050, lng:107.6100, ring:'Ring G', seq:'8' },
   { batchRfi:'BATCH-D', batchCsg:'CSG-04', tpId:'TP009', surgeId:'SURG-008', duId:'32SKB_0055_WL', siteName:'SKB_MALL', subcontPlan:'Poca', gap:'GAP-C', remark:'ATP passed', team:'Team 3', city:'Sukabumi', tp:'Telkom', km:'18', peOwner:'Grace Ho', lat:-6.9280, lng:107.6080, ring:'Ring H', seq:'9' },
-  { batchRfi:'BATCH-D', batchCsg:'', tpId:'TP010', surgeId:'', duId:'32TNG_0077_NEW', siteName:'TNG_CITY_CENTER', subcontPlan:'INDOHR', gap:'', remark:'Waiting material', team:'Team 2', city:'Tanggerang', tp:'Telkom', km:'25', peOwner:'Henry Wu', lat:-6.9350, lng:107.5850, ring:'Ring I', seq:'10' }
+  { batchRfi:'BATCH-D', batchCsg:'', tpId:'TP010', surgeId:'', duId:'32TNG_0077_NEW', siteName:'TNG_CITY_CENTER', subcontPlan:'INDOHR', gap:'', remark:'Waiting material', team:'Team 2', city:'Tanggerang', tp:'Telkom', km:'25', peOwner:'Henry Wu', lat:-6.9350, lng:107.5850, ring:'Ring I', seq:'10' },
+  { batchRfi:'BATCH-E', batchCsg:'CSG-05', tpId:'TP011', surgeId:'SURG-009', duId:'32CJR_0043_NEW', siteName:'CJR_SITE_ALPHA', subcontPlan:'Intisel', gap:'ATP', remark:'Ready for test', team:'Team 5', city:'Cirebon', tp:'Telkom', km:'40', peOwner:'Test User', lat:-6.7320, lng:108.5521, ring:'Ring J', seq:'11' },
+  { batchRfi:'BATCH-E', batchCsg:'CSG-05', tpId:'TP012', surgeId:'SURG-010', duId:'32BDG_0673_NEW', siteName:'BDG_SITE_BETA', subcontPlan:'NIM', gap:'Install', remark:'In progress', team:'Team 6', city:'Bandung', tp:'Telkom', km:'18', peOwner:'Another User', lat:-6.9001, lng:107.6200, ring:'Ring K', seq:'12' },
+  { batchRfi:'BATCH-E', batchCsg:'CSG-06', tpId:'TP013', surgeId:'SURG-011', duId:'32BDG_0298_NEW', siteName:'BDG_SITE_GAMMA', subcontPlan:'PAB', gap:'ON AIR', remark:'Completed', team:'Team 7', city:'Bandung', tp:'Telkom', km:'12', peOwner:'Final User', lat:-6.9100, lng:107.6300, ring:'Ring L', seq:'13' }
 ];
 
 var MOCK_PLAN = [
@@ -809,7 +812,10 @@ var MOCK_CLOCKIN = {
   '32CMH_0099_WL':  { name:'Gustira (NIM)', team:'WL', clockIn:'07:15', clockOut:'', account:'nim_tl_gustira_32053405' },
   '32SKB_0072_NEW': { name:'Rahmat (Intisel)', team:'WL', clockIn:'08:30', clockOut:'', account:'intisel_tl_rahmat_32051919' },
   '32TNG_0011_CSG': { name:'Deni (Intisel)', team:'WL', clockIn:'07:00', clockOut:'', account:'intisel_tl_deni_32053528' },
-  '32BDG_0333_NEW': { name:'Sandi (INNOVIS)', team:'WL', clockIn:'08:15', clockOut:'', account:'inv_tl_sandi_32042901' }
+  '32BDG_0333_NEW': { name:'Sandi (INNOVIS)', team:'WL', clockIn:'08:15', clockOut:'', account:'inv_tl_sandi_32042901' },
+  '32CJR_0043_NEW': { name:'Tester (Intisel)', team:'CSG', clockIn:'07:30', clockOut:'', account:'int_tl_test_00000001' },
+  '32BDG_0673_NEW': { name:'Another (NIM)', team:'WL', clockIn:'08:00', clockOut:'', account:'nim_tl_another_00000002' },
+  '32BDG_0298_NEW': { name:'Final (PAB)', team:'WL', clockIn:'07:45', clockOut:'', account:'pab_tl_final_00000003' }
 };
 
 var MOCK_MSGS = [
@@ -2617,7 +2623,12 @@ Remark = ${remark}`;
       } else {
         // Multi-line: match DU IDs (each line = one DU ID to find)
         const duSet = new Set(lines.map(l => l.trim().toUpperCase()));
-        filtered = workOnlyFiltered.filter(s => duSet.has(String(s.duId || '').trim().toUpperCase()));
+        console.log('[MULTI] searching for', duSet.size, 'DU IDs:', [...duSet]);
+        filtered = workOnlyFiltered.filter(s => {
+          const match = duSet.has(String(s.duId || '').trim().toUpperCase());
+          return match;
+        });
+        console.log('[MULTI] matched', filtered.length, 'rows');
       }
     }
 

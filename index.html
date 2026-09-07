@@ -2536,7 +2536,12 @@ Remark = ${remark}`;
       } else {
         // Multi-line: match DU IDs (each line = one DU ID to find)
         const duSet = new Set(lines.map(l => l.trim().toUpperCase()));
-        filtered = workOnlyFiltered.filter(s => duSet.has(String(s.duId || '').trim().toUpperCase()));
+        console.log('[MULTI] searching for', duSet.size, 'DU IDs:', [...duSet]);
+        filtered = workOnlyFiltered.filter(s => {
+          const match = duSet.has(String(s.duId || '').trim().toUpperCase());
+          return match;
+        });
+        console.log('[MULTI] matched', filtered.length, 'rows');
       }
     }
 
