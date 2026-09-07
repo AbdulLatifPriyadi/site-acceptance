@@ -2576,7 +2576,9 @@ Remark = ${remark}`;
 
   function renderTableView(){
     const container = document.getElementById('dashTable');
+    console.log('[renderTableView] dashTrackerData.length =', (dashTrackerData||[]).length, '| tableSearch =', JSON.stringify(tableSearch));
     const sites = getFilteredSites();
+    console.log('[renderTableView] getFilteredSites() =', sites.length);
     const allCols = ["batchRfi","tpId","duId","siteName","subcontPlan","gap","remark","city","lat","lng"];
     const colLabels = {"batchRfi":"Batch RFI","tpId":"TP Site ID","duId":"DU ID","siteName":"Site Name","subcontPlan":"Subcont Plan","gap":"GAP Analysis","remark":"Remark","city":"City","lat":"Latitude","lng":"Longitude"};
     const colWidths = { batchRfi:90, tpId:115, duId:155, siteName:165, subcontPlan:105, gap:125, remark:145, city:95, lat:100, lng:100 };
@@ -2605,6 +2607,7 @@ Remark = ${remark}`;
     let filtered = workOnlyFiltered;
     if (tableSearch.trim()) {
       const lines = tableSearch.split('\n').map(l => l.trim()).filter(Boolean);
+      if(lines.length > 1) console.log('[SEARCH] lines count:', lines.length, '| lines:', lines);
       if (lines.length === 1) {
         // Single-line search: search across all columns
         const s2 = lines[0].toLowerCase();
@@ -2623,12 +2626,14 @@ Remark = ${remark}`;
       } else {
         // Multi-line: match DU IDs (each line = one DU ID to find)
         const duSet = new Set(lines.map(l => l.trim().toUpperCase()));
-        console.log('[MULTI] searching for', duSet.size, 'DU IDs:', [...duSet]);
+        console.log('[MULTI] searching for', duSet.size, 'DU IDs, lines:', lines, 'duSet:', [...duSet]);
         filtered = workOnlyFiltered.filter(s => {
-          const match = duSet.has(String(s.duId || '').trim().toUpperCase());
+          const id = String(s.duId || '').trim().toUpperCase();
+          const match = duSet.has(id);
+          if(match) console.log('[MULTI] MATCHED:', id);
           return match;
         });
-        console.log('[MULTI] matched', filtered.length, 'rows');
+        console.log('[MULTI] filtered count:', filtered.length, '| workOnlyFiltered total:', workOnlyFiltered.length);
       }
     }
 
@@ -2919,6 +2924,9 @@ Remark = ${remark}`;
   // Search input — persistent outside renderTableView
   document.getElementById('tableSearchInput').addEventListener('input', (e) => {
     tableSearch = e.target.value;
+    // Show count in bar immediately so user sees feedback
+    const countEl = document.getElementById('tableBarCount');
+    if(countEl) countEl.textContent = 'Searching...';
     renderTableView();
   });
 
