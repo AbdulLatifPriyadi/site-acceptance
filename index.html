@@ -2489,7 +2489,6 @@ Remark = ${remark}`;
 
   function renderTableView(){
     const container = document.getElementById('dashTable');
-    if(!container){ console.error('[renderTableView] container dashTable not found!'); return; }
     const sites = getFilteredSites();
     const allCols = ["batchRfi","tpId","duId","siteName","subcontPlan","gap","remark","city","lat","lng"];
     const colLabels = {"batchRfi":"Batch RFI","tpId":"TP Site ID","duId":"DU ID","siteName":"Site Name","subcontPlan":"Subcont Plan","gap":"GAP Analysis","remark":"Remark","city":"City","lat":"Latitude","lng":"Longitude"};
@@ -2531,8 +2530,8 @@ Remark = ${remark}`;
           (s.city || '').toLowerCase().includes(s2) ||
           (s.batchRfi || '').toLowerCase().includes(s2) ||
           (s.tpId || '').toLowerCase().includes(s2) ||
-          (s.lat || '').toLowerCase().includes(s2) ||
-          (s.lng || '').toLowerCase().includes(s2)
+          (s.lat != null ? String(s.lat) : '').toLowerCase().includes(s2) ||
+          (s.lng != null ? String(s.lng) : '').toLowerCase().includes(s2)
         );
       } else {
         // Multi-line: match DU IDs (each line = one DU ID to find)
@@ -2826,23 +2825,10 @@ Remark = ${remark}`;
   });
 
   // Search input — persistent outside renderTableView
-  (function(){
-    var inp = document.getElementById('tableSearchInput');
-    console.log('[SEARCH SETUP] tableSearchInput found:', !!inp);
-    if(!inp){ console.error('[SEARCH] FATAL: tableSearchInput not in DOM!'); return; }
-    inp.addEventListener('input', function(e){
-      tableSearch = e.target.value;
-      console.log('[SEARCH] fired, value="'+tableSearch+'"');
-      try {
-        renderTableView();
-        console.log('[SEARCH] renderTableView OK');
-      } catch(err) {
-        console.error('[SEARCH] renderTableView ERROR:', err.message, err.stack);
-        var el = document.getElementById('tableBarCount');
-        if(el) el.textContent = 'ERROR: ' + err.message;
-      }
-    });
-  })();
+  document.getElementById('tableSearchInput').addEventListener('input', (e) => {
+    tableSearch = e.target.value;
+    renderTableView();
+  });
 
   document.getElementById('tableWorkOnlyBtn').addEventListener('click', () => {
     tableWorkOnly = !tableWorkOnly;
