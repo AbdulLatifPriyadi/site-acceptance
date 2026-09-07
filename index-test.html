@@ -2621,10 +2621,10 @@ Remark = ${remark}`;
           (s.lng != null ? String(s.lng) : '').toLowerCase().includes(s2)
         );
       } else {
-        // Multi-line: each token must match at least one field (case-insensitive)
+        // Multi-line: each token finds rows where it appears in ANY field; all matched rows are combined (OR logic)
         const tokens = lines.map(l => l.toLowerCase());
         filtered = workOnlyFiltered.filter(s => {
-          return tokens.every(t => {
+          return tokens.some(t => {
             return (
               (s.duId || '').toLowerCase().includes(t) ||
               (s.siteName || '').toLowerCase().includes(t) ||
@@ -2929,9 +2929,6 @@ Remark = ${remark}`;
   // Search input — persistent outside renderTableView
   document.getElementById('tableSearchInput').addEventListener('input', (e) => {
     tableSearch = e.target.value;
-    // Show count in bar immediately so user sees feedback
-    const countEl = document.getElementById('tableBarCount');
-    if(countEl) countEl.textContent = 'Searching...';
     renderTableView();
   });
 
