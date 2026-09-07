@@ -2521,7 +2521,7 @@ Remark = ${remark}`;
       if (lines.length === 1) {
         // Single-line search: search across all columns
         const s2 = lines[0].toLowerCase();
-        filtered = colFiltered.filter(s =>
+        filtered = workOnlyFiltered.filter(s =>
           (s.duId || '').toLowerCase().includes(s2) ||
           (s.siteName || '').toLowerCase().includes(s2) ||
           (s.subcontPlan || '').toLowerCase().includes(s2) ||
@@ -2536,7 +2536,7 @@ Remark = ${remark}`;
       } else {
         // Multi-line: match DU IDs (each line = one DU ID to find)
         const duSet = new Set(lines.map(l => l.trim().toUpperCase()));
-        filtered = colFiltered.filter(s => duSet.has(String(s.duId || '').trim().toUpperCase()));
+        filtered = workOnlyFiltered.filter(s => duSet.has(String(s.duId || '').trim().toUpperCase()));
       }
     }
 
