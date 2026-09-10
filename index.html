@@ -2523,6 +2523,15 @@ Remark = ${remark}`;
       .map(site=> Object.assign({}, site, { _lat: parseCoord(site.lat), _lng: parseCoord(site.lng) }))
       .filter(site=> !isNaN(site._lat) && !isNaN(site._lng));
 
+    // FO line color on map: based on FO status of destination site
+    // FO at site[i] = connection FROM site[i-1] TO site[i]
+    function foLineColorMap(fo) {
+      const v = String(fo || '').trim();
+      if (v === 'RFS') return '#4caf7d';
+      if (v === 'Termination done' || v === 'Pulling Done') return '#f0c000';
+      return '#ff80c0'; // pink for all other FO states
+    }
+
     const ringGroups = {};
     withCoords.forEach(site=>{
       const ring = String(site.ring || '').trim();
@@ -2533,8 +2542,15 @@ Remark = ${remark}`;
     Object.values(ringGroups).forEach(group=>{
       if(group.length < 2) return;
       group.sort((a,b)=> (parseFloat(a.seq) || 0) - (parseFloat(b.seq) || 0));
-      const latlngs = group.map(s=> [s._lat, s._lng]);
-      L.polyline(latlngs, { color:'#ffffff', weight:2, opacity:.8, dashArray:'4 5' }).addTo(dashLinesLayer);
+      // Draw individual segments colored by FO status of destination site
+      for (let i = 1; i < group.length; i++) {
+        const from = group[i - 1];
+        const to = group[i];
+        const color = foLineColorMap(String(to.fo || '').trim());
+        L.polyline([[from._lat, from._lng], [to._lat, to._lng]], {
+          color: color, weight: 2.5, opacity: 0.85, dashArray: '4 4'
+        }).addTo(dashLinesLayer);
+      }
     });
 
     withCoords.forEach(site=>{
