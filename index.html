@@ -797,6 +797,16 @@
 .ring-card-badge {
   font-size: 10px; padding: 2px 8px; border-radius: 999px; font-weight: 700;
 }
+.ring-map-btn {
+  margin-left: auto; flex-shrink: 0; width: 26px; height: 26px;
+  border-radius: 6px; border: 1px solid rgba(255,255,255,.25);
+  background: rgba(255,255,255,.1); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: background .15s;
+  flex-shrink: 0;
+}
+.ring-map-btn:hover { background: rgba(255,255,255,.22); }
+.ring-map-btn:active { filter: brightness(.9); }
 .ring-card-body { padding: 12px 14px; overflow-x: auto; }
 .ring-stats-row {
   display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap;
@@ -883,7 +893,7 @@
         </button>
       </div>
       <div id="loginDebugLog" style="margin-top:12px; background:#0d1117; border:1px solid #30363d; border-radius:8px; padding:8px 10px; font-family:monospace; font-size:10px; color:#7ee787; max-height:120px; overflow:auto;"><div style="color:#8b949e; margin-bottom:4px;">System log:</div></div>
-      <div id="appVersion" style="position:fixed; bottom:8px; right:12px; font-size:9.5px; color:rgba(255,255,255,.25); font-family:monospace;">v2026.09.10-ring-stations</div>
+      <div id="appVersion" style="position:fixed; bottom:8px; right:12px; font-size:9.5px; color:rgba(255,255,255,.25); font-family:monospace;">v2026.09.10-ring-map-focus</div>
     </div>
     <div class="walk-peeps">
       <div class="walk-peep-wrap walk-right" style="animation-name:walkRight;animation-duration:18s;animation-delay:0s;animation-timing-function:linear;animation-iteration-count:infinite;"><div class="walk-bubble" id="wB1"></div><img class="walk-peep" src="walk.gif"></div>
@@ -1910,6 +1920,7 @@ Remark = ${remark}`;
   let dashWorkOnly = false;
   let dashView = 'map';
   let dashRingCollapsed = {};  // ring card collapse state
+  let dashFocusedRing = null;  // when set, map zooms to this ring only
   let dashPivotMode = 'subcont-gap';
   // ----- Plan tab state -----
   let planCurrentDate = '';   // ISO YYYY-MM-DD currently being edited
@@ -2443,6 +2454,11 @@ Remark = ${remark}`;
 
   function getFilteredSites(){
     return dashTrackerData.filter(site=>{
+      // Focused ring: show only sites from this ring (overrides other filters)
+      if(dashFocusedRing){
+        const ring = String(site.ring || '').trim();
+        if(ring !== dashFocusedRing) return false;
+      }
       // subcont user (non-surge) only sees their own subcont
       if(mySubcont){
         const siteSub = String(site.subcontPlan || '').trim();
@@ -2465,6 +2481,19 @@ Remark = ${remark}`;
       }
       return true;
     });
+  }
+
+  // Switch to map view and zoom to show all sites in a specific ring
+  function focusRingOnMap(ringName) {
+    dashFocusedRing = ringName;
+    const wasAlreadyMap = dashView === 'map';
+    setDashView('map');
+    if (wasAlreadyMap && dashMap) {
+      // Already on map with initialized map — force re-render with ring filter
+      drawDashboardMap();
+    }
+    // Clear the focused ring after the map renders so normal filtering resumes
+    setTimeout(() => { dashFocusedRing = null; }, 300);
   }
 
   function drawDashboardMap(){
@@ -4383,6 +4412,9 @@ Remark = ${remark}`;
           ${stats.foGreen > 0 ? `<span class="ring-card-badge" style="background:#4caf7d; color:#fff;">${stats.foGreen} RFS</span>` : ''}
           ${stats.foActive > 0 ? `<span class="ring-card-badge" style="background:#e8a33d; color:#fff;">${stats.foActive} FO Active</span>` : ''}
           ${stats.foNone > 0 ? `<span class="ring-card-badge" style="background:#d8dce0;">${stats.foNone} No FO</span>` : ''}
+          <button class="ring-map-btn" onclick="event.stopPropagation(); focusRingOnMap('${CSS.escape(ringName)}')" title="Show on map">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/></svg>
+          </button>
         </div>
         <div class="ring-card-body">
           <div class="ring-stats-row">
