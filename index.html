@@ -810,7 +810,7 @@
 
 /* Ring diagram SVG */
 .ring-diagram-wrap { overflow-x: auto; padding: 4px 0; }
-.ring-diagram { display: block; min-height: 80px; }
+.ring-diagram { display: block; min-height: 130px; }
 
 /* Site nodes in ring SVG */
 .ring-node-endpoint { cursor: default; }
@@ -883,7 +883,7 @@
         </button>
       </div>
       <div id="loginDebugLog" style="margin-top:12px; background:#0d1117; border:1px solid #30363d; border-radius:8px; padding:8px 10px; font-family:monospace; font-size:10px; color:#7ee787; max-height:120px; overflow:auto;"><div style="color:#8b949e; margin-bottom:4px;">System log:</div></div>
-      <div id="appVersion" style="position:fixed; bottom:8px; right:12px; font-size:9.5px; color:rgba(255,255,255,.25); font-family:monospace;">v2026.08.28-dbg25</div>
+      <div id="appVersion" style="position:fixed; bottom:8px; right:12px; font-size:9.5px; color:rgba(255,255,255,.25); font-family:monospace;">v2026.09.10-ring-stations</div>
     </div>
     <div class="walk-peeps">
       <div class="walk-peep-wrap walk-right" style="animation-name:walkRight;animation-duration:18s;animation-delay:0s;animation-timing-function:linear;animation-iteration-count:infinite;"><div class="walk-bubble" id="wB1"></div><img class="walk-peep" src="walk.gif"></div>
@@ -4089,15 +4089,23 @@ Remark = ${remark}`;
   // RING VIEW — FO Ring Topology Tracker
   // ================================================================
 
+  // P2 filter state for Ring tab
+  let dashRingP2Only = false;
+
   function renderRingView() {
     const container = document.getElementById('dashRing');
     const data = dashTrackerData;
 
-    // Group sites by ring
+    // Group sites by ring, optionally filtering to P2 only
     const ringMap = {};
     for (const site of data) {
       const ring = String(site.ring || '').trim();
       if (!ring) continue;
+      // P2 filter: only include rings where at least one site has priority "P2"
+      if (dashRingP2Only) {
+        const prio = String(site.priority || '').trim().toUpperCase();
+        if (prio !== 'P2') continue;
+      }
       if (!ringMap[ring]) ringMap[ring] = [];
       ringMap[ring].push(site);
     }
@@ -4151,21 +4159,48 @@ Remark = ${remark}`;
       return 'fo-none';
     }
 
-    // FO line class between two consecutive sites (use the LATER site's FO)
-    function foLinkClass(sites, fromIdx, toIdx) {
-      const later = sites[toIdx];
-      return foBadgeClass(String(later && later.fo || '').trim());
+    // FO dot color for node
+    function foDotColor(fo) {
+      return FO_LINE.green.includes(fo) ? '#4caf7d' :
+             FO_LINE.yellow.includes(fo) ? '#f0c000' :
+             fo ? '#e8a33d' : '#d8dce0';
     }
 
-    // Build ring SVG diagram
+    // FO line class: FO at node B = connection FROM A TO B.
+    // - First segment (STATION → first site): use first site's FO
+    // - Middle segments: use destination site's FO
+    function foLinkClass(sites, fromIdx, toIdx) {
+      const dest = sites[toIdx];
+      return foBadgeClass(String(dest && dest.fo || '').trim());
+    }
+
+    // CSG status color for BTS node indicator
+    function csgStatusColor(csgStatus) {
+      const v = String(csgStatus || '').trim().toUpperCase();
+      if (v === 'ACTIVE' || v === 'ON AIR' || v === 'ATP' || v === 'DONE') return '#4caf7d';
+      if (v === 'PENDING' || v === 'IN PROGRESS' || v === 'WORKING') return '#f0c000';
+      if (v === 'NOT STARTED' || v === 'PLANNING' || v === 'EMPTY' || !v) return '#d8dce0';
+      return '#e8a33d';
+    }
+
+    // Build ring SVG diagram with Station nodes at start/end and improved spacing
     function buildRingSVG(sites, endpoints) {
-      const padding = { x: 20, y: 30 };
-      const nodeWidth = 90;
-      const nodeHeight = 56;
-      const gapX = 20;
-      const totalWidth = sites.length * (nodeWidth + gapX) + 2 * padding.x;
-      const svgHeight = 110;
-      const svgWidth = Math.max(totalWidth, 300);
+      const padding = { x: 30, y: 30 };
+      const nodeWidth = 110;
+      const nodeHeight = 64;
+      // Station node size (slightly smaller, labeled as ST1 / ST2)
+      const stationSize = 48;
+      const gapX = 30;   // increased gap between nodes
+      // Total: Station1 + gap + site1 + gap + ... + siteN + gap + Station2
+      const totalWidth = stationSize + gapX
+                       + sites.length * (nodeWidth + gapX)
+                       + gapX + stationSize
+                       + 2 * padding.x;
+      const svgHeight = 130;
+      const svgWidth = Math.max(totalWidth, 320);
+
+      const nodeY = (svgHeight - nodeHeight) / 2;
+      const stationY = (svgHeight - stationSize) / 2;
 
       let svg = `<svg class="ring-diagram" width="${svgWidth}" height="${svgHeight}" xmlns="http://www.w3.org/2000/svg">`;
       svg += `<style>
@@ -4173,29 +4208,62 @@ Remark = ${remark}`;
         .fo-yellow { stroke: #f0c000; stroke-width: 3; fill: none; }
         .fo-green  { stroke: #4caf7d; stroke-width: 3; fill: none; }
         .fo-none   { stroke: #d8dce0; stroke-width: 2; stroke-dasharray: 4 4; fill: none; opacity: 0.6; }
+        .ring-node-endpoint text { font-family: Arial, sans-serif; }
       </style>`;
 
-      // Draw FO lines between nodes
-      const nodeStartX = padding.x + nodeWidth / 2;
+      const nodeStartX = padding.x + stationSize + gapX;
+
+      // --- Draw FO line from Station to first site ---
+      // Use first site's FO to represent FO entering the ring
+      if (sites.length > 0) {
+        const lineEndX = nodeStartX - gapX;
+        const lineStartX = padding.x + stationSize;
+        const cls = foBadgeClass(String(sites[0].fo || '').trim());
+        svg += `<line x1="${lineStartX}" y1="${svgHeight/2}" x2="${lineEndX}" y2="${svgHeight/2}" class="${cls}"/>`;
+      }
+
+      // --- Draw FO lines between consecutive sites ---
+      // FO at site[i] = connection FROM site[i-1] TO site[i]
       for (let i = 0; i < sites.length - 1; i++) {
-        const x1 = nodeStartX + i * (nodeWidth + gapX);
-        const x2 = x1 + nodeWidth + gapX;
+        const x1 = nodeStartX + i * (nodeWidth + gapX) + nodeWidth;
+        const x2 = nodeStartX + (i + 1) * (nodeWidth + gapX);
         const cls = foLinkClass(sites, i, i + 1);
         svg += `<line x1="${x1}" y1="${svgHeight/2}" x2="${x2}" y2="${svgHeight/2}" class="${cls}"/>`;
       }
 
-      // Draw site nodes
+      // --- Draw FO line from last site back to Station ---
+      if (sites.length > 0) {
+        const lineStartX2 = nodeStartX + (sites.length - 1) * (nodeWidth + gapX) + nodeWidth;
+        const lineEndX2 = svgWidth - padding.x;
+        // For the closing segment back to Station, we show "Ring Closed" with the last site's FO
+        // The FO of the last site represents the connection to the closing station
+        const lastSiteFo = String(sites[sites.length - 1].fo || '').trim();
+        const cls = foBadgeClass(lastSiteFo);
+        svg += `<line x1="${lineStartX2}" y1="${svgHeight/2}" x2="${lineEndX2}" y2="${svgHeight/2}" class="${cls}"/>`;
+      }
+
+      // --- Draw Station node (start) ---
+      const st1X = padding.x;
+      const st1Cx = st1X + stationSize / 2;
+      const st1Cy = svgHeight / 2;
+      svg += `<g class="ring-node-endpoint" opacity="0.85">`;
+      svg += `<rect x="${st1X}" y="${stationY}" width="${stationSize}" height="${stationSize}" rx="10" fill="#3a4148" stroke="#fff" stroke-width="1.5"/>`;
+      svg += `<text x="${st1Cx}" y="${st1Cy - 5}" text-anchor="middle" fill="#fff" font-size="9" font-weight="800">ST1</text>`;
+      svg += `<text x="${st1Cx}" y="${st1Cy + 7}" text-anchor="middle" fill="rgba(255,255,255,0.7)" font-size="6.5" font-weight="600">${escapeHtml(endpoints.start.substring(0,8))}</text>`;
+      svg += `</g>`;
+
+      // --- Draw site nodes ---
       for (let i = 0; i < sites.length; i++) {
         const site = sites[i];
-        const x = padding.x + i * (nodeWidth + gapX);
-        const y = (svgHeight - nodeHeight) / 2;
+        const x = nodeStartX + i * (nodeWidth + gapX);
+        const y = nodeY;
         const duId = String(site.duId || '');
         const isCsg = duId.endsWith('_CSG');
         const isBts = duId.endsWith('_NEW');
         const gapColor = dashGapColor(site.gap);
         const fo = String(site.fo || '').trim();
+        const csgStatus = String(site.csgStatus || '').trim();
 
-        // Node group
         svg += `<g class="ring-node-${isCsg ? 'csg' : isBts ? 'bts' : 'bts'}">`;
 
         if (isCsg) {
@@ -4207,24 +4275,42 @@ Remark = ${remark}`;
           svg += `<text x="${cx}" y="${cy - 4}" text-anchor="middle" fill="#fff" font-size="9" font-weight="800">CSG</text>`;
           svg += `<text x="${cx}" y="${cy + 8}" text-anchor="middle" fill="#fff" font-size="7" font-weight="600">${duId.substring(0,10)}</text>`;
         } else {
-          // BTS tower icon
-          svg += `<rect x="${x}" y="${y}" width="${nodeWidth}" height="${nodeHeight}" rx="7" fill="${gapColor}" stroke="#fff" stroke-width="1.5"/>`;
-          // Tower triangle
+          // BTS tower icon — increased height for more space
+          svg += `<rect x="${x}" y="${y}" width="${nodeWidth}" height="${nodeHeight}" rx="8" fill="${gapColor}" stroke="#fff" stroke-width="1.5"/>`;
+          // Tower triangle (antenna)
           const tx = x + nodeWidth / 2;
-          svg += `<polygon points="${tx},${y+6} ${tx-7},${y+18} ${tx+7},${y+18}" fill="#fff" opacity="0.9"/>`;
-          // Site info
-          svg += `<text x="${x+nodeWidth/2}" y="${y+30}" text-anchor="middle" fill="#fff" font-size="7.5" font-weight="700">${duId.substring(0,11)}</text>`;
-          svg += `<text x="${x+nodeWidth/2}" y="${y+44}" text-anchor="middle" fill="#fff" font-size="6.5" opacity="0.85">${String(site.siteName||'').substring(0,14)}</text>`;
-        }
+          svg += `<polygon points="${tx},${y+7} ${tx-8},${y+21} ${tx+8},${y+21}" fill="#fff" opacity="0.9"/>`;
+          // Site info lines
+          svg += `<text x="${x+nodeWidth/2}" y="${y+33}" text-anchor="middle" fill="#fff" font-size="8" font-weight="700">${duId.substring(0,11)}</text>`;
+          svg += `<text x="${x+nodeWidth/2}" y="${y+46}" text-anchor="middle" fill="#fff" font-size="7" opacity="0.85">${String(site.siteName||'').substring(0,14)}</text>`;
 
-        // FO status dot on node
-        const foDotColor = FO_LINE.green.includes(fo) ? '#4caf7d' :
-                           FO_LINE.yellow.includes(fo) ? '#f0c000' :
-                           fo ? '#e8a33d' : '#d8dce0';
-        svg += `<circle cx="${x+nodeWidth-8}" cy="${y+8}" r="5" fill="${foDotColor}" stroke="#fff" stroke-width="1.2"/>`;
+          // CSG status dot (column AA) — positioned bottom-left of BTS node
+          const csColor = csgStatusColor(csgStatus);
+          svg += `<circle cx="${x+10}" cy="${y+nodeHeight-10}" r="6" fill="${csColor}" stroke="#fff" stroke-width="1.2"/>`;
+          if (csgStatus) {
+            svg += `<text x="${x+10}" y="${y+nodeHeight-7}" text-anchor="middle" fill="#fff" font-size="5.5" font-weight="800">${csgStatus.substring(0,3).toUpperCase()}</text>`;
+          }
+
+          // FO status dot (column M) — positioned top-right of BTS node
+          const foColor = foDotColor(fo);
+          svg += `<circle cx="${x+nodeWidth-10}" cy="${y+10}" r="6" fill="${foColor}" stroke="#fff" stroke-width="1.2"/>`;
+          if (fo) {
+            svg += `<text x="${x+nodeWidth-10}" y="${y+13}" text-anchor="middle" fill="#fff" font-size="5" font-weight="800">FO</text>`;
+          }
+        }
 
         svg += `</g>`;
       }
+
+      // --- Draw Station node (end) ---
+      const st2X = svgWidth - padding.x - stationSize;
+      const st2Cx = st2X + stationSize / 2;
+      const st2Cy = svgHeight / 2;
+      svg += `<g class="ring-node-endpoint" opacity="0.85">`;
+      svg += `<rect x="${st2X}" y="${stationY}" width="${stationSize}" height="${stationSize}" rx="10" fill="#3a4148" stroke="#fff" stroke-width="1.5"/>`;
+      svg += `<text x="${st2Cx}" y="${st2Cy - 5}" text-anchor="middle" fill="#fff" font-size="9" font-weight="800">ST2</text>`;
+      svg += `<text x="${st2Cx}" y="${st2Cy + 7}" text-anchor="middle" fill="rgba(255,255,255,0.7)" font-size="6.5" font-weight="600">${escapeHtml(endpoints.end.substring(0,8))}</text>`;
+      svg += `</g>`;
 
       svg += `</svg>`;
       return svg;
@@ -4234,13 +4320,13 @@ Remark = ${remark}`;
     const sortedRings = Object.keys(ringMap).sort((a, b) => {
       const statsA = ringStats(ringMap[a]);
       const statsB = ringStats(ringMap[b]);
-      // Rings with more active FO issues first
       return (statsB.foActive + statsB.foNone) - (statsA.foActive + statsA.foNone);
     });
 
-    // Overall stats
+    // Overall stats (use all data, not filtered, for total counts)
     const totalBts = data.filter(s => String(s.duId||'').endsWith('_NEW')).length;
     const totalCsg = data.filter(s => String(s.duId||'').endsWith('_CSG')).length;
+    const totalP2 = data.filter(s => String(s.priority||'').trim().toUpperCase() === 'P2').length;
 
     let html = `
       <div class="ring-header-bar">
@@ -4248,6 +4334,12 @@ Remark = ${remark}`;
         <div class="ring-stat-chip"><span>${sortedRings.length}</span> rings</div>
         <div class="ring-stat-chip"><span>${totalBts}</span> BTS sites</div>
         <div class="ring-stat-chip"><span>${totalCsg}</span> CSG nodes</div>
+        <div class="ring-stat-chip" id="ringP2Chip"
+          style="cursor:pointer; ${dashRingP2Only ? 'background:#2f6bc4; color:#fff;' : 'background:#f0f4ff; color:var(--ink);'}"
+          onclick="toggleRingP2Filter()">
+          <span>P2 Only</span>
+          <span style="opacity:0.6; font-size:10px;">(${totalP2} sites)</span>
+        </div>
         <div class="ring-stat-chip" style="background:#fde9c8; color:#b45309;">
           <span>${data.filter(s => FO_LINE.dashed.includes(String(s.fo||'').trim())).length}</span> FO Active
         </div>
@@ -4295,15 +4387,24 @@ Remark = ${remark}`;
         <div class="ring-card-body">
           <div class="ring-stats-row">
             <div class="ring-stat-item">
-              <span class="dot" style="background:#8fe08f;"></span>
+              <span class="dot" style="background:#3a4148;"></span>
               <span>Start: <b>${escapeHtml(endpoints.start)}</b></span>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6b7688" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
             </div>
             <div class="ring-stat-item">
-              <span class="dot" style="background:#8fe08f;"></span>
+              <span class="dot" style="background:#3a4148;"></span>
               <span>End: <b>${escapeHtml(endpoints.end)}</b></span>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6b7688" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
             </div>
+            <div class="ring-stat-item" style="background:#eef1f3; border:1px solid #dde3ec;">
+              <svg width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="#4caf7d"/></svg>
+              <span>ST1 = FO entering ring</span>
+            </div>
+            <div class="ring-stat-item" style="background:#eef1f3; border:1px solid #dde3ec;">
+              <svg width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="#e8a33d"/></svg>
+              <span>ST2 = FO closing ring</span>
+            </div>
+          </div>
+          <div style="font-size:9.5px; color:#6b7688; margin-bottom:8px;">
+            <b>FO direction:</b> FO value at each node = connection FROM previous node TO that node. ST1→BTS1 uses BTS1's FO, BTS1→BTS2 uses BTS2's FO, etc.
           </div>
           <div class="ring-diagram-wrap">${buildRingSVG(sites, endpoints)}</div>
           <div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;">
@@ -4313,7 +4414,7 @@ Remark = ${remark}`;
             <thead>
               <tr>
                 <th>Seq</th><th>DU ID</th><th>Site Name</th><th>Type</th>
-                <th>GAP</th><th>FO</th><th>Subcont</th><th>City</th>
+                <th>GAP</th><th>FO</th><th>CSG Status</th><th>Priority</th><th>Subcont</th><th>City</th>
               </tr>
             </thead>
             <tbody>
@@ -4324,6 +4425,8 @@ Remark = ${remark}`;
         const gapColor = dashGapColor(site.gap);
         const foVal = String(site.fo || '').trim();
         const foCls = foBadgeClass(foVal);
+        const csgStatus = String(site.csgStatus || '').trim();
+        const priority = String(site.priority || '').trim();
         html += `<tr>
           <td>${escapeHtml(site.seq || '')}</td>
           <td><span style="font-weight:700;">${escapeHtml(duId)}</span></td>
@@ -4334,6 +4437,8 @@ Remark = ${remark}`;
             <span style="font-size:9.5px;">${escapeHtml(site.gap || '-')}</span>
           </td>
           <td><span class="ring-fo-badge ${foCls}">${escapeHtml(foVal || '—')}</span></td>
+          <td><span style="font-size:9.5px; color:${csgStatusColor(csgStatus)}; font-weight:700;">${escapeHtml(csgStatus || '-')}</span></td>
+          <td>${priority ? `<span style="font-size:9.5px; font-weight:700; color:#2f6bc4;">${escapeHtml(priority)}</span>` : '-'}</td>
           <td>${escapeHtml(site.subcontPlan || '')}</td>
           <td>${escapeHtml(site.city || '')}</td>
         </tr>`;
@@ -4344,7 +4449,7 @@ Remark = ${remark}`;
     if (sortedRings.length === 0) {
       html = `<div class="empty-state" style="padding:40px;text-align:center;">
         <div style="font-size:28px;margin-bottom:8px;">&#128279;</div>
-        <div>No ring data found. Make sure the RING column is populated.</div>
+        <div>${dashRingP2Only ? 'No P2 rings found. Click "P2 Only" to disable the filter.' : 'No ring data found. Make sure the RING column is populated.'}</div>
       </div>`;
     }
 
@@ -4356,6 +4461,11 @@ Remark = ${remark}`;
     const card = document.getElementById('rc_' + ringName.replace(/\s+/g, '_'));
     if (!card) return;
     card.classList.toggle('collapsed', !!dashRingCollapsed[ringName]);
+  }
+
+  function toggleRingP2Filter() {
+    dashRingP2Only = !dashRingP2Only;
+    renderRingView();
   }
 
   function setDashView(view){

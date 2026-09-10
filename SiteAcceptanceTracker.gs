@@ -33,7 +33,9 @@ var COL = {
   km:         15,  // P — Km
   peOwner:    16,  // Q — PE Owner
   lat:        17,  // R — Latitude
-  lng:        18   // S — Longitude
+  lng:        18,  // S — Longitude
+  csgStatus:  26,  // AA — CSG Status
+  priority:   32   // AG — Priority
 };
 
 // --- COLUMN HEADERS for Forward Log sheet ---
@@ -263,7 +265,9 @@ function serveTracker() {
       lat:         parseNum(row[COL.lat]),
       lng:         parseNum(row[COL.lng]),
       ring:        String(row[COL.ring]        || '').trim(),
-      seq:         String(row[COL.seq]         || '').trim()
+      seq:         String(row[COL.seq]         || '').trim(),
+      csgStatus:   String(row[COL.csgStatus]   || '').trim(),
+      priority:    String(row[COL.priority]    || '').trim()
     });
   }
 
