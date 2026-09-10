@@ -2534,7 +2534,7 @@ Remark = ${remark}`;
       if(group.length < 2) return;
       group.sort((a,b)=> (parseFloat(a.seq) || 0) - (parseFloat(b.seq) || 0));
       const latlngs = group.map(s=> [s._lat, s._lng]);
-      L.polyline(latlngs, { color:'#5a6066', weight:2, opacity:.55, dashArray:'4 5' }).addTo(dashLinesLayer);
+      L.polyline(latlngs, { color:'#ffffff', weight:2, opacity:.8, dashArray:'4 5' }).addTo(dashLinesLayer);
     });
 
     withCoords.forEach(site=>{
