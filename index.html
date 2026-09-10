@@ -2485,6 +2485,7 @@ Remark = ${remark}`;
 
   // Switch to map view and zoom to show all sites in a specific ring
   function focusRingOnMap(ringName) {
+    try {
     dashFocusedRing = ringName;
     const wasAlreadyMap = dashView === 'map';
     setDashView('map');
@@ -2494,6 +2495,7 @@ Remark = ${remark}`;
     }
     // Clear the focused ring after the map renders so normal filtering resumes
     setTimeout(() => { dashFocusedRing = null; }, 300);
+    } catch(e) { console.error('[focusRingOnMap]', e); alert('Map error: ' + e.message); }
   }
 
   function drawDashboardMap(){
@@ -4122,6 +4124,7 @@ Remark = ${remark}`;
   let dashRingP2Only = false;
 
   function renderRingView() {
+    try {
     const container = document.getElementById('dashRing');
     const data = dashTrackerData;
 
@@ -4360,6 +4363,7 @@ Remark = ${remark}`;
     let html = `
       <div class="ring-header-bar">
         <span style="font-size:15px; font-weight:800; color:var(--ink);">Ring Overview</span>
+        <span id="ringDebug" style="font-size:10px; color:#999; background:#f5f5f5; padding:2px 6px; border-radius:4px;">Sites: ${data.length} | P2filter: ${dashRingP2Only} | Rings: ${Object.keys(ringMap).length}</span>
         <div class="ring-stat-chip"><span>${sortedRings.length}</span> rings</div>
         <div class="ring-stat-chip"><span>${totalBts}</span> BTS sites</div>
         <div class="ring-stat-chip"><span>${totalCsg}</span> CSG nodes</div>
@@ -4486,6 +4490,9 @@ Remark = ${remark}`;
     }
 
     container.innerHTML = html;
+    } catch(e) {
+      container.innerHTML = '<div class="empty-state" style="padding:20px;"><b>Render error:</b> ' + escapeHtml(e.message) + '<br><pre>' + escapeHtml(e.stack || '').substring(0, 500) + '</pre></div>';
+    }
   }
 
   function toggleRingCard(ringName) {
@@ -4586,7 +4593,7 @@ Remark = ${remark}`;
       renderRingView();
     } else if (view === 'map') {
       // map view — trigger a refresh so drawDashboardMap runs
-      refreshDashboardView();
+      try { refreshDashboardView(); } catch(e) { console.warn('[setDashView map]', e); }
       if (dashMap) setTimeout(() => dashMap.invalidateSize(), 50);
     } else {
       // graph view (fallback)
