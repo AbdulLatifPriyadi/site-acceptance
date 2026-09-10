@@ -4669,8 +4669,12 @@ Remark = ${remark}`;
       else stopPlanDatePolling();
     } else if (view === 'ring') {
       renderRingView();
+    } else if (view === 'map') {
+      // map view — trigger a refresh so drawDashboardMap runs
+      refreshDashboardView();
+      if (dashMap) setTimeout(() => dashMap.invalidateSize(), 50);
     } else {
-      // map view — handled above
+      // graph view (fallback)
     }
     // Persist last-view preference
     try { localStorage.setItem('dashView', view); } catch(e) {}
