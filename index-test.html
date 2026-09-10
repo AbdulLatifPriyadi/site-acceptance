@@ -818,9 +818,27 @@
 }
 .ring-stat-item .dot { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid rgba(0,0,0,.12); flex-shrink: 0; }
 
-/* Ring diagram SVG */
-.ring-diagram-wrap { overflow-x: auto; padding: 4px 0; }
-.ring-diagram { display: block; min-height: 130px; }
+/* Ring sketch tools */
+.ring-sketch-tools {
+  display: flex; gap: 6px; margin-left: auto; flex-shrink: 0;
+}
+.ring-sketch-btn {
+  width: 30px; height: 30px; border-radius: 7px; border: 1.5px solid rgba(255,255,255,.2);
+  background: rgba(255,255,255,.08); color: #fff;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+  transition: background .15s, border-color .15s; flex-shrink: 0;
+}
+.ring-sketch-btn:hover { background: rgba(255,255,255,.18); }
+.ring-sketch-btn.active { background: #e53935; border-color: #e53935; }
+.ring-sketch-btn.clear-btn:hover { background: rgba(229,57,53,.3); border-color: #e53935; }
+
+/* Ring diagram SVG wrapper with drawing overlay */
+.ring-diagram-wrap { overflow-x: auto; padding: 4px 0; position: relative; }
+.ring-diagram-wrap canvas { position: absolute; top: 0; left: 0; pointer-events: none; }
+.ring-diagram-wrap.drawing canvas { pointer-events: all; cursor: crosshair; }
+.ring-diagram-wrap.drawing .ring-diagram { pointer-events: none; }
+.ring-diagram-wrap .ring-sketch-svg { position: absolute; top: 0; left: 0; overflow: visible; pointer-events: none; }
+.ring-diagram-wrap.drawing .ring-sketch-svg { pointer-events: all; cursor: crosshair; }
 
 /* Site nodes in ring SVG */
 .ring-node-endpoint { cursor: default; }
@@ -2010,6 +2028,10 @@ Remark = ${remark}`;
   let dashView = 'map';
   let dashRingCollapsed = {};  // ring card collapse state
   let dashFocusedRing = null;  // when set, map zooms to this ring only
+  // Sketch/drawing state
+  let dashSketchMode = false;  // true when pen is active
+  let dashSketchPaths = [];     // array of SVG path strings
+  let dashSketchSvg = null;     // reference to the overlay SVG element
   let dashPivotMode = 'subcont-gap';
   // ----- Plan tab state -----
   let planCurrentDate = '';   // ISO YYYY-MM-DD currently being edited
@@ -4534,6 +4556,12 @@ Remark = ${remark}`;
           <button class="ring-map-btn" data-ring="${ringName}" title="Show on map">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/></svg>
           </button>
+          <button class="ring-sketch-btn" id="sketchpen_${escapeHtml(ringName).replace(/\s+/g,'_')}" data-sketch-ring="${ringName}" title="Draw on diagram">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-3.5z"/></svg>
+          </button>
+          <button class="ring-sketch-btn clear-btn" id="sketchclear_${escapeHtml(ringName).replace(/\s+/g,'_')}" data-sketchclear-ring="${ringName}" title="Clear drawing">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+          </button>
         </div>
         <div class="ring-card-body">
           <div class="ring-stats-row">
@@ -4557,7 +4585,10 @@ Remark = ${remark}`;
           <div style="font-size:9.5px; color:#6b7688; margin-bottom:8px;">
             <b>FO direction:</b> FO value at each node = connection FROM previous node TO that node. ST1→BTS1 uses BTS1's FO, BTS1→BTS2 uses BTS2's FO, etc.
           </div>
-          <div class="ring-diagram-wrap">${buildRingSVG(sites, endpoints)}</div>
+          <div class="ring-diagram-wrap" id="ringsketch_${escapeHtml(ringName).replace(/\s+/g,'_')}" data-ring-sketch="${ringName}">
+            ${buildRingSVG(sites, endpoints)}
+            <svg class="ring-sketch-svg" style="width:100%;height:130px;pointer-events:none;"></svg>
+          </div>
           <div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;">
             ${foBadges.join('')}
           </div>
@@ -4617,16 +4648,152 @@ Remark = ${remark}`;
     });
     container.querySelectorAll('.ring-card-head').forEach(function(head) {
       head.addEventListener('click', function(e) {
-        // Don't toggle if clicked on the map button
-        if (e.target.closest('.ring-map-btn')) return;
+        // Don't toggle if clicked on the map button or sketch buttons
+        if (e.target.closest('.ring-map-btn') || e.target.closest('.ring-sketch-btn')) return;
         var card = head.closest('.ring-card');
         if (!card) return;
         var ringName = card.dataset.ringName;
         if (ringName) toggleRingCard(ringName);
       });
     });
+
+    // Sketch/drawing event listeners
+    container.querySelectorAll('[id^="sketchpen_"]').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var ringName = btn.dataset.sketchRing;
+        if (ringName) toggleSketchPen(ringName);
+      });
+    });
+    container.querySelectorAll('[id^="sketchclear_"]').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var ringName = btn.dataset.sketchclearRing;
+        if (ringName) clearSketch(ringName);
+      });
+    });
+    // Attach drawing event listeners to each sketch SVG
+    container.querySelectorAll('.ring-diagram-wrap[data-ring-sketch]').forEach(function(wrap) {
+      attachSketchDrawing(wrap);
+    });
     } catch(e) {
       container.innerHTML = '<div class="empty-state" style="padding:20px;"><b>Render error:</b> ' + escapeHtml(e.message) + '<br><pre>' + escapeHtml(e.stack || '').substring(0, 500) + '</pre></div>';
+    }
+  }
+
+  // Per-ring sketch state: { ringName: { active: bool, paths: [SVG path strings], currentPath: [] }
+  var _sketchState = {};
+  // Path currently being drawn
+  var _sketchActive = null;
+
+  function toggleSketchPen(ringName) {
+    if (!_sketchState[ringName]) _sketchState[ringName] = { active: false, paths: [], currentPath: null };
+    _sketchState[ringName].active = !_sketchState[ringName].active;
+    var wrap = document.querySelector('[data-ring-sketch="' + ringName + '"]');
+    var svg = wrap ? wrap.querySelector('.ring-sketch-svg') : null;
+    var penBtn = document.getElementById('sketchpen_' + ringName.replace(/\s+/g, '_'));
+    if (wrap) wrap.classList.toggle('drawing', _sketchState[ringName].active);
+    if (penBtn) penBtn.classList.toggle('active', _sketchState[ringName].active);
+    if (svg && !_sketchState[ringName].active) {
+      // Stop drawing
+      _sketchActive = null;
+    }
+  }
+
+  function clearSketch(ringName) {
+    _sketchState[ringName] = { active: false, paths: [] };
+    var wrap = document.querySelector('[data-ring-sketch="' + ringName + '"]');
+    var svg = wrap ? wrap.querySelector('.ring-sketch-svg') : null;
+    if (svg) svg.innerHTML = '';
+    var penBtn = document.getElementById('sketchpen_' + ringName.replace(/\s+/g, '_'));
+    if (penBtn) penBtn.classList.remove('active');
+    if (wrap) wrap.classList.remove('drawing');
+  }
+
+  function attachSketchDrawing(wrap) {
+    var ringName = wrap.dataset.ringSketch;
+    var svg = wrap.querySelector('.ring-sketch-svg');
+    if (!svg || !ringName) return;
+    if (!_sketchState[ringName]) _sketchState[ringName] = { active: false, paths: [], currentPath: null };
+
+    svg.addEventListener('pointerdown', function(e) {
+      if (!_sketchState[ringName] || !_sketchState[ringName].active) return;
+      e.preventDefault();
+      svg.setPointerCapture(e.pointerId);
+      var pt = getSVGPoint(svg, e);
+      _sketchState[ringName].currentPath = ['M', pt.x, pt.y];
+      _sketchActive = ringName;
+    });
+
+    svg.addEventListener('pointermove', function(e) {
+      if (_sketchActive !== ringName || !_sketchState[ringName].currentPath) return;
+      e.preventDefault();
+      var pt = getSVGPoint(svg, e);
+      _sketchState[ringName].currentPath.push('L', pt.x, pt.y);
+      renderSketchPath(svg, _sketchState[ringName]);
+    });
+
+    svg.addEventListener('pointerup', function(e) {
+      if (_sketchActive !== ringName) return;
+      _sketchActive = null;
+      if (_sketchState[ringName].currentPath && _sketchState[ringName].currentPath.length > 2) {
+        _sketchState[ringName].paths.push(_sketchState[ringName].currentPath);
+      }
+      _sketchState[ringName].currentPath = null;
+    });
+
+    svg.addEventListener('pointercancel', function(e) {
+      _sketchActive = null;
+      _sketchState[ringName].currentPath = null;
+    });
+
+    // Restore existing paths on re-render
+    if (_sketchState[ringName] && _sketchState[ringName].paths.length > 0) {
+      svg.innerHTML = '';
+      _sketchState[ringName].paths.forEach(function(path) {
+        var el = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        el.setAttribute('d', path.join(' '));
+        el.setAttribute('stroke', '#e53935');
+        el.setAttribute('stroke-width', '2.5');
+        el.setAttribute('fill', 'none');
+        el.setAttribute('stroke-linecap', 'round');
+        el.setAttribute('stroke-linejoin', 'round');
+        svg.appendChild(el);
+      });
+    }
+  }
+
+  function getSVGPoint(svg, e) {
+    var pt = svg.createSVGPoint();
+    pt.x = e.clientX;
+    pt.y = e.clientY;
+    return pt.matrixTransform(svg.getScreenCTM().inverse());
+  }
+
+  function renderSketchPath(svg, state) {
+    svg.innerHTML = '';
+    // Draw completed paths
+    state.paths.forEach(function(path) {
+      if (path.length < 3) return;
+      var el = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      el.setAttribute('d', path.join(' '));
+      el.setAttribute('stroke', '#e53935');
+      el.setAttribute('stroke-width', '2.5');
+      el.setAttribute('fill', 'none');
+      el.setAttribute('stroke-linecap', 'round');
+      el.setAttribute('stroke-linejoin', 'round');
+      svg.appendChild(el);
+    });
+    // Draw current path
+    if (state.currentPath && state.currentPath.length > 2) {
+      var cur = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      cur.setAttribute('d', state.currentPath.join(' '));
+      cur.setAttribute('stroke', '#e53935');
+      cur.setAttribute('stroke-width', '2.5');
+      cur.setAttribute('fill', 'none');
+      cur.setAttribute('stroke-linecap', 'round');
+      cur.setAttribute('stroke-linejoin', 'round');
+      svg.appendChild(cur);
     }
   }
 
