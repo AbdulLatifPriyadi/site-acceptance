@@ -2453,7 +2453,7 @@ Remark = ${remark}`;
   }
 
   function getFilteredSites(){
-    return dashTrackerData.filter(site=>{
+    const result = dashTrackerData.filter(site=>{
       // Focused ring: show only sites from this ring (overrides other filters)
       if(dashFocusedRing){
         const ring = String(site.ring || '').trim();
@@ -2481,10 +2481,16 @@ Remark = ${remark}`;
       }
       return true;
     });
+    if (dashFocusedRing) {
+      console.log('[getFilteredSites] focusedRing=', dashFocusedRing, 'result=', result.length, 'of', dashTrackerData.length);
+      result.forEach(s => console.log('  site:', s.ring, s.duId, 'lat=', s.lat, 'lng=', s.lng));
+    }
+    return result;
   }
 
   // Switch to map view and zoom to show all sites in a specific ring
   function focusRingOnMap(ringName) {
+    console.log('[focusRingOnMap] called with ringName=', ringName, 'current dashView=', dashView, 'dashMap=', !!dashMap);
     try {
     dashFocusedRing = ringName;
     const wasAlreadyMap = dashView === 'map';
@@ -2492,7 +2498,10 @@ Remark = ${remark}`;
     setDashView('map');
     // If map is already initialized, trigger a direct draw
     if (dashMap) {
+      console.log('[focusRingOnMap] calling drawDashboardMap');
       drawDashboardMap();
+    } else {
+      console.warn('[focusRingOnMap] dashMap not yet initialized');
     }
     // Clear the focused ring after 500ms so subsequent normal map views show all sites
     setTimeout(() => { dashFocusedRing = null; }, 500);
@@ -2500,11 +2509,16 @@ Remark = ${remark}`;
   }
 
   function drawDashboardMap(){
-    if (!dashMap) return; // guard: map not ready
+    console.log('[drawDashboardMap] dashMap=', !!dashMap, 'focusedRing=', dashFocusedRing, 'allSites=', dashTrackerData.length);
+    if (!dashMap) {
+      console.warn('[drawDashboardMap] dashMap not ready yet — skipping');
+      return; // guard: map not ready
+    }
     dashMarkersLayer.clearLayers();
     dashLinesLayer.clearLayers();
 
     const filtered = getFilteredSites();
+    console.log('[drawDashboardMap] filtered=', filtered.length, 'sites');
     const withCoords = filtered
       .map(site=> Object.assign({}, site, { _lat: parseCoord(site.lat), _lng: parseCoord(site.lng) }))
       .filter(site=> !isNaN(site._lat) && !isNaN(site._lng));
@@ -2566,6 +2580,9 @@ Remark = ${remark}`;
     if(withCoords.length){
       const bounds = L.latLngBounds(withCoords.map(s=> [s._lat, s._lng]));
       dashMap.fitBounds(bounds, { padding:[30,30] });
+      console.log('[drawDashboardMap] zoomed to', withCoords.length, 'sites, bounds=', bounds.toBBoxString());
+    } else {
+      console.warn('[drawDashboardMap] no sites with coords to display');
     }
   }
 
