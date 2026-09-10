@@ -766,8 +766,101 @@
   .pivot-heading { font-size: 13px; }
 }
 
+/* Ring view */
+#dashRing { font-family: Arial, sans-serif; }
+.ring-header-bar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-bottom: 14px; padding-bottom: 10px; border-bottom: 2px solid #eef1f3;
+}
+.ring-stat-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 12px; border-radius: 999px; font-size: 11.5px; font-weight: 700;
+  background: #f0f4ff; color: var(--ink);
+}
+.ring-card {
+  background: #fff; border: 1.5px solid #dde3ec; border-radius: 12px;
+  margin-bottom: 14px; overflow: hidden;
+  box-shadow: 0 2px 6px rgba(0,0,0,.06);
+  transition: box-shadow .15s;
+}
+.ring-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,.12); }
+.ring-card.collapsed .ring-card-body { display: none; }
+.ring-card-head {
+  display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+  background: #1c2530; color: #fff; cursor: pointer; user-select: none;
+}
+.ring-card-toggle {
+  font-size: 14px; transition: transform .2s; flex-shrink: 0;
+}
+.ring-card.collapsed .ring-card-toggle { transform: rotate(-90deg); }
+.ring-card-title { font-size: 14px; font-weight: 800; flex: 1; }
+.ring-card-badge {
+  font-size: 10px; padding: 2px 8px; border-radius: 999px; font-weight: 700;
+}
+.ring-card-body { padding: 12px 14px; overflow-x: auto; }
+.ring-stats-row {
+  display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap;
+}
+.ring-stat-item {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: 8px; font-size: 11px; font-weight: 700;
+  background: #f5f6f7; border: 1px solid #e8eaec;
+}
+.ring-stat-item .dot { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid rgba(0,0,0,.12); flex-shrink: 0; }
+
+/* Ring diagram SVG */
+.ring-diagram-wrap { overflow-x: auto; padding: 4px 0; }
+.ring-diagram { display: block; min-height: 80px; }
+
+/* Site nodes in ring SVG */
+.ring-node-endpoint { cursor: default; }
+.ring-node-bts { cursor: pointer; }
+.ring-node-csg { cursor: pointer; }
+.ring-node-bts:hover rect, .ring-node-bts:hover circle { filter: brightness(1.15); }
+.ring-node-csg:hover rect, .ring-node-csg:hover circle { filter: brightness(1.15); }
+
+/* FO line classes */
+.fo-dashed { stroke-dasharray: 6 4; stroke-width: 2.5; }
+.fo-yellow { stroke: #f0c000; stroke-width: 3; }
+.fo-green  { stroke: #4caf7d; stroke-width: 3; }
+.fo-none   { stroke: #d8dce0; stroke-width: 2; stroke-dasharray: 4 4; opacity: 0.6; }
+
+/* Ring legend */
+.ring-legend {
+  display: flex; flex-wrap: wrap; gap: 10px; padding: 10px 14px;
+  border-top: 1px solid #eef1f3; margin-top: 8px;
+  font-size: 10.5px; color: #6b7688;
+}
+.ring-legend-item { display: flex; align-items: center; gap: 5px; font-weight: 700; }
+.ring-legend-line { height: 3px; width: 28px; border-radius: 2px; }
+
+/* Ring table in card */
+.ring-table { width: 100%; border-collapse: collapse; font-size: 10.5px; margin-top: 8px; }
+.ring-table th {
+  background: #eef1f3; color: var(--ink); padding: 5px 8px;
+  text-align: left; font-weight: 700; white-space: nowrap;
+}
+.ring-table td { padding: 4px 8px; border-bottom: 1px solid #f0f2f4; white-space: nowrap; }
+.ring-table tr:last-child td { border-bottom: none; }
+.ring-gap-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
+.ring-fo-badge {
+  display: inline-block; padding: 1px 6px; border-radius: 4px;
+  font-size: 9.5px; font-weight: 700;
+}
+.ring-fo-badge.fo-dashed { background: #fde9c8; color: #b45309; }
+.ring-fo-badge.fo-yellow { background: #fef3c7; color: #92400e; }
+.ring-fo-badge.fo-green  { background: #d1fae5; color: #065f46; }
+.ring-fo-badge.fo-none   { background: #f3f4f6; color: #9ca3af; }
+.ring-expand-btn {
+  background: #2f6bc4; color: #fff; border: none; border-radius: 5px;
+  padding: 3px 8px; font-size: 10px; font-weight: 700; cursor: pointer;
+  margin-top: 6px;
+}
+
+
 </style>
-</head
+
+</head>
 <!-- ============================================================
   LOCAL TEST FILE â€” DO NOT DEPLOY TO PRODUCTION
   Generated from index.html by scripts\build-test.ps1
@@ -780,19 +873,19 @@
 // ============================================================
 
 var MOCK_TRACKER = [
-  { batchRfi:'BATCH-A', batchCsg:'CSG-01', tpId:'TP001', surgeId:'SURG-001', duId:'32CMH_0057_CSG', siteName:'PTI_DESA_UTAMA', subcontPlan:'Intisel', gap:'GAP-A', remark:'OK - installed', team:'Team 1', city:'Bandung', tp:'Telkom', km:'12', peOwner:'John Doe', lat:-6.9175, lng:107.6191, ring:'Ring A', seq:'1' },
-  { batchRfi:'BATCH-A', batchCsg:'CSG-01', tpId:'TP002', surgeId:'SURG-002', duId:'32CMH_0024_CSG', siteName:'TBG_BAROS', subcontPlan:'NIM', gap:'GAP-B', remark:'Pending ATP', team:'Team 2', city:'Bandung', tp:'Telkom', km:'8', peOwner:'Jane Doe', lat:-6.9148, lng:107.6172, ring:'Ring B', seq:'2' },
-  { batchRfi:'BATCH-A', batchCsg:'CSG-02', tpId:'TP003', surgeId:'SURG-003', duId:'32BDG_0224_NEW', siteName:'TBG_GURUMINDA', subcontPlan:'PAB', gap:'', remark:'Material delay', team:'Team 1', city:'Bandung', tp:'Telkom', km:'15', peOwner:'Bob Smith', lat:-6.9210, lng:107.6100, ring:'Ring C', seq:'3' },
-  { batchRfi:'BATCH-B', batchCsg:'CSG-02', tpId:'TP004', surgeId:'SURG-004', duId:'32SKB_0072_NEW', siteName:'PTI_PASAR_PELABUHAN', subcontPlan:'ADW', gap:'GAP-C', remark:'OK', team:'Team 3', city:'Sukabumi', tp:'Telkom', km:'22', peOwner:'Alice Lee', lat:-6.9250, lng:107.6050, ring:'Ring D', seq:'4' },
-  { batchRfi:'BATCH-B', batchCsg:'CSG-03', tpId:'TP005', surgeId:'SURG-005', duId:'32TNG_0011_CSG', siteName:'TNG_TANJUNG', subcontPlan:'CAA', gap:'GAP-A', remark:'Integration done', team:'Team 2', city:'Tanggerang', tp:'Telkom', km:'30', peOwner:'Charlie Ng', lat:-6.9300, lng:107.5900, ring:'Ring A', seq:'5' },
-  { batchRfi:'BATCH-C', batchCsg:'CSG-03', tpId:'TP006', surgeId:'SURG-006', duId:'32CMH_0099_WL', siteName:'CMH_KOMP_PLUIT', subcontPlan:'TRITAMA', gap:'', remark:'Work in progress', team:'Team 1', city:'Bandung', tp:'Telkom', km:'5', peOwner:'David Tan', lat:-6.9100, lng:107.6150, ring:'Ring E', seq:'6' },
-  { batchRfi:'BATCH-C', batchCsg:'CSG-04', tpId:'TP007', surgeId:'SURG-007', duId:'32BDG_0333_NEW', siteName:'BDG_OFFICE_TLT', subcontPlan:'INNOVIS', gap:'GAP-B', remark:'Closing only', team:'Team 4', city:'Bandung', tp:'Telkom', km:'10', peOwner:'Eve Wong', lat:-6.9000, lng:107.6200, ring:'Ring F', seq:'7' },
-  { batchRfi:'', batchCsg:'', tpId:'TP008', surgeId:'', duId:'32CMH_0010_CSG', siteName:'CMH_DAGO', subcontPlan:'Intisel', gap:'GAP-A', remark:'', team:'Team 1', city:'Bandung', tp:'Telkom', km:'3', peOwner:'Frank Lee', lat:-6.9050, lng:107.6100, ring:'Ring G', seq:'8' },
-  { batchRfi:'BATCH-D', batchCsg:'CSG-04', tpId:'TP009', surgeId:'SURG-008', duId:'32SKB_0055_WL', siteName:'SKB_MALL', subcontPlan:'Poca', gap:'GAP-C', remark:'ATP passed', team:'Team 3', city:'Sukabumi', tp:'Telkom', km:'18', peOwner:'Grace Ho', lat:-6.9280, lng:107.6080, ring:'Ring H', seq:'9' },
-  { batchRfi:'BATCH-D', batchCsg:'', tpId:'TP010', surgeId:'', duId:'32TNG_0077_NEW', siteName:'TNG_CITY_CENTER', subcontPlan:'INDOHR', gap:'', remark:'Waiting material', team:'Team 2', city:'Tanggerang', tp:'Telkom', km:'25', peOwner:'Henry Wu', lat:-6.9350, lng:107.5850, ring:'Ring I', seq:'10' },
-  { batchRfi:'BATCH-E', batchCsg:'CSG-05', tpId:'TP011', surgeId:'SURG-009', duId:'32CJR_0043_NEW', siteName:'CJR_SITE_ALPHA', subcontPlan:'Intisel', gap:'ATP', remark:'Ready for test', team:'Team 5', city:'Cirebon', tp:'Telkom', km:'40', peOwner:'Test User', lat:-6.7320, lng:108.5521, ring:'Ring J', seq:'11' },
-  { batchRfi:'BATCH-E', batchCsg:'CSG-05', tpId:'TP012', surgeId:'SURG-010', duId:'32BDG_0673_NEW', siteName:'BDG_SITE_BETA', subcontPlan:'NIM', gap:'Install', remark:'In progress', team:'Team 6', city:'Bandung', tp:'Telkom', km:'18', peOwner:'Another User', lat:-6.9001, lng:107.6200, ring:'Ring K', seq:'12' },
-  { batchRfi:'BATCH-E', batchCsg:'CSG-06', tpId:'TP013', surgeId:'SURG-011', duId:'32BDG_0298_NEW', siteName:'BDG_SITE_GAMMA', subcontPlan:'PAB', gap:'ON AIR', remark:'Completed', team:'Team 7', city:'Bandung', tp:'Telkom', km:'12', peOwner:'Final User', lat:-6.9100, lng:107.6300, ring:'Ring L', seq:'13' }
+  { batchRfi:'BATCH-A', batchCsg:'CSG-01', tpId:'TP001', surgeId:'SURG-001', duId:'32CMH_0057_CSG', siteName:'PTI_DESA_UTAMA', subcontPlan:'Intisel', gap:'GAP-A', remark:'OK - installed', fo:'RFS', city:'Bandung', tp:'Telkom', km:'12', peOwner:'John Doe', lat:-6.9175, lng:107.6191, ring:'Andir - Ciroyom', seq:'1' },
+  { batchRfi:'BATCH-A', batchCsg:'CSG-01', tpId:'TP002', surgeId:'SURG-002', duId:'32CMH_0024_NEW', siteName:'TBG_BAROS', subcontPlan:'NIM', gap:'GAP-B', remark:'Pending ATP', fo:'Termination done', city:'Bandung', tp:'Telkom', km:'8', peOwner:'Jane Doe', lat:-6.9148, lng:107.6172, ring:'Andir - Ciroyom', seq:'2' },
+  { batchRfi:'BATCH-A', batchCsg:'CSG-02', tpId:'TP003', surgeId:'SURG-003', duId:'32BDG_0224_NEW', siteName:'TBG_GURUMINDA', subcontPlan:'PAB', gap:'', remark:'Material delay', fo:'Pulling Cable', city:'Bandung', tp:'Telkom', km:'15', peOwner:'Bob Smith', lat:-6.9210, lng:107.6100, ring:'Dago - Hegarsari', seq:'3' },
+  { batchRfi:'BATCH-B', batchCsg:'CSG-02', tpId:'TP004', surgeId:'SURG-004', duId:'32SKB_0072_NEW', siteName:'PTI_PASAR_PELABUHAN', subcontPlan:'ADW', gap:'GAP-C', remark:'OK', fo:'Survey', city:'Sukabumi', tp:'Telkom', km:'22', peOwner:'Alice Lee', lat:-6.9250, lng:107.6050, ring:'Dago - Hegarsari', seq:'4' },
+  { batchRfi:'BATCH-B', batchCsg:'CSG-03', tpId:'TP005', surgeId:'SURG-005', duId:'32TNG_0011_CSG', siteName:'TNG_TANJUNG', subcontPlan:'CAA', gap:'GAP-A', remark:'Integration done', fo:'Materials', city:'Tanggerang', tp:'Telkom', km:'30', peOwner:'Charlie Ng', lat:-6.9300, lng:107.5900, ring:'Andir - Ciroyom', seq:'5' },
+  { batchRfi:'BATCH-C', batchCsg:'CSG-03', tpId:'TP006', surgeId:'SURG-006', duId:'32CMH_0099_WL', siteName:'CMH_KOMP_PLUIT', subcontPlan:'TRITAMA', gap:'', remark:'Work in progress', fo:'Permit', city:'Bandung', tp:'Telkom', km:'5', peOwner:'David Tan', lat:-6.9100, lng:107.6150, ring:'Cikawao - Turangga', seq:'6' },
+  { batchRfi:'BATCH-C', batchCsg:'CSG-04', tpId:'TP007', surgeId:'SURG-007', duId:'32BDG_0333_NEW', siteName:'BDG_OFFICE_TLT', subcontPlan:'INNOVIS', gap:'GAP-B', remark:'Closing only', fo:'NY Assigned', city:'Bandung', tp:'Telkom', km:'10', peOwner:'Eve Wong', lat:-6.9000, lng:107.6200, ring:'Cikawao - Turangga', seq:'7' },
+  { batchRfi:'', batchCsg:'', tpId:'TP008', surgeId:'', duId:'32CMH_0010_CSG', siteName:'CMH_DAGO', subcontPlan:'Intisel', gap:'GAP-A', remark:'', fo:'DRM', city:'Bandung', tp:'Telkom', km:'3', peOwner:'Frank Lee', lat:-6.9050, lng:107.6100, ring:'Dago - Hegarsari', seq:'8' },
+  { batchRfi:'BATCH-D', batchCsg:'CSG-04', tpId:'TP009', surgeId:'SURG-008', duId:'32SKB_0055_WL', siteName:'SKB_MALL', subcontPlan:'Poca', gap:'GAP-C', remark:'ATP passed', fo:'', city:'Sukabumi', tp:'Telkom', km:'18', peOwner:'Grace Ho', lat:-6.9280, lng:107.6080, ring:'Sukabungah - Sukajadi', seq:'9' },
+  { batchRfi:'BATCH-D', batchCsg:'', tpId:'TP010', surgeId:'', duId:'32TNG_0077_NEW', siteName:'TNG_CITY_CENTER', subcontPlan:'INDOHR', gap:'', remark:'Waiting material', fo:'', city:'Tanggerang', tp:'Telkom', km:'25', peOwner:'Henry Wu', lat:-6.9350, lng:107.5850, ring:'Sukabungah - Sukajadi', seq:'10' },
+  { batchRfi:'BATCH-E', batchCsg:'CSG-05', tpId:'TP011', surgeId:'SURG-009', duId:'32CJR_0043_NEW', siteName:'CJR_SITE_ALPHA', subcontPlan:'Intisel', gap:'ATP', remark:'Ready for test', fo:'RFS', city:'Cirebon', tp:'Telkom', km:'40', peOwner:'Test User', lat:-6.7320, lng:108.5521, ring:'Cirebon - Sumber', seq:'11' },
+  { batchRfi:'BATCH-E', batchCsg:'CSG-05', tpId:'TP012', surgeId:'SURG-010', duId:'32BDG_0673_NEW', siteName:'BDG_SITE_BETA', subcontPlan:'NIM', gap:'Install', remark:'In progress', fo:'Drop', city:'Bandung', tp:'Telkom', km:'18', peOwner:'Another User', lat:-6.9001, lng:107.6200, ring:'Cirebon - Sumber', seq:'12' },
+  { batchRfi:'BATCH-E', batchCsg:'CSG-06', tpId:'TP013', surgeId:'SURG-011', duId:'32BDG_0298_NEW', siteName:'BDG_SITE_GAMMA', subcontPlan:'PAB', gap:'ON AIR', remark:'Completed', fo:'Pulling Done', city:'Bandung', tp:'Telkom', km:'12', peOwner:'Final User', lat:-6.9100, lng:107.6300, ring:'Cirebon - Sumber', seq:'13' }
 ];
 
 var MOCK_PLAN = [
@@ -851,10 +944,8 @@ window.fetch = function(url, options) {
   return Promise.resolve(res);
 };
 
-// Override fetchWithTimeout too
-window.fetchWithTimeout = function(url, timeout) { return window.fetch(url); };
 </script>
->
+
 <body>
 
   <!-- ===== LOGIN SCREEN ===== -->
@@ -897,6 +988,7 @@ window.fetchWithTimeout = function(url, timeout) { return window.fetch(url); };
         <button class="dash-view-btn" id="viewGraphBtn">Dashboard</button>
         <button class="dash-view-btn" id="viewTableBtn">Table</button>
         <button class="dash-view-btn" id="viewPlanBtn">Plan</button>
+        <button class="dash-view-btn" id="viewRingBtn">Ring</button>
       </div>
       <div class="dash-topbar-right">
         <div class="dash-status" id="dashStatus"></div>
@@ -946,6 +1038,7 @@ window.fetchWithTimeout = function(url, timeout) { return window.fetch(url); };
         <span id="planStatus" style="margin-left:auto; padding-right:64px; font-size:11px; color:#b7c0c9; position:relative; z-index:3; pointer-events:none;"></span>
       </div>
       <div id="dashPlan" style="display:none; position:absolute; inset:0; overflow:auto; background:#fff; padding-top:46px;"></div>
+      <div id="dashRing" style="display:none; position:absolute; inset:0; overflow:auto; background:#fff; padding:14px 16px;"></div>
       <div id="planLoadingOverlay" style="display:none; position:absolute; inset:0; background:rgba(0,0,0,.5); z-index:50; align-items:center; justify-content:center;">
         <div style="display:inline-flex; align-items:center; gap:8px; background:#fff; color:#1c2530; padding:10px 18px; border-radius:8px; box-shadow:0 4px 14px rgba(0,0,0,.3); font-size:12px; font-weight:600;">
           <svg viewBox="0 0 24 24" width="16" height="16" style="animation:spin .8s linear infinite;"><circle cx="12" cy="12" r="9" fill="none" stroke="#cfd7df" stroke-width="3"/><path d="M21 12a9 9 0 0 0-9-9" fill="none" stroke="#2f6bc4" stroke-width="3" stroke-linecap="round"/></svg>
@@ -1848,6 +1941,19 @@ Remark = ${remark}`;
     'Other':       { head:'#c9cdd0', cell:'#e8eaec' },
     'Total':       { head:'#1c2530', cell:'#f5f6f7' }
   };
+  // Ring FO line styles
+  const FO_LINE = {
+    dashed: ['DRM','Survey','Materials','Permit','Pulling Cable','Pulling Done','Drop','NY Assigned'],
+    yellow: ['Termination done'],
+    green: ['RFS']
+  };
+  function foLineClass(fo) {
+    const v = String(fo || '').trim();
+    if (FO_LINE.green.includes(v)) return 'fo-green';
+    if (FO_LINE.yellow.includes(v)) return 'fo-yellow';
+    if (v) return 'fo-dashed'; // has FO value but not in terminal states
+    return 'fo-none'; // no FO data
+  }
   const PLAN_ACTIVITY_STYLE = {
     'WORK':             { cell:'#d8f3e3', text:'#1c2530' }, // green (mirrors ATP palette — reads as "go")
     'IDLE':             null,
@@ -1888,6 +1994,7 @@ Remark = ${remark}`;
   let dashSelectedGaps = null;
   let dashWorkOnly = false;
   let dashView = 'map';
+  let dashRingCollapsed = {};  // ring card collapse state
   let dashPivotMode = 'subcont-gap';
   // ----- Plan tab state -----
   let planCurrentDate = '';   // ISO YYYY-MM-DD currently being edited
@@ -2415,6 +2522,7 @@ Remark = ${remark}`;
     else if(dashView === 'graph') renderGraphView();
     else if(dashView === 'table') renderTableView();
     else if(dashView === 'plan') renderPlanView();
+    else if(dashView === 'ring') renderRingView();
     renderStatsBar();
   }
 
@@ -3887,7 +3995,7 @@ Remark = ${remark}`;
         <select data-fk="${f.key}" style="width:100%;padding:2px 3px;border:1px solid #4a5568;border-radius:3px;font-size:9px;background:#1a202c;color:#e2e8f0;">
           <option value="">All</option>
           ${vals.map(v=>`<option value="${escapeHtml(v)}" ${v===currentVal?'selected':''}>${escapeHtml(v)}</option>`).join('')}
-        </select>
+        \x3C/select>
       </th>`;
     }).join('');
 
@@ -3917,7 +4025,7 @@ Remark = ${remark}`;
             : `background:#f5f6f7;color:#888`;
           return `<td style="${colorStyle}"><select data-i="${i}" data-k="${f.key}" ${editable?'':'disabled'} style="width:100%;${colorStyle}">${
             ['ATP','ON AIR','SVQC','Install','Commcase','PO/DN Requested','Other'].map(g=> `<option value="${escapeHtml(g)}" ${current===g?'selected':''}>${escapeHtml(g)}</option>`).join('')
-          }</select></td>`;
+          }\x3C/select></td>`;
         }
         const roStyle = editable ? '' : 'background:#f5f6f7;color:#888;border-color:#e0e0e0;cursor:default';
         return `<td><input data-i="${i}" data-k="${f.key}" value="${escapeHtml(row[f.key] || '')}" ${editable?'':'readonly'} style="width:100%;${roStyle}"></td>`;
@@ -4062,6 +4170,279 @@ Remark = ${remark}`;
     if(varOverlayVisible) renderDashVarOverlay();
   }
 
+  // ================================================================
+  // RING VIEW — FO Ring Topology Tracker
+  // ================================================================
+
+  function renderRingView() {
+    const container = document.getElementById('dashRing');
+    const data = dashTrackerData;
+
+    // Group sites by ring
+    const ringMap = {};
+    for (const site of data) {
+      const ring = String(site.ring || '').trim();
+      if (!ring) continue;
+      if (!ringMap[ring]) ringMap[ring] = [];
+      ringMap[ring].push(site);
+    }
+
+    // Sort sites within each ring by seq
+    for (const ring in ringMap) {
+      ringMap[ring].sort((a, b) => {
+        const aSeq = parseInt(a.seq, 10) || 999;
+        const bSeq = parseInt(b.seq, 10) || 999;
+        return aSeq - bSeq;
+      });
+    }
+
+    // Parse ring endpoint names
+    function parseRingEndpoints(ringName) {
+      const parts = ringName.split(' - ').map(p => p.trim());
+      return {
+        start: parts[0] || ringName,
+        end: parts.length > 1 ? parts[parts.length - 1] : parts[0]
+      };
+    }
+
+    // Count stats per ring
+    function ringStats(sites) {
+      let bts = 0, csg = 0;
+      let foYellow = 0, foGreen = 0, foActive = 0, foNone = 0;
+      const gapCounts = {};
+      for (const s of sites) {
+        const duId = String(s.duId || '');
+        if (duId.endsWith('_CSG')) csg++;
+        else if (duId.endsWith('_NEW')) bts++;
+
+        const fo = String(s.fo || '').trim();
+        if (FO_LINE.green.includes(fo)) foGreen++;
+        else if (FO_LINE.yellow.includes(fo)) foYellow++;
+        else if (fo) foActive++;
+        else foNone++;
+
+        const gap = String(s.gap || '').trim();
+        gapCounts[gap] = (gapCounts[gap] || 0) + 1;
+      }
+      return { bts, csg, foDone: foYellow, foGreen, foActive, foNone, gapCounts, total: sites.length };
+    }
+
+    // FO badge class
+    function foBadgeClass(fo) {
+      const v = String(fo || '').trim();
+      if (FO_LINE.green.includes(v)) return 'fo-green';
+      if (FO_LINE.yellow.includes(v)) return 'fo-yellow';
+      if (v) return 'fo-dashed';
+      return 'fo-none';
+    }
+
+    // FO line class between two consecutive sites (use the LATER site's FO)
+    function foLinkClass(sites, fromIdx, toIdx) {
+      const later = sites[toIdx];
+      return foBadgeClass(String(later && later.fo || '').trim());
+    }
+
+    // Build ring SVG diagram
+    function buildRingSVG(sites, endpoints) {
+      const padding = { x: 20, y: 30 };
+      const nodeWidth = 90;
+      const nodeHeight = 56;
+      const gapX = 20;
+      const totalWidth = sites.length * (nodeWidth + gapX) + 2 * padding.x;
+      const svgHeight = 110;
+      const svgWidth = Math.max(totalWidth, 300);
+
+      let svg = `<svg class="ring-diagram" width="${svgWidth}" height="${svgHeight}" xmlns="http://www.w3.org/2000/svg">`;
+      svg += `<style>
+        .fo-dashed { stroke: #e8a33d; stroke-width: 2.5; stroke-dasharray: 6 4; fill: none; }
+        .fo-yellow { stroke: #f0c000; stroke-width: 3; fill: none; }
+        .fo-green  { stroke: #4caf7d; stroke-width: 3; fill: none; }
+        .fo-none   { stroke: #d8dce0; stroke-width: 2; stroke-dasharray: 4 4; fill: none; opacity: 0.6; }
+      </style>`;
+
+      // Draw FO lines between nodes
+      const nodeStartX = padding.x + nodeWidth / 2;
+      for (let i = 0; i < sites.length - 1; i++) {
+        const x1 = nodeStartX + i * (nodeWidth + gapX);
+        const x2 = x1 + nodeWidth + gapX;
+        const cls = foLinkClass(sites, i, i + 1);
+        svg += `<line x1="${x1}" y1="${svgHeight/2}" x2="${x2}" y2="${svgHeight/2}" class="${cls}"/>`;
+      }
+
+      // Draw site nodes
+      for (let i = 0; i < sites.length; i++) {
+        const site = sites[i];
+        const x = padding.x + i * (nodeWidth + gapX);
+        const y = (svgHeight - nodeHeight) / 2;
+        const duId = String(site.duId || '');
+        const isCsg = duId.endsWith('_CSG');
+        const isBts = duId.endsWith('_NEW');
+        const gapColor = dashGapColor(site.gap);
+        const fo = String(site.fo || '').trim();
+
+        // Node group
+        svg += `<g class="ring-node-${isCsg ? 'csg' : isBts ? 'bts' : 'bts'}">`;
+
+        if (isCsg) {
+          // CSG circle icon
+          const cx = x + nodeWidth / 2;
+          const cy = y + nodeHeight / 2;
+          const r = Math.min(nodeWidth, nodeHeight) / 2 - 4;
+          svg += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${gapColor}" stroke="#fff" stroke-width="2"/>`;
+          svg += `<text x="${cx}" y="${cy - 4}" text-anchor="middle" fill="#fff" font-size="9" font-weight="800">CSG</text>`;
+          svg += `<text x="${cx}" y="${cy + 8}" text-anchor="middle" fill="#fff" font-size="7" font-weight="600">${duId.substring(0,10)}</text>`;
+        } else {
+          // BTS tower icon
+          svg += `<rect x="${x}" y="${y}" width="${nodeWidth}" height="${nodeHeight}" rx="7" fill="${gapColor}" stroke="#fff" stroke-width="1.5"/>`;
+          // Tower triangle
+          const tx = x + nodeWidth / 2;
+          svg += `<polygon points="${tx},${y+6} ${tx-7},${y+18} ${tx+7},${y+18}" fill="#fff" opacity="0.9"/>`;
+          // Site info
+          svg += `<text x="${x+nodeWidth/2}" y="${y+30}" text-anchor="middle" fill="#fff" font-size="7.5" font-weight="700">${duId.substring(0,11)}</text>`;
+          svg += `<text x="${x+nodeWidth/2}" y="${y+44}" text-anchor="middle" fill="#fff" font-size="6.5" opacity="0.85">${String(site.siteName||'').substring(0,14)}</text>`;
+        }
+
+        // FO status dot on node
+        const foDotColor = FO_LINE.green.includes(fo) ? '#4caf7d' :
+                           FO_LINE.yellow.includes(fo) ? '#f0c000' :
+                           fo ? '#e8a33d' : '#d8dce0';
+        svg += `<circle cx="${x+nodeWidth-8}" cy="${y+8}" r="5" fill="${foDotColor}" stroke="#fff" stroke-width="1.2"/>`;
+
+        svg += `</g>`;
+      }
+
+      svg += `</svg>`;
+      return svg;
+    }
+
+    // Sort rings: show rings with active FO issues first
+    const sortedRings = Object.keys(ringMap).sort((a, b) => {
+      const statsA = ringStats(ringMap[a]);
+      const statsB = ringStats(ringMap[b]);
+      // Rings with more active FO issues first
+      return (statsB.foActive + statsB.foNone) - (statsA.foActive + statsA.foNone);
+    });
+
+    // Overall stats
+    const totalBts = data.filter(s => String(s.duId||'').endsWith('_NEW')).length;
+    const totalCsg = data.filter(s => String(s.duId||'').endsWith('_CSG')).length;
+
+    let html = `
+      <div class="ring-header-bar">
+        <span style="font-size:15px; font-weight:800; color:var(--ink);">Ring Overview</span>
+        <div class="ring-stat-chip"><span>${sortedRings.length}</span> rings</div>
+        <div class="ring-stat-chip"><span>${totalBts}</span> BTS sites</div>
+        <div class="ring-stat-chip"><span>${totalCsg}</span> CSG nodes</div>
+        <div class="ring-stat-chip" style="background:#fde9c8; color:#b45309;">
+          <span>${data.filter(s => FO_LINE.dashed.includes(String(s.fo||'').trim())).length}</span> FO Active
+        </div>
+        <div class="ring-stat-chip" style="background:#fef3c7; color:#92400e;">
+          <span>${data.filter(s => FO_LINE.yellow.includes(String(s.fo||'').trim())).length}</span> Term. Done
+        </div>
+        <div class="ring-stat-chip" style="background:#d1fae5; color:#065f46;">
+          <span>${data.filter(s => FO_LINE.green.includes(String(s.fo||'').trim())).length}</span> RFS
+        </div>
+        <div class="ring-stat-chip" style="background:#f3f4f6; color:#6b7280;">
+          <span>${data.filter(s => !String(s.fo||'').trim()).length}</span> No FO data
+        </div>
+      </div>
+    `;
+
+    // Ring cards
+    for (const ringName of sortedRings) {
+      const sites = ringMap[ringName];
+      const endpoints = parseRingEndpoints(ringName);
+      const stats = ringStats(sites);
+      const foBadges = [];
+      const foSet = new Set(sites.map(s => String(s.fo||'').trim()).filter(Boolean));
+      for (const [fo, cls] of [
+        ['RFS', 'fo-green'], ['Termination done', 'fo-yellow'],
+        ...FO_LINE.dashed.map(v => [v, 'fo-dashed'])
+      ]) {
+        if (foSet.has(fo)) {
+          foBadges.push(`<span class="ring-fo-badge ${cls}">${fo}</span>`);
+        }
+      }
+
+      const collapsed = dashRingCollapsed[ringName] ? ' collapsed' : '';
+      html += `
+      <div class="ring-card${collapsed}" id="rc_${ringName.replace(/\s+/g,'_')}">
+        <div class="ring-card-head" onclick="toggleRingCard('${CSS.escape(ringName)}')">
+          <span class="ring-card-toggle">&#9660;</span>
+          <span class="ring-card-title">${escapeHtml(ringName)}</span>
+          <span class="ring-card-badge" style="background:#4caf7d;">${stats.total} sites</span>
+          <span class="ring-card-badge" style="background:#2f6bc4;">${stats.bts} BTS</span>
+          <span class="ring-card-badge" style="background:#e8735a;">${stats.csg} CSG</span>
+          ${stats.foGreen > 0 ? `<span class="ring-card-badge" style="background:#4caf7d; color:#fff;">${stats.foGreen} RFS</span>` : ''}
+          ${stats.foActive > 0 ? `<span class="ring-card-badge" style="background:#e8a33d; color:#fff;">${stats.foActive} FO Active</span>` : ''}
+          ${stats.foNone > 0 ? `<span class="ring-card-badge" style="background:#d8dce0;">${stats.foNone} No FO</span>` : ''}
+        </div>
+        <div class="ring-card-body">
+          <div class="ring-stats-row">
+            <div class="ring-stat-item">
+              <span class="dot" style="background:#8fe08f;"></span>
+              <span>Start: <b>${escapeHtml(endpoints.start)}</b></span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6b7688" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+            </div>
+            <div class="ring-stat-item">
+              <span class="dot" style="background:#8fe08f;"></span>
+              <span>End: <b>${escapeHtml(endpoints.end)}</b></span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6b7688" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+            </div>
+          </div>
+          <div class="ring-diagram-wrap">${buildRingSVG(sites, endpoints)}</div>
+          <div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;">
+            ${foBadges.join('')}
+          </div>
+          <table class="ring-table">
+            <thead>
+              <tr>
+                <th>Seq</th><th>DU ID</th><th>Site Name</th><th>Type</th>
+                <th>GAP</th><th>FO</th><th>Subcont</th><th>City</th>
+              </tr>
+            </thead>
+            <tbody>
+      `;
+      for (const site of sites) {
+        const duId = String(site.duId || '');
+        const isCsg = duId.endsWith('_CSG');
+        const gapColor = dashGapColor(site.gap);
+        const foVal = String(site.fo || '').trim();
+        const foCls = foBadgeClass(foVal);
+        html += `<tr>
+          <td>${escapeHtml(site.seq || '')}</td>
+          <td><span style="font-weight:700;">${escapeHtml(duId)}</span></td>
+          <td>${escapeHtml(site.siteName || '')}</td>
+          <td>${isCsg ? '<span style="color:#e8735a;font-weight:800;">CSG</span>' : '<span style="color:#2f6bc4;font-weight:700;">BTS</span>'}</td>
+          <td>
+            <span class="ring-gap-dot" style="background:${gapColor};"></span>
+            <span style="font-size:9.5px;">${escapeHtml(site.gap || '-')}</span>
+          </td>
+          <td><span class="ring-fo-badge ${foCls}">${escapeHtml(foVal || '—')}</span></td>
+          <td>${escapeHtml(site.subcontPlan || '')}</td>
+          <td>${escapeHtml(site.city || '')}</td>
+        </tr>`;
+      }
+      html += `</tbody></table></div></div>`;
+    }
+
+    if (sortedRings.length === 0) {
+      html = `<div class="empty-state" style="padding:40px;text-align:center;">
+        <div style="font-size:28px;margin-bottom:8px;">&#128279;</div>
+        <div>No ring data found. Make sure the RING column is populated.</div>
+      </div>`;
+    }
+
+    container.innerHTML = html;
+  }
+
+  function toggleRingCard(ringName) {
+    dashRingCollapsed[ringName] = !dashRingCollapsed[ringName];
+    const card = document.getElementById('rc_' + ringName.replace(/\s+/g, '_'));
+    if (!card) return;
+    card.classList.toggle('collapsed', !!dashRingCollapsed[ringName]);
+  }
+
   function setDashView(view){
     // Guard: switching away from plan with unsaved changes prompts the user.
     // The view-plan path is exempt — switching TO plan doesn't discard anything.
@@ -4079,14 +4460,16 @@ Remark = ${remark}`;
     document.getElementById('viewGraphBtn').classList.toggle('active', view === 'graph');
     document.getElementById('viewTableBtn').classList.toggle('active', view === 'table');
     document.getElementById('viewPlanBtn').classList.toggle('active', view === 'plan');
+    document.getElementById('viewRingBtn').classList.toggle('active', view === 'ring');
     document.getElementById('dashMap').style.display = view === 'map' ? '' : 'none';
-    document.getElementById('dashLegend').style.display = view === 'map' ? '' : 'none';
+    document.getElementById('dashLegend').style.display = (view === 'map') ? '' : 'none';
     document.getElementById('dashStatsBar').style.display = view === 'plan' ? 'none' : '';
     document.getElementById('dashGraph').style.display = view === 'graph' ? 'block' : 'none';
     document.getElementById('dashTable').style.display = view === 'table' ? 'block' : 'none';
     document.getElementById('dashTableBar').style.display = view === 'table' ? 'flex' : 'none';
     document.getElementById('dashPlan').style.display = view === 'plan' ? 'block' : 'none';
     document.getElementById('dashPlanBar').style.display = view === 'plan' ? 'flex' : 'none';
+    document.getElementById('dashRing').style.display = view === 'ring' ? 'block' : 'none';
     document.getElementById('dashFilterPanel').style.display = (view === 'table' || view === 'plan') ? 'none' : '';
     // Leaving plan view: stop polling so the active-date fetcher doesn't run in the background.
     if (wasPlan && view !== 'plan') stopPlanDatePolling();
@@ -4142,6 +4525,8 @@ Remark = ${remark}`;
       // Start polling for active-date changes if subcont, stop if surge
       if (mySubcont) startPlanDatePolling();
       else stopPlanDatePolling();
+    } else if (view === 'ring') {
+      renderRingView();
     } else {
       // map view — handled above
     }
@@ -5678,6 +6063,7 @@ function _applyPlanCellStyle(el, col, val){
   document.getElementById('viewGraphBtn').addEventListener('click', ()=> setDashView('graph'));
   document.getElementById('viewTableBtn').addEventListener('click', ()=> setDashView('table'));
   document.getElementById('viewPlanBtn').addEventListener('click', ()=> setDashView('plan'));
+  document.getElementById('viewRingBtn').addEventListener('click', ()=> setDashView('ring'));
 
   document.getElementById('dashRefreshBtn').addEventListener('click', _doRefresh);
 
@@ -6110,5 +6496,3 @@ function _applyPlanCellStyle(el, col, val){
 })
 ();
 </script>
-</body>
-</html>

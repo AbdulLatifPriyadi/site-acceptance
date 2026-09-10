@@ -9,8 +9,8 @@ if ($headEnd -eq -1) {
     exit 1
 }
 
-$beforeHead = $html.Substring(0, $headEnd + 6)  # includes </head>
-$afterHead = $html.Substring($headEnd + 6)
+$beforeHead = $html.Substring(0, $headEnd + 7)  # includes </head>
+$afterHead = $html.Substring($headEnd + 7)  # starts after the > of </head>
 
 $mocks = @"
 
@@ -26,19 +26,19 @@ $mocks = @"
 // ============================================================
 
 var MOCK_TRACKER = [
-  { batchRfi:'BATCH-A', batchCsg:'CSG-01', tpId:'TP001', surgeId:'SURG-001', duId:'32CMH_0057_CSG', siteName:'PTI_DESA_UTAMA', subcontPlan:'Intisel', gap:'GAP-A', remark:'OK - installed', team:'Team 1', city:'Bandung', tp:'Telkom', km:'12', peOwner:'John Doe', lat:-6.9175, lng:107.6191, ring:'Ring A', seq:'1' },
-  { batchRfi:'BATCH-A', batchCsg:'CSG-01', tpId:'TP002', surgeId:'SURG-002', duId:'32CMH_0024_CSG', siteName:'TBG_BAROS', subcontPlan:'NIM', gap:'GAP-B', remark:'Pending ATP', team:'Team 2', city:'Bandung', tp:'Telkom', km:'8', peOwner:'Jane Doe', lat:-6.9148, lng:107.6172, ring:'Ring B', seq:'2' },
-  { batchRfi:'BATCH-A', batchCsg:'CSG-02', tpId:'TP003', surgeId:'SURG-003', duId:'32BDG_0224_NEW', siteName:'TBG_GURUMINDA', subcontPlan:'PAB', gap:'', remark:'Material delay', team:'Team 1', city:'Bandung', tp:'Telkom', km:'15', peOwner:'Bob Smith', lat:-6.9210, lng:107.6100, ring:'Ring C', seq:'3' },
-  { batchRfi:'BATCH-B', batchCsg:'CSG-02', tpId:'TP004', surgeId:'SURG-004', duId:'32SKB_0072_NEW', siteName:'PTI_PASAR_PELABUHAN', subcontPlan:'ADW', gap:'GAP-C', remark:'OK', team:'Team 3', city:'Sukabumi', tp:'Telkom', km:'22', peOwner:'Alice Lee', lat:-6.9250, lng:107.6050, ring:'Ring D', seq:'4' },
-  { batchRfi:'BATCH-B', batchCsg:'CSG-03', tpId:'TP005', surgeId:'SURG-005', duId:'32TNG_0011_CSG', siteName:'TNG_TANJUNG', subcontPlan:'CAA', gap:'GAP-A', remark:'Integration done', team:'Team 2', city:'Tanggerang', tp:'Telkom', km:'30', peOwner:'Charlie Ng', lat:-6.9300, lng:107.5900, ring:'Ring A', seq:'5' },
-  { batchRfi:'BATCH-C', batchCsg:'CSG-03', tpId:'TP006', surgeId:'SURG-006', duId:'32CMH_0099_WL', siteName:'CMH_KOMP_PLUIT', subcontPlan:'TRITAMA', gap:'', remark:'Work in progress', team:'Team 1', city:'Bandung', tp:'Telkom', km:'5', peOwner:'David Tan', lat:-6.9100, lng:107.6150, ring:'Ring E', seq:'6' },
-  { batchRfi:'BATCH-C', batchCsg:'CSG-04', tpId:'TP007', surgeId:'SURG-007', duId:'32BDG_0333_NEW', siteName:'BDG_OFFICE_TLT', subcontPlan:'INNOVIS', gap:'GAP-B', remark:'Closing only', team:'Team 4', city:'Bandung', tp:'Telkom', km:'10', peOwner:'Eve Wong', lat:-6.9000, lng:107.6200, ring:'Ring F', seq:'7' },
-  { batchRfi:'', batchCsg:'', tpId:'TP008', surgeId:'', duId:'32CMH_0010_CSG', siteName:'CMH_DAGO', subcontPlan:'Intisel', gap:'GAP-A', remark:'', team:'Team 1', city:'Bandung', tp:'Telkom', km:'3', peOwner:'Frank Lee', lat:-6.9050, lng:107.6100, ring:'Ring G', seq:'8' },
-  { batchRfi:'BATCH-D', batchCsg:'CSG-04', tpId:'TP009', surgeId:'SURG-008', duId:'32SKB_0055_WL', siteName:'SKB_MALL', subcontPlan:'Poca', gap:'GAP-C', remark:'ATP passed', team:'Team 3', city:'Sukabumi', tp:'Telkom', km:'18', peOwner:'Grace Ho', lat:-6.9280, lng:107.6080, ring:'Ring H', seq:'9' },
-  { batchRfi:'BATCH-D', batchCsg:'', tpId:'TP010', surgeId:'', duId:'32TNG_0077_NEW', siteName:'TNG_CITY_CENTER', subcontPlan:'INDOHR', gap:'', remark:'Waiting material', team:'Team 2', city:'Tanggerang', tp:'Telkom', km:'25', peOwner:'Henry Wu', lat:-6.9350, lng:107.5850, ring:'Ring I', seq:'10' },
-  { batchRfi:'BATCH-E', batchCsg:'CSG-05', tpId:'TP011', surgeId:'SURG-009', duId:'32CJR_0043_NEW', siteName:'CJR_SITE_ALPHA', subcontPlan:'Intisel', gap:'ATP', remark:'Ready for test', team:'Team 5', city:'Cirebon', tp:'Telkom', km:'40', peOwner:'Test User', lat:-6.7320, lng:108.5521, ring:'Ring J', seq:'11' },
-  { batchRfi:'BATCH-E', batchCsg:'CSG-05', tpId:'TP012', surgeId:'SURG-010', duId:'32BDG_0673_NEW', siteName:'BDG_SITE_BETA', subcontPlan:'NIM', gap:'Install', remark:'In progress', team:'Team 6', city:'Bandung', tp:'Telkom', km:'18', peOwner:'Another User', lat:-6.9001, lng:107.6200, ring:'Ring K', seq:'12' },
-  { batchRfi:'BATCH-E', batchCsg:'CSG-06', tpId:'TP013', surgeId:'SURG-011', duId:'32BDG_0298_NEW', siteName:'BDG_SITE_GAMMA', subcontPlan:'PAB', gap:'ON AIR', remark:'Completed', team:'Team 7', city:'Bandung', tp:'Telkom', km:'12', peOwner:'Final User', lat:-6.9100, lng:107.6300, ring:'Ring L', seq:'13' }
+  { batchRfi:'BATCH-A', batchCsg:'CSG-01', tpId:'TP001', surgeId:'SURG-001', duId:'32CMH_0057_CSG', siteName:'PTI_DESA_UTAMA', subcontPlan:'Intisel', gap:'GAP-A', remark:'OK - installed', fo:'RFS', city:'Bandung', tp:'Telkom', km:'12', peOwner:'John Doe', lat:-6.9175, lng:107.6191, ring:'Andir - Ciroyom', seq:'1' },
+  { batchRfi:'BATCH-A', batchCsg:'CSG-01', tpId:'TP002', surgeId:'SURG-002', duId:'32CMH_0024_NEW', siteName:'TBG_BAROS', subcontPlan:'NIM', gap:'GAP-B', remark:'Pending ATP', fo:'Termination done', city:'Bandung', tp:'Telkom', km:'8', peOwner:'Jane Doe', lat:-6.9148, lng:107.6172, ring:'Andir - Ciroyom', seq:'2' },
+  { batchRfi:'BATCH-A', batchCsg:'CSG-02', tpId:'TP003', surgeId:'SURG-003', duId:'32BDG_0224_NEW', siteName:'TBG_GURUMINDA', subcontPlan:'PAB', gap:'', remark:'Material delay', fo:'Pulling Cable', city:'Bandung', tp:'Telkom', km:'15', peOwner:'Bob Smith', lat:-6.9210, lng:107.6100, ring:'Dago - Hegarsari', seq:'3' },
+  { batchRfi:'BATCH-B', batchCsg:'CSG-02', tpId:'TP004', surgeId:'SURG-004', duId:'32SKB_0072_NEW', siteName:'PTI_PASAR_PELABUHAN', subcontPlan:'ADW', gap:'GAP-C', remark:'OK', fo:'Survey', city:'Sukabumi', tp:'Telkom', km:'22', peOwner:'Alice Lee', lat:-6.9250, lng:107.6050, ring:'Dago - Hegarsari', seq:'4' },
+  { batchRfi:'BATCH-B', batchCsg:'CSG-03', tpId:'TP005', surgeId:'SURG-005', duId:'32TNG_0011_CSG', siteName:'TNG_TANJUNG', subcontPlan:'CAA', gap:'GAP-A', remark:'Integration done', fo:'Materials', city:'Tanggerang', tp:'Telkom', km:'30', peOwner:'Charlie Ng', lat:-6.9300, lng:107.5900, ring:'Andir - Ciroyom', seq:'5' },
+  { batchRfi:'BATCH-C', batchCsg:'CSG-03', tpId:'TP006', surgeId:'SURG-006', duId:'32CMH_0099_WL', siteName:'CMH_KOMP_PLUIT', subcontPlan:'TRITAMA', gap:'', remark:'Work in progress', fo:'Permit', city:'Bandung', tp:'Telkom', km:'5', peOwner:'David Tan', lat:-6.9100, lng:107.6150, ring:'Cikawao - Turangga', seq:'6' },
+  { batchRfi:'BATCH-C', batchCsg:'CSG-04', tpId:'TP007', surgeId:'SURG-007', duId:'32BDG_0333_NEW', siteName:'BDG_OFFICE_TLT', subcontPlan:'INNOVIS', gap:'GAP-B', remark:'Closing only', fo:'NY Assigned', city:'Bandung', tp:'Telkom', km:'10', peOwner:'Eve Wong', lat:-6.9000, lng:107.6200, ring:'Cikawao - Turangga', seq:'7' },
+  { batchRfi:'', batchCsg:'', tpId:'TP008', surgeId:'', duId:'32CMH_0010_CSG', siteName:'CMH_DAGO', subcontPlan:'Intisel', gap:'GAP-A', remark:'', fo:'DRM', city:'Bandung', tp:'Telkom', km:'3', peOwner:'Frank Lee', lat:-6.9050, lng:107.6100, ring:'Dago - Hegarsari', seq:'8' },
+  { batchRfi:'BATCH-D', batchCsg:'CSG-04', tpId:'TP009', surgeId:'SURG-008', duId:'32SKB_0055_WL', siteName:'SKB_MALL', subcontPlan:'Poca', gap:'GAP-C', remark:'ATP passed', fo:'', city:'Sukabumi', tp:'Telkom', km:'18', peOwner:'Grace Ho', lat:-6.9280, lng:107.6080, ring:'Sukabungah - Sukajadi', seq:'9' },
+  { batchRfi:'BATCH-D', batchCsg:'', tpId:'TP010', surgeId:'', duId:'32TNG_0077_NEW', siteName:'TNG_CITY_CENTER', subcontPlan:'INDOHR', gap:'', remark:'Waiting material', fo:'', city:'Tanggerang', tp:'Telkom', km:'25', peOwner:'Henry Wu', lat:-6.9350, lng:107.5850, ring:'Sukabungah - Sukajadi', seq:'10' },
+  { batchRfi:'BATCH-E', batchCsg:'CSG-05', tpId:'TP011', surgeId:'SURG-009', duId:'32CJR_0043_NEW', siteName:'CJR_SITE_ALPHA', subcontPlan:'Intisel', gap:'ATP', remark:'Ready for test', fo:'RFS', city:'Cirebon', tp:'Telkom', km:'40', peOwner:'Test User', lat:-6.7320, lng:108.5521, ring:'Cirebon - Sumber', seq:'11' },
+  { batchRfi:'BATCH-E', batchCsg:'CSG-05', tpId:'TP012', surgeId:'SURG-010', duId:'32BDG_0673_NEW', siteName:'BDG_SITE_BETA', subcontPlan:'NIM', gap:'Install', remark:'In progress', fo:'Drop', city:'Bandung', tp:'Telkom', km:'18', peOwner:'Another User', lat:-6.9001, lng:107.6200, ring:'Cirebon - Sumber', seq:'12' },
+  { batchRfi:'BATCH-E', batchCsg:'CSG-06', tpId:'TP013', surgeId:'SURG-011', duId:'32BDG_0298_NEW', siteName:'BDG_SITE_GAMMA', subcontPlan:'PAB', gap:'ON AIR', remark:'Completed', fo:'Pulling Done', city:'Bandung', tp:'Telkom', km:'12', peOwner:'Final User', lat:-6.9100, lng:107.6300, ring:'Cirebon - Sumber', seq:'13' }
 ];
 
 var MOCK_PLAN = [
@@ -97,13 +97,11 @@ window.fetch = function(url, options) {
   return Promise.resolve(res);
 };
 
-// Override fetchWithTimeout too
-window.fetchWithTimeout = function(url, timeout) { return window.fetch(url); };
 </script>
 
 "@
 
-$output = $beforeHead + $mocks + $afterHead + "`n</body>`n</html>"
+$output = $beforeHead + $mocks + $afterHead
 $output | Out-File -FilePath "$PSScriptRoot\..\index-test.html" -Encoding UTF8 -NoNewline
 
 Write-Host "[build-test] Done. Generated index-test.html ($(($output.Length / 1KB).ToString('N0')) KB)"

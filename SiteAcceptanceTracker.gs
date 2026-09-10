@@ -27,7 +27,7 @@ var COL = {
   subcontPlan: 9,  // J — Subcont Plan
   gap:        10,  // K — GAP Analysis
   remark:     11,  // L — Remark
-  team:       12,  // M — Team
+  fo:         12,  // M — FO
   city:       13,  // N — City
   tp:         14,  // O — TP
   km:         15,  // P — Km
@@ -255,7 +255,7 @@ function serveTracker() {
       subcontPlan: String(row[COL.subcontPlan] || '').trim(),
       gap:         String(row[COL.gap]         || '').trim(),
       remark:      String(row[COL.remark]      || '').trim(),
-      team:        String(row[COL.team]        || '').trim(),
+      fo:         String(row[COL.fo]          || '').trim(),
       city:        String(row[COL.city]        || '').trim(),
       tp:          String(row[COL.tp]          || '').trim(),
       km:          String(row[COL.km]          || '').trim(),
