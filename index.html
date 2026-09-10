@@ -4417,7 +4417,7 @@ Remark = ${remark}`;
 
       const collapsed = dashRingCollapsed[ringName] ? ' collapsed' : '';
       html += `
-      <div class="ring-card${collapsed}" id="rc_${ringName.replace(/\s+/g,'_')}" data-ring-name="${CSS.escape(ringName)}">
+      <div class="ring-card${collapsed}" id="rc_${ringName.replace(/\s+/g,'_')}" data-ring-name="${ringName}">
         <div class="ring-card-head">
           <span class="ring-card-toggle">&#9660;</span>
           <span class="ring-card-title">${escapeHtml(ringName)}</span>
@@ -4427,7 +4427,7 @@ Remark = ${remark}`;
           ${stats.foGreen > 0 ? `<span class="ring-card-badge" style="background:#4caf7d; color:#fff;">${stats.foGreen} RFS</span>` : ''}
           ${stats.foActive > 0 ? `<span class="ring-card-badge" style="background:#e8a33d; color:#fff;">${stats.foActive} FO Active</span>` : ''}
           ${stats.foNone > 0 ? `<span class="ring-card-badge" style="background:#d8dce0;">${stats.foNone} No FO</span>` : ''}
-          <button class="ring-map-btn" data-ring="${CSS.escape(ringName)}" title="Show on map">
+          <button class="ring-map-btn" data-ring="${ringName}" title="Show on map">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/></svg>
           </button>
         </div>
