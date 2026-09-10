@@ -2488,13 +2488,14 @@ Remark = ${remark}`;
     try {
     dashFocusedRing = ringName;
     const wasAlreadyMap = dashView === 'map';
+    // Always switch to map view first
     setDashView('map');
-    if (wasAlreadyMap && dashMap) {
-      // Already on map with initialized map — force re-render with ring filter
+    // If map is already initialized, trigger a direct draw
+    if (dashMap) {
       drawDashboardMap();
     }
-    // Clear the focused ring after the map renders so normal filtering resumes
-    setTimeout(() => { dashFocusedRing = null; }, 300);
+    // Clear the focused ring after 500ms so subsequent normal map views show all sites
+    setTimeout(() => { dashFocusedRing = null; }, 500);
     } catch(e) { console.error('[focusRingOnMap]', e); alert('Map error: ' + e.message); }
   }
 
@@ -4198,14 +4199,6 @@ Remark = ${remark}`;
              fo ? '#e8a33d' : '#d8dce0';
     }
 
-    // FO line class: FO at node B = connection FROM A TO B.
-    // - First segment (STATION → first site): use first site's FO
-    // - Middle segments: use destination site's FO
-    function foLinkClass(sites, fromIdx, toIdx) {
-      const dest = sites[toIdx];
-      return foBadgeClass(String(dest && dest.fo || '').trim());
-    }
-
     // CSG status color for BTS node indicator
     function csgStatusColor(csgStatus) {
       const v = String(csgStatus || '').trim().toUpperCase();
@@ -4246,32 +4239,34 @@ Remark = ${remark}`;
       const nodeStartX = padding.x + stationSize + gapX;
 
       // --- Draw FO line from Station to first site ---
-      // Use first site's FO to represent FO entering the ring
+      // FO at site[i] = connection FROM ST1 TO site[i], using site[i]'s FO
+      // Line starts at ST1's right edge, ends at first site's LEFT edge
       if (sites.length > 0) {
-        const lineEndX = nodeStartX - gapX;
-        const lineStartX = padding.x + stationSize;
+        const lineEndX = nodeStartX;  // first site's LEFT edge
+        const lineStartX = padding.x + stationSize;  // ST1's right edge
         const cls = foBadgeClass(String(sites[0].fo || '').trim());
         svg += `<line x1="${lineStartX}" y1="${svgHeight/2}" x2="${lineEndX}" y2="${svgHeight/2}" class="${cls}"/>`;
       }
 
       // --- Draw FO lines between consecutive sites ---
-      // FO at site[i] = connection FROM site[i-1] TO site[i]
-      for (let i = 0; i < sites.length - 1; i++) {
-        const x1 = nodeStartX + i * (nodeWidth + gapX) + nodeWidth;
-        const x2 = nodeStartX + (i + 1) * (nodeWidth + gapX);
-        const cls = foLinkClass(sites, i, i + 1);
-        svg += `<line x1="${x1}" y1="${svgHeight/2}" x2="${x2}" y2="${svgHeight/2}" class="${cls}"/>`;
+      // FO at site[i] = connection FROM site[i-1] TO site[i], using site[i]'s FO
+      // Line starts at previous site's RIGHT edge, ends at current site's LEFT edge
+      for (let i = 1; i < sites.length; i++) {
+        const lineStartX2 = nodeStartX + (i - 1) * (nodeWidth + gapX) + nodeWidth;  // prev site's RIGHT edge
+        const lineEndX2 = nodeStartX + i * (nodeWidth + gapX);  // current site's LEFT edge
+        const cls = foBadgeClass(String(sites[i].fo || '').trim());
+        svg += `<line x1="${lineStartX2}" y1="${svgHeight/2}" x2="${lineEndX2}" y2="${svgHeight/2}" class="${cls}"/>`;
       }
 
-      // --- Draw FO line from last site back to Station ---
+      // --- Draw FO line from last site back to Station 2 ---
+      // FO at last site = connection FROM last site TO ST2, using last site's FO
+      // Line starts at last site's RIGHT edge, ends at ST2's LEFT edge
       if (sites.length > 0) {
-        const lineStartX2 = nodeStartX + (sites.length - 1) * (nodeWidth + gapX) + nodeWidth;
-        const lineEndX2 = svgWidth - padding.x;
-        // For the closing segment back to Station, we show "Ring Closed" with the last site's FO
-        // The FO of the last site represents the connection to the closing station
+        const lineStartX3 = nodeStartX + (sites.length - 1) * (nodeWidth + gapX) + nodeWidth;  // last site's RIGHT edge
+        const lineEndX3 = svgWidth - padding.x - stationSize;  // ST2's LEFT edge
         const lastSiteFo = String(sites[sites.length - 1].fo || '').trim();
         const cls = foBadgeClass(lastSiteFo);
-        svg += `<line x1="${lineStartX2}" y1="${svgHeight/2}" x2="${lineEndX2}" y2="${svgHeight/2}" class="${cls}"/>`;
+        svg += `<line x1="${lineStartX3}" y1="${svgHeight/2}" x2="${lineEndX3}" y2="${svgHeight/2}" class="${cls}"/>`;
       }
 
       // --- Draw Station node (start) ---
