@@ -1957,11 +1957,15 @@ Remark = ${remark}`;
     yellow: ['Termination done'],
     green: ['RFS']
   };
+  // FO keyword matcher — handles prefixed values like "8. RFS" or "7. Termination done"
+  function foIsGreen(fo) { return String(fo||'').trim().includes('RFS'); }
+  function foIsYellow(fo) { const v = String(fo||'').trim(); return v.includes('Termination done') || v.includes('Pulling Done'); }
+  function foIsDashed(fo) { const v = String(fo||'').trim(); return FO_LINE.dashed.some(k => v.includes(k)); }
   function foLineClass(fo) {
-    const v = String(fo || '').trim();
-    if (FO_LINE.green.includes(v)) return 'fo-green';
-    if (FO_LINE.yellow.includes(v)) return 'fo-yellow';
-    if (v) return 'fo-dashed'; // has FO value but not in terminal states
+    if (foIsGreen(fo)) return 'fo-green';
+    if (foIsYellow(fo)) return 'fo-yellow';
+    if (foIsDashed(fo)) return 'fo-dashed';
+    if (String(fo||'').trim()) return 'fo-dashed'; // has FO value but not in terminal states
     return 'fo-none'; // no FO data
   }
   const PLAN_ACTIVITY_STYLE = {
@@ -2611,9 +2615,8 @@ Remark = ${remark}`;
     // FO line color on map: based on FO status of destination site
     // FO at site[i] = connection FROM site[i-1] TO site[i]
     function foLineColorMap(fo) {
-      const v = String(fo || '').trim();
-      if (v === 'RFS') return '#4caf7d';
-      if (v === 'Termination done' || v === 'Pulling Done') return '#f0c000';
+      if (foIsGreen(fo)) return '#4caf7d';
+      if (foIsYellow(fo)) return '#f0c000';
       return '#ff80c0'; // pink for all other FO states
     }
 
@@ -4289,10 +4292,9 @@ Remark = ${remark}`;
         if (duId.endsWith('_CSG')) csg++;
         else if (duId.endsWith('_NEW')) bts++;
 
-        const fo = String(s.fo || '').trim();
-        if (FO_LINE.green.includes(fo)) foGreen++;
-        else if (FO_LINE.yellow.includes(fo)) foYellow++;
-        else if (fo) foActive++;
+        if (foIsGreen(s.fo)) foGreen++;
+        else if (foIsYellow(s.fo)) foYellow++;
+        else if (foIsDashed(s.fo)) foActive++;
         else foNone++;
 
         const gap = String(s.gap || '').trim();
@@ -4303,18 +4305,19 @@ Remark = ${remark}`;
 
     // FO badge class
     function foBadgeClass(fo) {
-      const v = String(fo || '').trim();
-      if (FO_LINE.green.includes(v)) return 'fo-green';
-      if (FO_LINE.yellow.includes(v)) return 'fo-yellow';
-      if (v) return 'fo-dashed';
+      if (foIsGreen(fo)) return 'fo-green';
+      if (foIsYellow(fo)) return 'fo-yellow';
+      if (foIsDashed(fo)) return 'fo-dashed';
+      if (String(fo||'').trim()) return 'fo-dashed';
       return 'fo-none';
     }
 
     // FO dot color for node
     function foDotColor(fo) {
-      return FO_LINE.green.includes(fo) ? '#4caf7d' :
-             FO_LINE.yellow.includes(fo) ? '#f0c000' :
-             fo ? '#e8a33d' : '#d8dce0';
+      if (foIsGreen(fo)) return '#4caf7d';
+      if (foIsYellow(fo)) return '#f0c000';
+      if (foIsDashed(fo) || String(fo||'').trim()) return '#e8a33d';
+      return '#d8dce0';
     }
 
     // CSG status color for BTS node indicator
@@ -4486,13 +4489,13 @@ Remark = ${remark}`;
           <span style="opacity:0.6; font-size:10px;">(${totalP2} sites)</span>
         </div>
         <div class="ring-stat-chip" style="background:#fde9c8; color:#b45309;">
-          <span>${data.filter(s => FO_LINE.dashed.includes(String(s.fo||'').trim())).length}</span> FO Active
+          <span>${data.filter(s => foIsDashed(s.fo)).length}</span> FO Active
         </div>
         <div class="ring-stat-chip" style="background:#fef3c7; color:#92400e;">
-          <span>${data.filter(s => FO_LINE.yellow.includes(String(s.fo||'').trim())).length}</span> Term. Done
+          <span>${data.filter(s => foIsYellow(s.fo)).length}</span> Term. Done
         </div>
         <div class="ring-stat-chip" style="background:#d1fae5; color:#065f46;">
-          <span>${data.filter(s => FO_LINE.green.includes(String(s.fo||'').trim())).length}</span> RFS
+          <span>${data.filter(s => foIsGreen(s.fo)).length}</span> RFS
         </div>
         <div class="ring-stat-chip" style="background:#f3f4f6; color:#6b7280;">
           <span>${data.filter(s => !String(s.fo||'').trim()).length}</span> No FO data
@@ -4506,15 +4509,15 @@ Remark = ${remark}`;
       const endpoints = parseRingEndpoints(ringName);
       const stats = ringStats(sites);
       const foBadges = [];
-      const foSet = new Set(sites.map(s => String(s.fo||'').trim()).filter(Boolean));
-      for (const [fo, cls] of [
-        ['RFS', 'fo-green'], ['Termination done', 'fo-yellow'],
-        ...FO_LINE.dashed.map(v => [v, 'fo-dashed'])
-      ]) {
-        if (foSet.has(fo)) {
-          foBadges.push(`<span class="ring-fo-badge ${cls}">${fo}</span>`);
-        }
-      }
+      // Check for FO keywords in the site's actual FO values (handles "8. RFS", "7. Termination done" etc.)
+      const hasGreen = sites.some(s => foIsGreen(s.fo));
+      const hasYellow = sites.some(s => foIsYellow(s.fo));
+      const hasDashed = sites.some(s => foIsDashed(s.fo));
+      if (hasGreen) foBadges.push('<span class="ring-fo-badge fo-green">RFS</span>');
+      if (hasYellow) foBadges.push('<span class="ring-fo-badge fo-yellow">Term. done</span>');
+      // Show unique dashed values present in this ring
+      const dashedVals = sites.map(s => String(s.fo||'').trim()).filter(v => foIsDashed(v) && !foIsGreen(v) && !foIsYellow(v));
+      [...new Set(dashedVals)].forEach(v => foBadges.push('<span class="ring-fo-badge fo-dashed">'+v+'</span>'));
 
       const collapsed = dashRingCollapsed[ringName] ? ' collapsed' : '';
       html += `
