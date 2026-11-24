@@ -622,15 +622,15 @@ function servePlan(date) {
     if (want && dateCell !== want) continue;
     rows.push({
       date:             dateCell,
-      account:          String(r[1] || ''),
-      subcon:           String(r[2] || ''),
-      teamType:         String(r[3] || ''),
-      resourceRemark:   String(r[4] || ''),
-      duId:             String(r[5] || ''),
-      siteName:         String(r[6] || ''),
-      activityRemark:   String(r[7] || ''),
-      dailyPlanActivity:String(r[8] || ''),
-      result:           String(r[9] || ''),
+      account:          String(r[1] == null ? '' : r[1]).trim(),
+      subcon:           String(r[2] == null ? '' : r[2]).trim(),
+      teamType:         String(r[3] == null ? '' : r[3]).trim(),
+      resourceRemark:   String(r[4] == null ? '' : r[4]).trim(),
+      duId:             String(r[5] == null ? '' : r[5]).trim(),
+      siteName:         String(r[6] == null ? '' : r[6]).trim(),
+      activityRemark:   String(r[7] == null ? '' : r[7]).trim(),
+      dailyPlanActivity:String(r[8] == null ? '' : r[8]).trim(),
+      result:           String(r[9] == null ? '' : r[9]),
       rowIdx:           r[10] === '' || r[10] === null || isNaN(Number(r[10])) ? -1 : Number(r[10])
     });
   }
@@ -673,143 +673,185 @@ function servePlanDates() {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
-// Save all rows for a given date. Per-date replace strategy — server
-// deletes every row matching the date, then writes the submitted set
-// in the order received. Idempotent; last writer wins for concurrent edits.
+// Save all rows for a given date.
+//
+// Merge strategy: rows are keyed by `account` (a stable, unique identity), NOT
+// by the positional `rowIdx`. Positional keys break whenever the roster
+// changes (e.g. a member is deleted and every later index shifts), which
+// silently reassigns one person's plan data to another person.
+//
+// Write strategy: existing rows for the date are updated IN PLACE and new rows
+// are appended. The previous "clear the date's rows, then rewrite the whole
+// block" approach could permanently destroy a date's data if the second write
+// failed (quota, timeout, dropped connection) after the clear had committed.
+//
+// A script lock serializes the read-modify-write so two subconts saving the
+// same date concurrently cannot clobber each other.
 function handlePlanSave(body) {
+  // --- Input validation ---
   var date = String(body.date || '').trim();
-  var rows = body.rows || [];
-  if (!date) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return ContentService
-      .createTextOutput(JSON.stringify({ status: 'error', message: 'Missing date' }))
+      .createTextOutput(JSON.stringify({ status: 'error', message: 'Invalid date (YYYY-MM-DD)' }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  if (!body.rows || !Array.isArray(body.rows)) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ status: 'error', message: 'rows must be an array' }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  var rows = body.rows;
+  // Hard cap so a malformed or hostile payload cannot exhaust the sheet or
+  // trip the execution-time limit mid-write.
+  var MAX_PLAN_ROWS = 2000;
+  if (rows.length > MAX_PLAN_ROWS) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ status: 'error', message: 'Too many rows (max ' + MAX_PLAN_ROWS + ')' }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  // Accounts the surge has removed from the roster. Their rows are deleted
+  // from the date instead of being preserved forever.
+  var prune = [];
+  if (body.pruneAccounts && Array.isArray(body.pruneAccounts)) {
+    for (var p0 = 0; p0 < body.pruneAccounts.length; p0++) {
+      var pa = String(body.pruneAccounts[p0] || '').trim();
+      if (pa) prune.push(pa);
+    }
+  }
+  var pruneSet = {};
+  for (var p1 = 0; p1 < prune.length; p1++) pruneSet[prune[p1]] = true;
+
+  // Serialise concurrent saves. Without this, two users saving the same date
+  // can both read the pre-save state and the second write drops the first's rows.
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(30000);
+  } catch (lockErr) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ status: 'error', message: 'Server busy, please retry' }))
       .setMimeType(ContentService.MimeType.JSON);
   }
 
-  var sh = getOrCreatePlanSheet();
-  var last = sh.getLastRow();
+  try {
+    var sh = getOrCreatePlanSheet();
+    var last = sh.getLastRow();
 
-  // Flush any pending writes before reading — makes read-modify-write more atomic
-  // under concurrent access (one user saves while another is mid-save).
-  SpreadsheetApp.flush();
+    // Flush any pending writes before reading — makes read-modify-write more atomic
+    // under concurrent access (one user saves while another is mid-save).
+    SpreadsheetApp.flush();
 
-  // --- 1. Read all existing data rows ---
-  var existing = [];
-  var existingRowNums = []; // parallel: sheet row numbers for each existing entry
-  if (last > 1) {
-    var vals = sh.getRange(2, 1, last - 1, 11).getValues();
-    for (var i = 0; i < vals.length; i++) {
-      var dateCell = _planDateCellToString(vals[i][0]);
-      existingRowNums.push(i + 2); // sheet row number (1-based)
-      existing.push(vals[i]);
-    }
-  }
-
-  // --- 2. Build incoming map keyed by rowIdx; skip rows with no/empty rowIdx ---
-  var incomingByIdx = {};
-  for (var j = 0; j < rows.length; j++) {
-    var r = rows[j];
-    if (r.rowIdx === '' || r.rowIdx === null || r.rowIdx === undefined) continue;
-    var idx = Number(r.rowIdx);
-    incomingByIdx[idx] = [
-      date,
-      String(r.account            || ''),
-      String(r.subcon             || ''),
-      String(r.teamType           || ''),
-      String(r.resourceRemark     || ''),
-      String(r.duId               || ''),
-      String(r.siteName           || ''),
-      String(r.activityRemark     || ''),
-      String(r.dailyPlanActivity  || ''),
-      String(r.result             || ''),
-      idx
-    ];
-  }
-
-  // --- 3. Merge: keep non-target-date rows; replace target-date rows by rowIdx ---
-  var merged = [];
-  var seenIncomingIdx = {}; // tracks which incoming rowIdxs we've consumed
-  for (var k = 0; k < existing.length; k++) {
-    var dateCellK = _planDateCellToString(existing[k][0]);
-    if (dateCellK !== date) {
-      // Row belongs to a different date — keep as-is.
-      merged.push(existing[k]);
-    } else {
-      // Row belongs to this date — replace by rowIdx if an incoming row matches.
-      var existingIdx = existing[k][9];
-      if (existingIdx !== '' && existingIdx !== null && existingIdx !== undefined && !isNaN(Number(existingIdx))) {
-        var key = Number(existingIdx);
-        if (incomingByIdx.hasOwnProperty(key) && !seenIncomingIdx.hasOwnProperty(key)) {
-          merged.push(incomingByIdx[key]);
-          seenIncomingIdx[key] = true;
-          continue;
-        }
+    // --- 1. Read all existing data rows ---
+    var existing = [];
+    var existingRowNums = []; // parallel: sheet row numbers for each existing entry
+    if (last > 1) {
+      var vals = sh.getRange(2, 1, last - 1, 11).getValues();
+      for (var i = 0; i < vals.length; i++) {
+        existingRowNums.push(i + 2); // sheet row number (1-based)
+        existing.push(vals[i]);
       }
-      // No incoming row matches this existing rowIdx — keep the existing row
+    }
+
+    // --- 2. Build incoming map keyed by account (stable identity) ---
+    // `rowIdx` is kept in the sheet purely as an informational column showing the
+    // roster position at save time; it is NOT used for matching.
+    var incomingByAccount = Object.create(null);
+    var incomingOrder = [];
+    for (var j = 0; j < rows.length; j++) {
+      var r = rows[j];
+      if (!r || typeof r !== 'object') continue; // skip malformed entries
+      var account = String(r.account == null ? '' : r.account).trim();
+      if (!account) continue; // rows without an identity can't be matched — skip
+      var idx = Number(r.rowIdx);
+      var rowVals = [
+        date,
+        account,
+        String(r.subcon            == null ? '' : r.subcon),
+        String(r.teamType          == null ? '' : r.teamType),
+        String(r.resourceRemark    == null ? '' : r.resourceRemark),
+        String(r.duId              == null ? '' : r.duId),
+        String(r.siteName          == null ? '' : r.siteName),
+        String(r.activityRemark    == null ? '' : r.activityRemark),
+        String(r.dailyPlanActivity == null ? '' : r.dailyPlanActivity),
+        String(r.result            == null ? '' : r.result),
+        isNaN(idx) ? -1 : idx
+      ];
+      if (!Object.prototype.hasOwnProperty.call(incomingByAccount, account)) incomingOrder.push(account);
+      incomingByAccount[account] = rowVals;
+    }
+
+    // --- 3. Update existing rows for this date in place ---
+    var seenIncoming = Object.create(null);
+    var updated = 0;
+    var deleteRowNums = [];
+    for (var k = 0; k < existing.length; k++) {
+      var dateCellK = _planDateCellToString(existing[k][0]);
+      if (dateCellK !== date) continue; // different date — leave untouched
+      var existingAccount = String(existing[k][1] == null ? '' : existing[k][1]).trim();
+      // Explicitly pruned account (removed from the roster) — drop the row.
+      if (existingAccount && pruneSet[existingAccount]) {
+        deleteRowNums.push(existingRowNums[k]);
+        continue;
+      }
+      if (existingAccount &&
+          Object.prototype.hasOwnProperty.call(incomingByAccount, existingAccount) &&
+          !seenIncoming[existingAccount]) {
+        // Write the updated values directly over the existing row.
+        sh.getRange(existingRowNums[k], 1, 1, 11).setValues([incomingByAccount[existingAccount]]);
+        seenIncoming[existingAccount] = true;
+        updated++;
+      }
+      // No incoming row matches this account — leave the existing row as-is
       // (another subcont's row that wasn't in this submission).
-      merged.push(existing[k]);
     }
-  }
 
-  // --- 4. Append any incoming rows not yet consumed (new rowIdx values) ---
-  for (var m in incomingByIdx) {
-    if (!seenIncomingIdx.hasOwnProperty(m)) {
-      merged.push(incomingByIdx[m]);
+    // --- 4. Append genuinely new accounts after the last used row ---
+    var newRows = [];
+    for (var m = 0; m < incomingOrder.length; m++) {
+      var acctM = incomingOrder[m];
+      if (!seenIncoming[acctM]) {
+        newRows.push(incomingByAccount[acctM]);
+        seenIncoming[acctM] = true;
+      }
     }
-  }
-
-  // --- 5. Clear all rows for this date and rewrite the merged set ---
-  if (last > 1) {
-    var dateRows = [];
-    for (var n = 0; n < existing.length; n++) {
-      var d = _planDateCellToString(existing[n][0]);
-      if (d === date) dateRows.push(existingRowNums[n]);
-    }
-    if (dateRows.length > 0) {
-      // Sort ascending and build contiguous ranges to clear.
-      dateRows.sort(function(a, b) { return a - b; });
-      // Group into contiguous ranges to minimize setValues calls.
-      var rangesToClear = [];
-      var rangeStart = dateRows[0];
-      var rangePrev  = dateRows[0];
-      for (var p = 1; p <= dateRows.length; p++) {
-        if (p < dateRows.length && dateRows[p] === rangePrev + 1) {
-          rangePrev = dateRows[p];
-        } else {
-          // Close the current range [rangeStart, rangePrev] inclusive.
-          rangesToClear.push(sh.getRange(rangeStart, 1, rangePrev - rangeStart + 1, 11));
-          if (p < dateRows.length) {
-            rangeStart = rangePrev = dateRows[p];
-          }
+    var appended = 0;
+    if (newRows.length > 0) {
+      // Only append into rows that are actually free (the sheet may have
+      // trailing blank rows). Find the first free row at or after the last
+      // populated one.
+      var writeAt = last + 1;
+      for (var s = 0; s < existing.length; s++) {
+        var isEmpty = true;
+        for (var c = 0; c < 11; c++) {
+          var cv = existing[s][c];
+          if (cv !== '' && cv !== null && cv !== undefined) { isEmpty = false; break; }
         }
+        if (!isEmpty) writeAt = Math.max(writeAt, existingRowNums[s] + 1);
       }
-      for (var q = 0; q < rangesToClear.length; q++) {
-        rangesToClear[q].setValues(_blankRange(rangesToClear[q].getNumRows(), 11));
+      // Ensure we don't overwrite rows belonging to other dates.
+      sh.getRange(writeAt, 1, newRows.length, 11).setValues(newRows);
+      appended = newRows.length;
+    }
+
+    // --- 5. Delete pruned rows (from the bottom up so indices stay valid) ---
+    if (deleteRowNums.length > 0) {
+      deleteRowNums.sort(function(a, b) { return b - a; });
+      for (var d = 0; d < deleteRowNums.length; d++) {
+        sh.deleteRow(deleteRowNums[d]);
       }
     }
-  }
 
-  // --- 6. Write the merged set starting at row 2 ---
-  var written = 0;
-  if (merged.length > 0) {
-    sh.getRange(2, 1, merged.length, 11).setValues(merged);
-    written = merged.length;
+    return ContentService
+      .createTextOutput(JSON.stringify({
+        status: 'ok',
+        written: updated + appended,
+        updated: updated,
+        appended: appended,
+        deleted: deleteRowNums.length
+      }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } finally {
+    lock.releaseLock();
   }
-
-  return ContentService
-    .createTextOutput(JSON.stringify({ status: 'ok', written: written }))
-    .setMimeType(ContentService.MimeType.JSON);
-}
-
-// Returns a 2D array of empty strings [rows x cols] for use with Range.setValues()
-// to blank out a range without using deleteRow (which leaves ghost rows).
-function _blankRange(rows, cols) {
-  var blank = [];
-  for (var i = 0; i < rows; i++) {
-    var row = [];
-    for (var j = 0; j < cols; j++) row.push('');
-    blank.push(row);
-  }
-  return blank;
 }
 
 // Serve the surge's active plan date (script-wide shared property).
@@ -870,11 +912,25 @@ function handlePlanRosterSave(body) {
     };
   }).filter(function(r) { return r.account !== ''; });
   var cleanRemoved = removed.map(String).filter(function(s) { return s !== ''; });
-  PropertiesService.getScriptProperties().setProperty('planRoster',
-    JSON.stringify({ added: cleanAdded, removed: cleanRemoved }));
-  return ContentService
-    .createTextOutput(JSON.stringify({ status: 'ok', added: cleanAdded.length, removed: cleanRemoved.length }))
-    .setMimeType(ContentService.MimeType.JSON);
+
+  // Serialise concurrent roster writes so one surge action can't drop another's.
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(30000);
+  } catch (lockErr) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ status: 'error', message: 'Server busy, please retry' }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  try {
+    PropertiesService.getScriptProperties().setProperty('planRoster',
+      JSON.stringify({ added: cleanAdded, removed: cleanRemoved }));
+    return ContentService
+      .createTextOutput(JSON.stringify({ status: 'ok', added: cleanAdded.length, removed: cleanRemoved.length }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 // Serve planRosterEdits: a map of account -> { account, subcon, teamType, resourceRemark }
@@ -889,26 +945,44 @@ function servePlanRosterEdits() {
 // Save plan roster field edits. The client sends an array of edit objects,
 // each containing account + the 4 editable roster fields. Merges into the
 // existing map: new values override old ones for the same account.
+//
+// A script lock serialises the read-merge-write so two concurrent saves
+// cannot clobber each other's edits.
 function handlePlanRosterEdit(body) {
   var edits = Array.isArray(body.edits) ? body.edits : [];
-  var props = {};
+  var lock = LockService.getScriptLock();
   try {
-    var existing = PropertiesService.getScriptProperties().getProperty('planRosterEdits') || '{}';
-    props = JSON.parse(existing);
-  } catch (e) {
-    props = {};
+    lock.waitLock(30000);
+  } catch (lockErr) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ status: 'error', message: 'Server busy, please retry' }))
+      .setMimeType(ContentService.MimeType.JSON);
   }
-  for (var i = 0; i < edits.length; i++) {
-    var e = edits[i];
-    props[String(e.account || '').trim()] = {
-      account:        String(e.account        || '').trim(),
-      subcon:         String(e.subcon         || '').trim(),
-      teamType:       String(e.teamType       || '').trim(),
-      resourceRemark: String(e.resourceRemark || '').trim()
-    };
+  try {
+    var props = {};
+    try {
+      var existing = PropertiesService.getScriptProperties().getProperty('planRosterEdits') || '{}';
+      props = JSON.parse(existing);
+    } catch (e) {
+      props = {};
+    }
+    if (!props || typeof props !== 'object') props = {};
+    for (var i = 0; i < edits.length; i++) {
+      var e = edits[i];
+      var acct = String(e.account || '').trim();
+      if (!acct) continue;
+      props[acct] = {
+        account:        acct,
+        subcon:         String(e.subcon || '').trim(),
+        teamType:       String(e.teamType || '').trim(),
+        resourceRemark: String(e.resourceRemark || '').trim()
+      };
+    }
+    PropertiesService.getScriptProperties().setProperty('planRosterEdits', JSON.stringify(props));
+    return ContentService
+      .createTextOutput(JSON.stringify({ status: 'ok', count: edits.length }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } finally {
+    lock.releaseLock();
   }
-  PropertiesService.getScriptProperties().setProperty('planRosterEdits', JSON.stringify(props));
-  return ContentService
-    .createTextOutput(JSON.stringify({ status: 'ok', count: edits.length }))
-    .setMimeType(ContentService.MimeType.JSON);
 }
