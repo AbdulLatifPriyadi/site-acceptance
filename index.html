@@ -53,6 +53,7 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet-image@0.1.0/leaflet-image.js"></script>
 <script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script src="https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   :root{
@@ -1003,8 +1004,10 @@
         </select>
         <button id="prpoGenerateBtn" title="Generate route screenshots for all sites in batch"
           style="padding:5px 12px;border:1px solid #2f6bc4;border-radius:6px;background:#2f6bc4;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;">Generate Routes</button>
-        <button id="prpoDownloadBtn" title="Download all screenshots as ZIP"
-          style="padding:5px 12px;border:1px solid #4caf7d;border-radius:6px;background:#4caf7d;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;display:none;">Download ZIP</button>
+        <button id="prpoDownloadBtn" title="Download all screenshots as HTML"
+          style="padding:5px 12px;border:1px solid #4caf7d;border-radius:6px;background:#4caf7d;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;display:none;">Download HTML</button>
+        <button id="prpoPdfBtn" title="Export all routes as PDF"
+          style="padding:5px 12px;border:1px solid #e84343;border-radius:6px;background:#e84343;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;display:none;">Export PDF</button>
         <span id="prpoStatus" style="margin-left:auto; font-size:11px; color:#b7c0c9;"></span>
       </div>
       <div id="dashPrpo" style="display:none; position:absolute; inset:0; overflow:auto; background:#fff; padding-top:46px;"></div>
@@ -4809,6 +4812,7 @@ Remark = ${remark}`;
 
       renderPrpoResults();
       downloadBtn.style.display = 'inline-block';
+      document.getElementById('prpoPdfBtn').style.display = 'inline-block';
       statusEl.textContent = `Done: ${prpoGeneratedData.length} routes generated`;
     } catch (e) {
       console.error('[PRPO] Generation failed:', e);
@@ -4847,28 +4851,30 @@ Remark = ${remark}`;
     const distanceKm = (route.distance / 1000).toFixed(1);
     const durationMin = Math.round(route.duration / 60);
 
-    // Create hidden map for screenshot
+    // Create map container - VISIBLE during tile loading, positioned off-screen
     const mapContainer = document.createElement('div');
-    mapContainer.style.width = '400px';
-    mapContainer.style.height = '300px';
+    mapContainer.style.width = '500px';
+    mapContainer.style.height = '400px';
     mapContainer.style.position = 'fixed';
     mapContainer.style.left = '-9999px';
     mapContainer.style.top = '-9999px';
-    mapContainer.style.opacity = '0';
+    mapContainer.style.zIndex = '-1';
+    mapContainer.style.opacity = '1';
     mapContainer.style.pointerEvents = 'none';
     document.body.appendChild(mapContainer);
 
     let map;
     try {
-      map = L.map(mapContainer, { crs: L.CRS.EPSG3857 });
+      // Use default CRS (EPSG3857) - L.geoJSON will project WGS84 GeoJSON automatically
+      map = L.map(mapContainer);
       const tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap contributors',
         maxZoom: 19
       }).addTo(map);
 
-      // Add route polyline
+      // Add route polyline - OSRM returns GeoJSON in WGS84 [lng, lat], Leaflet handles projection
       const geojson = route.geometry;
-      L.geoJSON(geojson, {
+      const routeLayer = L.geoJSON(geojson, {
         style: { color: '#2f6bc4', weight: 4, opacity: 0.8 }
       }).addTo(map);
 
@@ -4881,41 +4887,61 @@ Remark = ${remark}`;
         icon: L.divIcon({ className: 'prpo-marker', html: '<div style="background:#4caf7d;color:#fff;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:bold;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.3);">D</div>', iconSize: [28, 28], iconAnchor: [14, 14] })
       }).bindPopup('Destination: ' + (site.siteName || site.duId)).addTo(map);
 
-      // Fit bounds to route
-      const bounds = L.geoJSON(geojson).getBounds();
-      map.fitBounds(bounds, { padding: [20, 20] });
+      // Fit bounds to route - do this after layers are added
+      const bounds = routeLayer.getBounds();
+      map.fitBounds(bounds, { padding: [30, 30], maxZoom: 16 });
 
-      // Wait for tiles to fully load
+      // Wait for tiles to fully load - track tiles in current viewport
       await new Promise(resolve => {
         let tilesLoaded = 0;
-        tileLayer.on('tileload', () => { tilesLoaded++; });
-        tileLayer.on('load', () => {
-          // Give extra time for rendering
-          setTimeout(resolve, 1000);
+        let tilesTotal = 0;
+        let resolved = false;
+
+        tileLayer.on('tileloadstart', (e) => { tilesTotal++; });
+        tileLayer.on('tileload', (e) => {
+          tilesLoaded++;
+          if (tilesLoaded >= tilesTotal && tilesTotal > 0 && !resolved) {
+            resolved = true;
+            setTimeout(resolve, 500); // extra render time
+          }
+        });
+        tileLayer.on('tileerror', (e) => {
+          tilesLoaded++;
+          if (tilesLoaded >= tilesTotal && tilesTotal > 0 && !resolved) {
+            resolved = true;
+            setTimeout(resolve, 500);
+          }
         });
         // Fallback timeout
-        setTimeout(resolve, 5000);
+        setTimeout(() => {
+          if (!resolved) {
+            resolved = true;
+            resolve();
+          }
+        }, 8000);
       });
 
       // Extra render time
       await new Promise(r => setTimeout(r, 500));
 
-      // Capture screenshot using html2canvas (more reliable) with leaflet-image fallback
+      // Now hide for capture
+      mapContainer.style.opacity = '0';
+
+      // Capture screenshot using html2canvas
       let imageDataUrl = '';
       try {
-        // Container is already positioned off-screen with opacity:0
-        // Use opacity:1 temporarily for html2canvas
         mapContainer.style.opacity = '1';
         map.invalidateSize();
 
-        await new Promise(r => setTimeout(r, 300)); // allow reflow
+        await new Promise(r => setTimeout(r, 300));
 
         if (typeof html2canvas === 'function') {
           const canvas = await html2canvas(mapContainer, {
             useCORS: true,
             logging: false,
-            scale: 1,
-            backgroundColor: '#ffffff'
+            scale: 1.5,
+            backgroundColor: '#ffffff',
+            allowTaint: true
           });
           imageDataUrl = canvas.toDataURL('image/png');
         } else if (typeof leafletImage === 'function') {
@@ -4929,7 +4955,6 @@ Remark = ${remark}`;
           console.warn('[PRPO] No screenshot library available');
         }
 
-        // Restore opacity
         mapContainer.style.opacity = '0';
       } catch (imgErr) {
         console.warn('[PRPO] Screenshot failed:', imgErr);
@@ -4941,6 +4966,16 @@ Remark = ${remark}`;
 
       return {
         distanceKm,
+        durationMin,
+        geometry: geojson,
+        imageDataUrl
+      };
+    } catch (e) {
+      if (map) map.remove();
+      document.body.removeChild(mapContainer);
+      throw e;
+    }
+  }
         durationMin,
         geometry: geojson,
         imageDataUrl
@@ -5043,6 +5078,122 @@ Remark = ${remark}`;
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  }
+
+  function exportPrpoPdf() {
+    if (prpoGeneratedData.length === 0) return;
+
+    const { jsPDF } = window.jspdf || {};
+    if (!jsPDF) {
+      alert('jsPDF library not loaded. Please check internet connection.');
+      return;
+    }
+
+    const batchType = document.getElementById('prpoBatchTypeSelect').value;
+    const batchValue = document.getElementById('prpoBatchSelect').value;
+    const originKey = document.getElementById('prpoOriginSelect').value;
+    const origin = PRPO_ORIGINS[originKey];
+
+    const doc = new jsPDF('p', 'mm', 'a4');
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 15;
+    const contentWidth = pageWidth - 2 * margin;
+    let y = margin;
+
+    // Title
+    doc.setFontSize(18);
+    doc.setFont(undefined, 'bold');
+    doc.text('PRPO Route Report', margin, y);
+    y += 10;
+
+    // Meta info
+    doc.setFontSize(10);
+    doc.setFont(undefined, 'normal');
+    doc.text('Batch: ' + batchValue + ' (' + (batchType === 'batchRfi' ? 'Batch RFI' : 'Batch CSG') + ')', margin, y);
+    y += 5;
+    doc.text('Origin: ' + origin.label, margin, y);
+    y += 5;
+    doc.text('Generated: ' + new Date().toLocaleString(), margin, y);
+    y += 5;
+    doc.text('Total Sites: ' + prpoGeneratedData.length, margin, y);
+    y += 10;
+
+    prpoGeneratedData.forEach((item, idx) => {
+      const site = item.site;
+      const route = item.route;
+
+      // Check if we need a new page (estimate space needed: ~80mm per site)
+      if (y > pageHeight - 80) {
+        doc.addPage();
+        y = margin;
+      }
+
+      // Site header
+      doc.setFontSize(12);
+      doc.setFont(undefined, 'bold');
+      doc.setFillColor(28, 37, 48);
+      doc.setTextColor(255, 255, 255);
+      doc.rect(margin, y - 4, contentWidth, 10, 'F');
+      doc.text('Site ' + (idx + 1) + ': ' + (site.siteName || '-') + ' (' + (site.duId || '-') + ')', margin + 2, y + 3);
+      y += 12;
+      doc.setTextColor(0, 0, 0);
+
+      // Info table
+      doc.setFontSize(9);
+      doc.setFont(undefined, 'normal');
+      const info = [
+        ['Distance', route.distanceKm + ' km'],
+        ['ETA', route.durationMin + ' min'],
+        ['DU ID', site.duId || '-'],
+        ['City', site.city || '-'],
+        ['Subcont Plan', site.subcontPlan || '-']
+      ];
+
+      info.forEach(([label, value]) => {
+        doc.setFont(undefined, 'bold');
+        doc.text(label, margin, y);
+        doc.setFont(undefined, 'normal');
+        doc.text(value, margin + 40, y);
+        y += 5;
+      });
+      y += 3;
+
+      // Route image
+      if (route.imageDataUrl) {
+        try {
+          const imgProps = doc.getImageProperties(route.imageDataUrl);
+          const imgWidth = contentWidth;
+          const imgHeight = (imgProps.height * imgWidth) / imgProps.width;
+          const maxImgHeight = 80;
+
+          if (y + Math.min(imgHeight, maxImgHeight) > pageHeight - margin) {
+            doc.addPage();
+            y = margin;
+          }
+
+          doc.addImage(route.imageDataUrl, 'PNG', margin, y, imgWidth, Math.min(imgHeight, maxImgHeight));
+          y += Math.min(imgHeight, maxImgHeight) + 10;
+        } catch (e) {
+          console.warn('[PRPO PDF] Failed to add image for site ' + (idx + 1), e);
+          doc.setFontSize(8);
+          doc.setTextColor(150, 0, 0);
+          doc.text('[Image could not be embedded]', margin, y);
+          doc.setTextColor(0, 0, 0);
+          y += 10;
+        }
+      } else {
+        doc.setFontSize(8);
+        doc.setTextColor(150, 0, 0);
+        doc.text('[No route image available]', margin, y);
+        doc.setTextColor(0, 0, 0);
+        y += 10;
+      }
+    });
+
+    // Save
+    const filename = 'PRPO_Routes_' + batchValue.replace(/[^a-z0-9]/gi, '_') + '_' + new Date().toISOString().slice(0,10) + '.pdf';
+    doc.save(filename);
   }
 
   function renderPrpoView() {
@@ -7165,9 +7316,10 @@ function _applyPlanCellStyle(el, col, val){
   });
   // PRPO event listeners
   document.getElementById('prpoBatchTypeSelect').addEventListener('change', ()=> populatePrpoBatchSelect());
-  document.getElementById('prpoBatchSelect').addEventListener('change', ()=> { prpoGeneratedData = []; document.getElementById('prpoDownloadBtn').style.display = 'none'; });
+  document.getElementById('prpoBatchSelect').addEventListener('change', ()=> { prpoGeneratedData = []; document.getElementById('prpoDownloadBtn').style.display = 'none'; document.getElementById('prpoPdfBtn').style.display = 'none'; });
   document.getElementById('prpoGenerateBtn').addEventListener('click', generatePrpoRoutes);
   document.getElementById('prpoDownloadBtn').addEventListener('click', downloadPrpoZip);
+  document.getElementById('prpoPdfBtn').addEventListener('click', exportPrpoPdf);
   // Delegated click for Work Only toggle (created dynamically in renderStatsBar)
   document.getElementById('dashStatsBar').addEventListener('click', (e)=>{
     if(e.target.closest('#dashWorkOnlyToggle')){
