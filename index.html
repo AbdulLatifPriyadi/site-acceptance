@@ -974,6 +974,13 @@
           style="padding:5px 9px;border:1px solid #2f6bc4;border-radius:6px;background:#2f6feb;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;">Copy from last date</button>
         <button id="planQueryWorkBtn" title="Fill DU ID &amp; Site Name from current clock-in data"
           style="padding:5px 9px;border:1px solid #4caf7d;border-radius:6px;background:#1a7f4b;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;">Query work</button>
+        <button id="planSharePlanBtn" title="Share the plan for this subcont via WhatsApp"
+          style="padding:5px 9px;border:1px solid #25d366;border-radius:6px;background:#128c7e;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;">Share Plan</button>
+        <button id="planAskProgressBtn" title="Ask progress for the assigned sites via WhatsApp"
+          style="padding:5px 9px;border:1px solid #25d366;border-radius:6px;background:#075e54;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;">Asking Progress</button>
+        <input type="text" id="planShareTargetInput" placeholder="Target"
+          title="Target — appended to the shared message as 'Target = ...'"
+          style="padding:5px 9px; border:1px solid rgba(255,255,255,.2); border-radius:6px; background:#0d1117; color:#e6edf3; font-size:11.5px; outline:none; width:110px;">
         <button id="planSaveBtn"
           style="position:absolute; right:14px; top:50%; transform:translateY(-50%); z-index:2; padding:5px 14px;border:1px solid #4caf7d;border-radius:6px;background:#4caf7d;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;box-shadow:0 1px 4px rgba(0,0,0,.25);">Save</button>
         <span id="planSelInfo" style="font-size:11px; color:#a8d4f0; font-weight:700; display:none;"></span>
@@ -6258,6 +6265,137 @@ function _applyPlanCellStyle(el, col, val){
       const pw = document.getElementById('planWrap');
       if (pb && pw) pw.style.top = pb.offsetHeight + 'px';
     }
+  });
+
+  // ----- Share: WhatsApp messages built from the visible Plan rows -----
+
+  // Collect the rows the share messages are built from: the rows currently
+  // visible for this subcont that have a DU ID assigned (i.e. an actual site).
+  function _planShareRows(){
+    const roster = effectiveRoster();
+    const mySub = mySubcont ? String(mySubcont).toLowerCase() : '';
+    const out = [];
+    for (let i = 0; i < roster.length; i++) {
+      const r = roster[i];
+      if (!r) continue;
+      if (mySub && String(r.subcon || '').toLowerCase() !== mySub) continue;
+      const row = planRows[i];
+      if (!row) continue;
+      const duId = String(row.duId == null ? '' : row.duId).trim();
+      if (!duId) continue; // no site assigned — not part of the shared plan
+      out.push({
+        account:   String(row.account == null ? '' : row.account).trim(),
+        duId:      duId,
+        siteName:  String(row.siteName == null ? '' : row.siteName).trim(),
+        subcon:    String(row.subcon == null ? '' : row.subcon).trim()
+      });
+    }
+    return out;
+  }
+
+  // Format the plan date as DD/MM/YYYY for the message header.
+  function _planShareDate(){
+    const d = String(planCurrentDate || todayISO());
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d);
+    if (!m) return d;
+    return m[3] + '/' + m[2] + '/' + m[1];
+  }
+
+  // Build the "Share Plan" message.
+  //
+  //   *Plan 24/11/2026*
+  //   intisel_tl_deni_32053528 = 32BDG_0610_NEW<TAB>PTI_SITE2163_WJ_CICALENGKA
+  //   ...
+  //   Target = <target>
+  //
+  //   Terima kasih
+  function _buildSharePlanText(rows, target){
+    const lines = [];
+    lines.push('*Plan ' + _planShareDate() + '*');
+    rows.forEach(function(r){
+      lines.push(r.account + ' = ' + r.duId + '\t' + r.siteName);
+    });
+    lines.push('Target = ' + (target || ''));
+    lines.push('');
+    lines.push('Terimakasih');
+    return lines.join('\n');
+  }
+
+  // Build the "Asking Progress" message — one question per assigned site.
+  //
+  //   32BDG_0610_NEW<TAB>PTI_SITE2163_WJ_CICALENGKA
+  //   untuk site ini progressnya gimana intisel_tl_deni_32053528
+  //   ...
+  function _buildAskProgressText(rows){
+    const lines = [];
+    rows.forEach(function(r){
+      lines.push(r.duId + '\t' + r.siteName);
+      lines.push('untuk site ini progressnya gimana ' + r.account);
+    });
+    return lines.join('\n');
+  }
+
+  // Open WhatsApp with the message pre-filled. Falls back to the clipboard
+  // when the WhatsApp link cannot be opened (e.g. no handler for wa.me).
+  function _shareViaWhatsApp(text){
+    const url = 'https://wa.me/?text=' + encodeURIComponent(text);
+    const w = window.open(url, '_blank');
+    if (!w) {
+      // Popup blocked — copy the text instead so nothing is lost.
+      _copyPlanShareText(text);
+      setPlanStatus('WhatsApp blocked — text copied to clipboard');
+    }
+  }
+
+  function _copyPlanShareText(text){
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).catch(function(){
+        _copyPlanShareFallback(text);
+      });
+    } else {
+      _copyPlanShareFallback(text);
+    }
+  }
+
+  function _copyPlanShareFallback(text){
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    } catch (e) {
+      console.warn('[planShare] copy failed', e);
+    }
+  }
+
+  document.getElementById('planSharePlanBtn').addEventListener('click', function(){
+    if (!planCurrentDate) { setPlanStatus('Pick a date first'); return; }
+    const rows = _planShareRows();
+    if (rows.length === 0) {
+      setPlanStatus('No sites assigned yet (no DU ID in any row)');
+      return;
+    }
+    const targetEl = document.getElementById('planShareTargetInput');
+    const target = targetEl ? targetEl.value.trim() : '';
+    const text = _buildSharePlanText(rows, target);
+    _shareViaWhatsApp(text);
+    setPlanStatus('Shared plan (' + rows.length + ' site(s)) for ' + _planShareDate());
+  });
+
+  document.getElementById('planAskProgressBtn').addEventListener('click', function(){
+    if (!planCurrentDate) { setPlanStatus('Pick a date first'); return; }
+    const rows = _planShareRows();
+    if (rows.length === 0) {
+      setPlanStatus('No sites assigned yet (no DU ID in any row)');
+      return;
+    }
+    const text = _buildAskProgressText(rows);
+    _shareViaWhatsApp(text);
+    setPlanStatus('Asking progress for ' + rows.length + ' site(s)');
   });
 
   // ----- Query work: fill DU ID & Site Name from clock-in data -----
