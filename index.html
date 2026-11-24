@@ -974,10 +974,6 @@
           style="padding:5px 9px;border:1px solid #2f6bc4;border-radius:6px;background:#2f6feb;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;">Copy from last date</button>
         <button id="planQueryWorkBtn" title="Fill DU ID &amp; Site Name from current clock-in data"
           style="padding:5px 9px;border:1px solid #4caf7d;border-radius:6px;background:#1a7f4b;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;">Query work</button>
-        <button id="planSharePlanBtn" title="Share the plan for this subcont via WhatsApp"
-          style="padding:5px 9px;border:1px solid #25d366;border-radius:6px;background:#128c7e;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;">Share Plan</button>
-        <button id="planAskProgressBtn" title="Ask progress for the selected site via WhatsApp — click a row in the table first"
-          style="padding:5px 9px;border:1px solid #25d366;border-radius:6px;background:#075e54;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;">Asking Progress</button>
         <input type="text" id="planShareTargetInput" placeholder="Target"
           title="Target — appended to the shared message as 'Target = ...'"
           style="padding:5px 9px; border:1px solid rgba(255,255,255,.2); border-radius:6px; background:#0d1117; color:#e6edf3; font-size:11.5px; outline:none; width:110px;">
@@ -5292,6 +5288,24 @@ Remark = ${remark}`;
       });
     });
 
+    // Per-row share buttons. The row index is stored on the button as data-row
+    // (the roster index), so the correct person is shared regardless of the
+    // current sort order or filter.
+    container.querySelectorAll('button.plan-row-share').forEach(function(btn){
+      btn.addEventListener('click', function(e){
+        e.preventDefault();
+        e.stopPropagation();
+        sharePlanForRow(btn.getAttribute('data-row'));
+      });
+    });
+    container.querySelectorAll('button.plan-row-ask').forEach(function(btn){
+      btn.addEventListener('click', function(e){
+        e.preventDefault();
+        e.stopPropagation();
+        askProgressForRow(btn.getAttribute('data-row'));
+      });
+    });
+
     const wrap = container.querySelector('#planWrap');
     if (wrap) {
       if (_planMouseDown)   wrap.removeEventListener('mousedown',   _planMouseDown);
@@ -5756,7 +5770,7 @@ function _applyPlanCellStyle(el, col, val){
     const colW = {
       account: 200, subcon: 130, teamType: 110, resourceRemark: 140,
       duId: 150, siteName: 170, activityRemark: 160, dailyPlanActivity: 160,
-      result: 160, del: 32
+      result: 160, del: 32, actions: 128
     };
     const headers = [
       ['account',           'Account'],
@@ -5781,6 +5795,19 @@ function _applyPlanCellStyle(el, col, val){
     function delTd(rowIdx, account){
       return '<td data-row="' + rowIdx + '" data-col="del" style="padding:6px 4px; text-align:center;">' +
         '<button type="button" class="plan-del-row" data-account="' + escAttr(account) + '" title="Delete ' + escAttr(account) + ' from roster" style="background:transparent;border:1px solid #cfd7df;border-radius:4px;color:#6b7688;cursor:pointer;font-size:12px;padding:2px 6px;line-height:1;">✕</button>' +
+      '</td>';
+    }
+    // Per-row action buttons at the far right: share this person's plan, or
+    // ask for progress on this person's site. `data-row` is the roster index.
+    function actionsTd(rowIdx, account, duId){
+      const shareBtnStyle = 'background:#128c7e;border:1px solid #25d366;border-radius:4px;color:#fff;cursor:pointer;font-size:10px;padding:2px 5px;line-height:1.3;white-space:nowrap;';
+      const askBtnStyle   = 'background:#075e54;border:1px solid #25d366;border-radius:4px;color:#fff;cursor:pointer;font-size:10px;padding:2px 5px;line-height:1.3;white-space:nowrap;';
+      const noSite = !duId;
+      return '<td data-row="' + rowIdx + '" data-col="actions" style="padding:6px 6px; text-align:center; white-space:nowrap;">' +
+        '<button type="button" class="plan-row-share" data-row="' + rowIdx + '" title="Share the plan for ' + escAttr(account) + ' via WhatsApp"' +
+          ' style="' + shareBtnStyle + (noSite ? ' opacity:.4; cursor:not-allowed;' : '') + '">Share</button> ' +
+        '<button type="button" class="plan-row-ask" data-row="' + rowIdx + '" title="Ask progress for ' + escAttr(account) + ' via WhatsApp"' +
+          ' style="' + askBtnStyle + (noSite ? ' opacity:.4; cursor:not-allowed;' : '') + '">Ask</button>' +
       '</td>';
     }
     // Result cell: free-text <input> where the user types the daily result text.
@@ -5843,6 +5870,7 @@ function _applyPlanCellStyle(el, col, val){
         return cellTd(p[1], i, p[0], val, isBlocked);
       }).join('');
       if (showDel) html += delTd(i, row.account || '');
+      html += actionsTd(i, row.account || '', row.duId || '');
       return html;
     }
 
@@ -5869,6 +5897,9 @@ function _applyPlanCellStyle(el, col, val){
       displayHeaders = displayHeaders.concat([['del', '']]);
       displayColW = displayColW.concat([colW.del]);
     }
+    // Per-row action buttons column, always at the far right.
+    displayHeaders = displayHeaders.concat([['actions', '']]);
+    displayColW = displayColW.concat([colW.actions]);
     const colgroup = displayColW.map(function(w, i){ return '<col style="width:' + w + 'px; min-width:' + w + 'px;">'; }).join('');
 
     // Header row: each non-del column is click-to-sort, shows a caret indicator.
@@ -5882,6 +5913,9 @@ function _applyPlanCellStyle(el, col, val){
         if (key === 'del') {
           return '<th style="padding:8px 8px; text-align:left; font-weight:700; font-size:11.5px; border-bottom:2px solid #d0d7de; width:32px; min-width:32px;"></th>';
         }
+        if (key === 'actions') {
+          return '<th style="padding:8px 8px; text-align:center; font-weight:700; font-size:11.5px; border-bottom:2px solid #d0d7de; width:' + colW.actions + 'px; min-width:' + colW.actions + 'px;">Share</th>';
+        }
         return '<th data-sort-key="' + key + '" style="padding:8px 8px; text-align:left; font-weight:700; font-size:11.5px; border-bottom:2px solid #d0d7de; cursor:pointer; user-select:none;" title="Click to sort by ' + h[1] + '">' + h[1] + _sortIndicator(key) + '</th>';
       }).join('') +
       '</tr>';
@@ -5891,7 +5925,7 @@ function _applyPlanCellStyle(el, col, val){
     // that stole focus from the input, making typing unusable. Only sort remains.
 
     return '<div id="planWrap" tabindex="0" style="overflow:auto;position:absolute;top:0;left:0;right:0;bottom:0;user-select:none;-webkit-user-select:none;background:#fff;">' +
-        '<table id="planData" style="width:100%; table-layout:fixed; border-collapse:collapse; font-size:11.5px; min-width:' + (showDel ? 1472 : 1440) + 'px;">' +
+        '<table id="planData" style="width:100%; table-layout:fixed; border-collapse:collapse; font-size:11.5px; min-width:' + (showDel ? 1600 : 1568) + 'px;">' +
         '<colgroup>' + colgroup + '</colgroup>' +
         '<thead style="position:sticky; top:0; z-index:3; background:#f6f8fa; box-shadow:0 2px 0 #d0d7de;">' + thead + '</thead>' +
         '<tbody>' + rowsHtml + '</tbody>' +
@@ -6269,6 +6303,52 @@ function _applyPlanCellStyle(el, col, val){
 
   // ----- Share: WhatsApp messages built from the visible Plan rows -----
 
+  // Resolve a single plan row by its roster index (the value carried on the
+  // per-row buttons as data-row). Returns null when the index is invalid or
+  // the row has no DU ID assigned.
+  function _planRowByIndex(rowIdx){
+    const i = Number(rowIdx);
+    if (!isFinite(i) || i < 0) return null;
+    const row = planRows[i];
+    if (!row) return null;
+    const duId = String(row.duId == null ? '' : row.duId).trim();
+    if (!duId) return null; // no site assigned — nothing to share
+    return {
+      account:  String(row.account == null ? '' : row.account).trim(),
+      duId:     duId,
+      siteName: String(row.siteName == null ? '' : row.siteName).trim(),
+      subcon:   String(row.subcon == null ? '' : row.subcon).trim()
+    };
+  }
+
+  // Per-row "Share" button: shares THIS person's plan entry only.
+  function sharePlanForRow(rowIdx){
+    if (!planCurrentDate) { setPlanStatus('Pick a date first'); return; }
+    const row = _planRowByIndex(rowIdx);
+    if (!row) {
+      setPlanStatus('No site assigned for this row yet (DU ID is empty)');
+      return;
+    }
+    const targetEl = document.getElementById('planShareTargetInput');
+    const target = targetEl ? targetEl.value.trim() : '';
+    const text = _buildSharePlanText([row], target);
+    _shareViaWhatsApp(text);
+    setPlanStatus('Shared plan for ' + row.account);
+  }
+
+  // Per-row "Ask" button: asks for progress on THIS person's site only.
+  function askProgressForRow(rowIdx){
+    if (!planCurrentDate) { setPlanStatus('Pick a date first'); return; }
+    const row = _planRowByIndex(rowIdx);
+    if (!row) {
+      setPlanStatus('No site assigned for this row yet (DU ID is empty)');
+      return;
+    }
+    const text = _buildAskProgressText(row);
+    _shareViaWhatsApp(text);
+    setPlanStatus('Asking progress for ' + row.duId);
+  }
+
   // Collect the rows the share messages are built from: the rows currently
   // visible for this subcont that have a DU ID assigned (i.e. an actual site).
   function _planShareRows(){
@@ -6331,34 +6411,6 @@ function _applyPlanCellStyle(el, col, val){
            'untuk site ini progressnya gimana ' + row.account;
   }
 
-  // Resolve the single row the user has selected in the Plan table.
-  // The selection is stored as DOM coordinates (row = position in the visible
-  // table), so it is mapped back to the roster index via _visibleSortedIndices().
-  // Returns null when nothing is selected.
-  function _planSelectedSite(){
-    if (!planSelStart && !planSelEnd) return null;
-    const tbl = document.getElementById('planData');
-    if (!tbl) return null;
-    const bodyRows = tbl.tBodies[0] ? tbl.tBodies[0].rows : [];
-    // Use the top-left corner of the selection.
-    const domRow = planSelStart
-      ? Math.min(planSelStart.row, planSelEnd ? planSelEnd.row : planSelStart.row)
-      : (planSelEnd ? Math.min(planSelEnd.row, planSelEnd.row) : -1);
-    if (domRow < 0 || !bodyRows[domRow]) return null;
-    const rosterIdx = _visibleSortedIndices()[domRow];
-    if (rosterIdx === undefined) return null;
-    const row = planRows[rosterIdx];
-    if (!row) return null;
-    const duId = String(row.duId == null ? '' : row.duId).trim();
-    if (!duId) return null; // no site assigned — nothing to ask about
-    return {
-      account:  String(row.account == null ? '' : row.account).trim(),
-      duId:     duId,
-      siteName: String(row.siteName == null ? '' : row.siteName).trim(),
-      subcon:   String(row.subcon == null ? '' : row.subcon).trim()
-    };
-  }
-
   // Open WhatsApp with the message pre-filled. Falls back to the clipboard
   // when the WhatsApp link cannot be opened (e.g. no handler for wa.me).
   function _shareViaWhatsApp(text){
@@ -6395,32 +6447,6 @@ function _applyPlanCellStyle(el, col, val){
       console.warn('[planShare] copy failed', e);
     }
   }
-
-  document.getElementById('planSharePlanBtn').addEventListener('click', function(){
-    if (!planCurrentDate) { setPlanStatus('Pick a date first'); return; }
-    const rows = _planShareRows();
-    if (rows.length === 0) {
-      setPlanStatus('No sites assigned yet (no DU ID in any row)');
-      return;
-    }
-    const targetEl = document.getElementById('planShareTargetInput');
-    const target = targetEl ? targetEl.value.trim() : '';
-    const text = _buildSharePlanText(rows, target);
-    _shareViaWhatsApp(text);
-    setPlanStatus('Shared plan (' + rows.length + ' site(s)) for ' + _planShareDate());
-  });
-
-  document.getElementById('planAskProgressBtn').addEventListener('click', function(){
-    if (!planCurrentDate) { setPlanStatus('Pick a date first'); return; }
-    const row = _planSelectedSite();
-    if (!row) {
-      setPlanStatus('Select a site row first (click a cell in the table), then click Asking Progress');
-      return;
-    }
-    const text = _buildAskProgressText(row);
-    _shareViaWhatsApp(text);
-    setPlanStatus('Asking progress for ' + row.duId);
-  });
 
   // ----- Query work: fill DU ID & Site Name from clock-in data -----
   document.getElementById('planQueryWorkBtn').addEventListener('click', function(){
