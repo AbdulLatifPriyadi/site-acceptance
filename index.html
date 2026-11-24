@@ -51,6 +51,8 @@
 <title>Site Acceptance Diagram</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-image@0.1.0/leaflet-image.js"></script>
+<script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   :root{
@@ -931,6 +933,7 @@
         <button class="dash-view-btn" id="viewTableBtn">Table</button>
         <button class="dash-view-btn" id="viewPlanBtn">Plan</button>
         <button class="dash-view-btn" id="viewRingBtn">Ring</button>
+        <button class="dash-view-btn" id="viewPrpoBtn">PRPO</button>
       </div>
       <div class="dash-topbar-right">
         <div class="dash-status" id="dashStatus"></div>
@@ -984,6 +987,27 @@
       </div>
       <div id="dashPlan" style="display:none; position:absolute; inset:0; overflow:auto; background:#fff; padding-top:46px;"></div>
       <div id="dashRing" style="display:none; position:absolute; inset:0; overflow:auto; background:#fff; padding:14px 16px;"></div>
+      <div id="dashPrpoBar" style="display:none; position:absolute; top:0; left:0; right:0; z-index:100; background:#1c2530; border-bottom:1px solid rgba(255,255,255,.1); padding:6px 14px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+        <span style="font-size:13px; font-weight:800; color:#fff;">PRPO Routes</span>
+        <select id="prpoBatchTypeSelect" style="padding:5px 9px; border:1px solid rgba(255,255,255,.2); border-radius:6px; background:#0d1117; color:#e6edf3; font-size:11.5px; outline:none; min-width:140px;">
+          <option value="batchRfi">Batch RFI</option>
+          <option value="batchCsg">Batch CSG</option>
+        </select>
+        <select id="prpoBatchSelect" style="padding:5px 9px; border:1px solid rgba(255,255,255,.2); border-radius:6px; background:#0d1117; color:#e6edf3; font-size:11.5px; outline:none; min-width:180px;">
+          <option value="">Select batch…</option>
+        </select>
+        <select id="prpoOriginSelect" style="padding:5px 9px; border:1px solid rgba(255,255,255,.2); border-radius:6px; background:#0d1117; color:#e6edf3; font-size:11.5px; outline:none; min-width:160px;">
+          <option value="huawei" selected>WH Huawei (-6.316, 107.180)</option>
+          <option value="janjora">WH Janjora (-6.198, 106.628)</option>
+          <option value="ecs">WH ECS (-6.142, 106.914)</option>
+        </select>
+        <button id="prpoGenerateBtn" title="Generate route screenshots for all sites in batch"
+          style="padding:5px 12px;border:1px solid #2f6bc4;border-radius:6px;background:#2f6bc4;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;">Generate Routes</button>
+        <button id="prpoDownloadBtn" title="Download all screenshots as ZIP"
+          style="padding:5px 12px;border:1px solid #4caf7d;border-radius:6px;background:#4caf7d;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;display:none;">Download ZIP</button>
+        <span id="prpoStatus" style="margin-left:auto; font-size:11px; color:#b7c0c9;"></span>
+      </div>
+      <div id="dashPrpo" style="display:none; position:absolute; inset:0; overflow:auto; background:#fff; padding-top:46px;"></div>
       <div id="planLoadingOverlay" style="display:none; position:absolute; inset:0; background:rgba(0,0,0,.5); z-index:50; align-items:center; justify-content:center;">
         <div style="display:inline-flex; align-items:center; gap:8px; background:#fff; color:#1c2530; padding:10px 18px; border-radius:8px; box-shadow:0 4px 14px rgba(0,0,0,.3); font-size:12px; font-weight:600;">
           <svg viewBox="0 0 24 24" width="16" height="16" style="animation:spin .8s linear infinite;"><circle cx="12" cy="12" r="9" fill="none" stroke="#cfd7df" stroke-width="3"/><path d="M21 12a9 9 0 0 0-9-9" fill="none" stroke="#2f6bc4" stroke-width="3" stroke-linecap="round"/></svg>
@@ -2482,6 +2506,7 @@ Remark = ${remark}`;
     else if(dashView === 'table') renderTableView();
     else if(dashView === 'plan') renderPlanView();
     else if(dashView === 'ring') renderRingView();
+    else if(dashView === 'prpo') renderPrpoView();
     renderStatsBar();
   }
 
@@ -2721,14 +2746,20 @@ Remark = ${remark}`;
         })
       : colFiltered;
 
+    // Auto-filter: Remove sites without subcontractor plan
+    const subcontFiltered = workOnlyFiltered.filter(s => {
+      const sub = String(s.subcontPlan || '').trim().toLowerCase();
+      return sub && sub !== 'unknown';
+    });
+
     // Apply search (supports multi-line paste — one DU ID per line)
-    let filtered = workOnlyFiltered;
+    let filtered = subcontFiltered;
     if (tableSearch.trim()) {
       const lines = tableSearch.trim().split(/\s+/).filter(Boolean);
       if (lines.length === 1) {
         // Single-line search: search across all columns
         const s2 = lines[0].toLowerCase();
-        filtered = workOnlyFiltered.filter(s =>
+        filtered = subcontFiltered.filter(s =>
           (s.duId || '').toLowerCase().includes(s2) ||
           (s.siteName || '').toLowerCase().includes(s2) ||
           (s.subcontPlan || '').toLowerCase().includes(s2) ||
@@ -2743,7 +2774,7 @@ Remark = ${remark}`;
       } else {
         // Multi-line: each token finds rows where it appears in ANY field; all matched rows are combined (OR logic)
         const tokens = lines.map(l => l.toLowerCase());
-        filtered = workOnlyFiltered.filter(s => {
+        filtered = subcontFiltered.filter(s => {
           return tokens.some(t => {
             return (
               (s.duId || '').toLowerCase().includes(t) ||
@@ -4702,6 +4733,325 @@ Remark = ${remark}`;
     }
   }
 
+  // ========== PRPO Tab Functions ==========
+  // Origin coordinates
+  const PRPO_ORIGINS = {
+    huawei: { lat: -6.316122607800728, lng: 107.1798044919228, label: 'WH Huawei' },
+    janjora: { lat: -6.197734426456106, lng: 106.62791741553316, label: 'WH Janjora' },
+    ecs: { lat: -6.142341728331444, lng: 106.91435225729944, label: 'WH ECS' }
+  };
+
+  // PRPO state
+  let prpoGeneratedData = [];
+
+  function populatePrpoBatchSelect() {
+    const batchType = document.getElementById('prpoBatchTypeSelect').value;
+    const batchSelect = document.getElementById('prpoBatchSelect');
+    const sites = getFilteredSites();
+    const batches = [...new Set(sites.map(s => String(s[batchType] || '').trim()).filter(Boolean))].sort();
+    batchSelect.innerHTML = '<option value="">Select batch…</option>' +
+      batches.map(b => '<option value="' + escapeHtml(b) + '">' + escapeHtml(b) + '</option>').join('');
+    prpoGeneratedData = [];
+    document.getElementById('prpoDownloadBtn').style.display = 'none';
+    document.getElementById('prpoStatus').textContent = '';
+  }
+
+  async function generatePrpoRoutes() {
+    const batchType = document.getElementById('prpoBatchTypeSelect').value;
+    const batchValue = document.getElementById('prpoBatchSelect').value;
+    const originKey = document.getElementById('prpoOriginSelect').value;
+    const origin = PRPO_ORIGINS[originKey];
+
+    if (!batchValue) {
+      alert('Please select a batch first');
+      return;
+    }
+
+    const sites = getFilteredSites().filter(s => String(s[batchType] || '').trim() === batchValue);
+    if (sites.length === 0) {
+      alert('No sites found for this batch');
+      return;
+    }
+
+    // Filter sites that have valid lat/lng
+    const validSites = sites.filter(s => s.lat != null && s.lng != null && !isNaN(s.lat) && !isNaN(s.lng));
+    if (validSites.length === 0) {
+      alert('No sites with valid coordinates in this batch');
+      return;
+    }
+
+    const statusEl = document.getElementById('prpoStatus');
+    const generateBtn = document.getElementById('prpoGenerateBtn');
+    const downloadBtn = document.getElementById('prpoDownloadBtn');
+
+    generateBtn.disabled = true;
+    generateBtn.textContent = 'Generating…';
+    statusEl.textContent = 'Fetching routes…';
+    prpoGeneratedData = [];
+
+    try {
+      for (let i = 0; i < validSites.length; i++) {
+        const site = validSites[i];
+        statusEl.textContent = `Generating route ${i + 1} of ${validSites.length}: ${site.siteName || site.duId}…`;
+
+        const routeData = await fetchRouteAndCapture(origin, site);
+        if (routeData) {
+          prpoGeneratedData.push({
+            site: site,
+            route: routeData,
+            imageDataUrl: routeData.imageDataUrl
+          });
+        }
+
+        // Small delay to avoid hammering OSRM
+        if (i < validSites.length - 1) await new Promise(r => setTimeout(r, 150));
+      }
+
+      renderPrpoResults();
+      downloadBtn.style.display = 'inline-block';
+      statusEl.textContent = `Done: ${prpoGeneratedData.length} routes generated`;
+    } catch (e) {
+      console.error('[PRPO] Generation failed:', e);
+      statusEl.textContent = 'Error: ' + e.message;
+    } finally {
+      generateBtn.disabled = false;
+      generateBtn.textContent = 'Generate Routes';
+    }
+  }
+
+  async function fetchRouteAndCapture(origin, site) {
+    // Wait for Leaflet to be available
+    let leafletReady = !!window.L;
+    if (!leafletReady) {
+      for (let i = 0; i < 30 && !window.L; i++) {
+        await new Promise(r => setTimeout(r, 500));
+      }
+      leafletReady = !!window.L;
+    }
+    if (!leafletReady) {
+      throw new Error('Leaflet (L) not loaded — check internet connection');
+    }
+
+    const url = `https://router.project-osrm.org/route/v1/driving/${origin.lng},${origin.lat};${site.lng},${site.lat}?geometries=geojson&overview=full&steps=false`;
+
+    const response = await fetch(url);
+    if (!response.ok) throw new Error('OSRM request failed: ' + response.status);
+    const data = await response.json();
+
+    if (!data.routes || data.routes.length === 0) {
+      console.warn('[PRPO] No route found for', site.duId);
+      return null;
+    }
+
+    const route = data.routes[0];
+    const distanceKm = (route.distance / 1000).toFixed(1);
+    const durationMin = Math.round(route.duration / 60);
+
+    // Create hidden map for screenshot
+    const mapContainer = document.createElement('div');
+    mapContainer.style.width = '400px';
+    mapContainer.style.height = '300px';
+    mapContainer.style.position = 'fixed';
+    mapContainer.style.left = '-9999px';
+    mapContainer.style.top = '-9999px';
+    mapContainer.style.opacity = '0';
+    mapContainer.style.pointerEvents = 'none';
+    document.body.appendChild(mapContainer);
+
+    let map;
+    try {
+      map = L.map(mapContainer, { crs: L.CRS.EPSG3857 });
+      const tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors',
+        maxZoom: 19
+      }).addTo(map);
+
+      // Add route polyline
+      const geojson = route.geometry;
+      L.geoJSON(geojson, {
+        style: { color: '#2f6bc4', weight: 4, opacity: 0.8 }
+      }).addTo(map);
+
+      // Add markers
+      L.marker([origin.lat, origin.lng], {
+        icon: L.divIcon({ className: 'prpo-marker', html: '<div style="background:#2f6bc4;color:#fff;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:bold;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.3);">S</div>', iconSize: [28, 28], iconAnchor: [14, 14] })
+      }).bindPopup('Start: ' + origin.label).addTo(map);
+
+      L.marker([site.lat, site.lng], {
+        icon: L.divIcon({ className: 'prpo-marker', html: '<div style="background:#4caf7d;color:#fff;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:bold;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.3);">D</div>', iconSize: [28, 28], iconAnchor: [14, 14] })
+      }).bindPopup('Destination: ' + (site.siteName || site.duId)).addTo(map);
+
+      // Fit bounds to route
+      const bounds = L.geoJSON(geojson).getBounds();
+      map.fitBounds(bounds, { padding: [20, 20] });
+
+      // Wait for tiles to fully load
+      await new Promise(resolve => {
+        let tilesLoaded = 0;
+        tileLayer.on('tileload', () => { tilesLoaded++; });
+        tileLayer.on('load', () => {
+          // Give extra time for rendering
+          setTimeout(resolve, 1000);
+        });
+        // Fallback timeout
+        setTimeout(resolve, 5000);
+      });
+
+      // Extra render time
+      await new Promise(r => setTimeout(r, 500));
+
+      // Capture screenshot using html2canvas (more reliable) with leaflet-image fallback
+      let imageDataUrl = '';
+      try {
+        // Container is already positioned off-screen with opacity:0
+        // Use opacity:1 temporarily for html2canvas
+        mapContainer.style.opacity = '1';
+        map.invalidateSize();
+
+        await new Promise(r => setTimeout(r, 300)); // allow reflow
+
+        if (typeof html2canvas === 'function') {
+          const canvas = await html2canvas(mapContainer, {
+            useCORS: true,
+            logging: false,
+            scale: 1,
+            backgroundColor: '#ffffff'
+          });
+          imageDataUrl = canvas.toDataURL('image/png');
+        } else if (typeof leafletImage === 'function') {
+          imageDataUrl = await new Promise((resolve, reject) => {
+            leafletImage(map, (err, canvas) => {
+              if (err) reject(err);
+              else resolve(canvas.toDataURL('image/png'));
+            });
+          });
+        } else {
+          console.warn('[PRPO] No screenshot library available');
+        }
+
+        // Restore opacity
+        mapContainer.style.opacity = '0';
+      } catch (imgErr) {
+        console.warn('[PRPO] Screenshot failed:', imgErr);
+        imageDataUrl = '';
+      }
+
+      map.remove();
+      document.body.removeChild(mapContainer);
+
+      return {
+        distanceKm,
+        durationMin,
+        geometry: geojson,
+        imageDataUrl
+      };
+    } catch (e) {
+      if (map) map.remove();
+      document.body.removeChild(mapContainer);
+      throw e;
+    }
+  }
+
+  function renderPrpoResults() {
+    const container = document.getElementById('dashPrpo');
+    if (prpoGeneratedData.length === 0) {
+      container.innerHTML = '<div style="padding:40px;text-align:center;color:#6b7688;">No routes generated yet. Select a batch and click Generate Routes.</div>';
+      return;
+    }
+
+    const rowsHtml = prpoGeneratedData.map((item, idx) => {
+      const site = item.site;
+      const route = item.route;
+      const img = route.imageDataUrl
+        ? '<img src="' + route.imageDataUrl + '" alt="Route" style="width:100%;max-width:350px;height:auto;border:1px solid #e2e5e8;border-radius:4px;background:#fafbfc;">'
+        : '<div style="width:350px;height:200px;background:#f6f8fa;border:1px dashed #d0d7de;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#9aa0a6;">No image</div>';
+
+      return '<tr style="border-bottom:1px solid #eef1f3;">' +
+        '<td style="padding:8px 12px;vertical-align:top;">' + (idx + 1) + '</td>' +
+        '<td style="padding:8px 12px;vertical-align:top;font-weight:600;">' + escapeHtml(site.siteName || '-') + '</td>' +
+        '<td style="padding:8px 12px;vertical-align:top;font-family:monospace;font-size:11px;">' + escapeHtml(site.duId || '-') + '</td>' +
+        '<td style="padding:8px 12px;vertical-align:top;">' + img + '</td>' +
+        '<td style="padding:8px 12px;vertical-align:middle;text-align:center;">' + route.distanceKm + ' km</td>' +
+        '<td style="padding:8px 12px;vertical-align:middle;text-align:center;">' + route.durationMin + ' min</td>' +
+        '</tr>';
+    }).join('');
+
+    container.innerHTML =
+      '<div style="padding:12px 16px;">' +
+        '<table style="width:100%;border-collapse:collapse;font-size:11.5px;min-width:900px;">' +
+          '<thead style="background:#f6f8fa;position:sticky;top:0;z-index:1;">' +
+            '<tr>' +
+              '<th style="padding:8px 12px;text-align:left;border-bottom:2px solid #d0d7de;width:40px;">#</th>' +
+              '<th style="padding:8px 12px;text-align:left;border-bottom:2px solid #d0d7de;">Site Name</th>' +
+              '<th style="padding:8px 12px;text-align:left;border-bottom:2px solid #d0d7de;">DU ID</th>' +
+              '<th style="padding:8px 12px;text-align:left;border-bottom:2px solid #d0d7de;">Route Screenshot</th>' +
+              '<th style="padding:8px 12px;text-align:center;border-bottom:2px solid #d0d7de;width:100px;">Distance</th>' +
+              '<th style="padding:8px 12px;text-align:center;border-bottom:2px solid #d0d7de;width:100px;">ETA</th>' +
+            '</tr>' +
+          '</thead>' +
+          '<tbody>' + rowsHtml + '</tbody>' +
+        '</table>' +
+      '</div>';
+  }
+
+  function downloadPrpoZip() {
+    if (prpoGeneratedData.length === 0) return;
+
+    const batchType = document.getElementById('prpoBatchTypeSelect').value;
+    const batchValue = document.getElementById('prpoBatchSelect').value;
+    const originKey = document.getElementById('prpoOriginSelect').value;
+    const origin = PRPO_ORIGINS[originKey];
+
+    // Create a simple HTML report that can be saved/printed
+    let html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>PRPO Routes - ' + escapeHtml(batchValue) + '</title>' +
+      '<style>body{font-family:Arial,sans-serif;padding:20px;}table{border-collapse:collapse;width:100%;margin-bottom:30px;}th,td{border:1px solid #ddd;padding:8px;text-align:left;}th{background:#f6f8fa;}img{max-width:100%;height:auto;border:1px solid #ddd;border-radius:4px;}.header{margin-bottom:20px;}@media print{.no-print{display:none;}img{page-break-inside:avoid;}}</style>' +
+      '</head><body>' +
+      '<div class="header no-print" style="margin-bottom:20px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">' +
+        '<h1 style="margin:0;">PRPO Route Report</h1>' +
+        '<span>Batch: <strong>' + escapeHtml(batchValue) + '</strong> (' + (batchType === 'batchRfi' ? 'Batch RFI' : 'Batch CSG') + ')</span>' +
+        '<span>Origin: <strong>' + origin.label + '</strong></span>' +
+        '<span>Generated: ' + new Date().toLocaleString() + '</span>' +
+        '<button onclick="window.print()" style="margin-left:auto;padding:8px 16px;background:#2f6bc4;color:#fff;border:none;border-radius:4px;cursor:pointer;">Print / Save as PDF</button>' +
+      '</div>';
+
+    prpoGeneratedData.forEach((item, idx) => {
+      const site = item.site;
+      const route = item.route;
+      const img = route.imageDataUrl
+        ? '<img src="' + route.imageDataUrl + '" alt="Route ' + (idx + 1) + '" style="max-width:500px;">'
+        : '<div style="width:500px;height:250px;background:#f6f8fa;border:1px dashed #ddd;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#999;">No image</div>';
+
+      html += '<table>' +
+        '<tr><th colspan="2" style="background:#1c2530;color:#fff;padding:10px;">Site ' + (idx + 1) + ': ' + escapeHtml(site.siteName || '-') + ' (' + escapeHtml(site.duId || '-') + ')</th></tr>' +
+        '<tr><td style="width:150px;"><strong>Distance</strong></td><td>' + route.distanceKm + ' km</td></tr>' +
+        '<tr><td><strong>ETA</strong></td><td>' + route.durationMin + ' min</td></tr>' +
+        '<tr><td><strong>DU ID</strong></td><td>' + escapeHtml(site.duId || '-') + '</td></tr>' +
+        '<tr><td><strong>City</strong></td><td>' + escapeHtml(site.city || '-') + '</td></tr>' +
+        '<tr><td><strong>Subcont Plan</strong></td><td>' + escapeHtml(site.subcontPlan || '-') + '</td></tr>' +
+        '<tr><td colspan="2">' + img + '</td></tr>' +
+      '</table>';
+    });
+
+    html += '</body></html>';
+
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'PRPO_Routes_' + batchValue.replace(/[^a-z0-9]/gi, '_') + '_' + new Date().toISOString().slice(0,10) + '.html';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function renderPrpoView() {
+    const container = document.getElementById('dashPrpo');
+    // Populate batch select on first render
+    populatePrpoBatchSelect();
+    container.innerHTML = '<div style="padding:40px;text-align:center;color:#6b7688;">Select a batch and origin, then click Generate Routes.</div>';
+  }
+
   function getSVGPoint(svg, e) {
     var rect = svg.getBoundingClientRect();
     // Use rect dimensions directly (sketch SVG uses width="100%" which
@@ -4768,6 +5118,7 @@ Remark = ${remark}`;
     document.getElementById('viewTableBtn').classList.toggle('active', view === 'table');
     document.getElementById('viewPlanBtn').classList.toggle('active', view === 'plan');
     document.getElementById('viewRingBtn').classList.toggle('active', view === 'ring');
+    document.getElementById('viewPrpoBtn').classList.toggle('active', view === 'prpo');
     document.getElementById('dashMap').style.display = view === 'map' ? '' : 'none';
     document.getElementById('dashLegend').style.display = (view === 'map') ? '' : 'none';
     document.getElementById('dashStatsBar').style.display = view === 'plan' ? 'none' : '';
@@ -4777,7 +5128,9 @@ Remark = ${remark}`;
     document.getElementById('dashPlan').style.display = view === 'plan' ? 'block' : 'none';
     document.getElementById('dashPlanBar').style.display = view === 'plan' ? 'flex' : 'none';
     document.getElementById('dashRing').style.display = view === 'ring' ? 'block' : 'none';
-    document.getElementById('dashFilterPanel').style.display = (view === 'table' || view === 'plan') ? 'none' : '';
+    document.getElementById('dashPrpo').style.display = view === 'prpo' ? 'block' : 'none';
+    document.getElementById('dashPrpoBar').style.display = view === 'prpo' ? 'flex' : 'none';
+    document.getElementById('dashFilterPanel').style.display = (view === 'table' || view === 'plan' || view === 'prpo') ? 'none' : '';
     // Leaving plan view: stop polling so the active-date fetcher doesn't run in the background.
     if (wasPlan && view !== 'plan') stopPlanDatePolling();
     if (view === 'table') {
@@ -4836,6 +5189,8 @@ Remark = ${remark}`;
       else stopPlanDatePolling();
     } else if (view === 'ring') {
       renderRingView();
+    } else if (view === 'prpo') {
+      renderPrpoView();
     } else if (view === 'map') {
       // map view — trigger a refresh so drawDashboardMap runs
       try { refreshDashboardView(); } catch(e) { console.warn('[setDashView map]', e); }
@@ -6778,6 +7133,7 @@ function _applyPlanCellStyle(el, col, val){
   document.getElementById('viewTableBtn').addEventListener('click', ()=> setDashView('table'));
   document.getElementById('viewPlanBtn').addEventListener('click', ()=> setDashView('plan'));
   document.getElementById('viewRingBtn').addEventListener('click', ()=> setDashView('ring'));
+  document.getElementById('viewPrpoBtn').addEventListener('click', ()=> setDashView('prpo'));
 
   document.getElementById('dashRefreshBtn').addEventListener('click', _doRefresh);
 
@@ -6807,6 +7163,11 @@ function _applyPlanCellStyle(el, col, val){
     renderChecklistFilters();
     refreshDashboardView();
   });
+  // PRPO event listeners
+  document.getElementById('prpoBatchTypeSelect').addEventListener('change', ()=> populatePrpoBatchSelect());
+  document.getElementById('prpoBatchSelect').addEventListener('change', ()=> { prpoGeneratedData = []; document.getElementById('prpoDownloadBtn').style.display = 'none'; });
+  document.getElementById('prpoGenerateBtn').addEventListener('click', generatePrpoRoutes);
+  document.getElementById('prpoDownloadBtn').addEventListener('click', downloadPrpoZip);
   // Delegated click for Work Only toggle (created dynamically in renderStatsBar)
   document.getElementById('dashStatsBar').addEventListener('click', (e)=>{
     if(e.target.closest('#dashWorkOnlyToggle')){
