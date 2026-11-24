@@ -975,7 +975,7 @@
         <button id="planQueryWorkBtn" title="Fill DU ID &amp; Site Name from current clock-in data"
           style="padding:5px 9px;border:1px solid #4caf7d;border-radius:6px;background:#1a7f4b;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;">Query work</button>
         <input type="text" id="planShareTargetInput" placeholder="Target"
-          title="Target — appended to the shared message as 'Target = ...'"
+          title="Target — copied with the plan message as 'Target = ...'"
           style="padding:5px 9px; border:1px solid rgba(255,255,255,.2); border-radius:6px; background:#0d1117; color:#e6edf3; font-size:11.5px; outline:none; width:110px;">
         <button id="planSaveBtn"
           style="position:absolute; right:14px; top:50%; transform:translateY(-50%); z-index:2; padding:5px 14px;border:1px solid #4caf7d;border-radius:6px;background:#4caf7d;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;box-shadow:0 1px 4px rgba(0,0,0,.25);">Save</button>
@@ -5797,16 +5797,16 @@ function _applyPlanCellStyle(el, col, val){
         '<button type="button" class="plan-del-row" data-account="' + escAttr(account) + '" title="Delete ' + escAttr(account) + ' from roster" style="background:transparent;border:1px solid #cfd7df;border-radius:4px;color:#6b7688;cursor:pointer;font-size:12px;padding:2px 6px;line-height:1;">✕</button>' +
       '</td>';
     }
-    // Per-row action buttons at the far right: share this person's plan, or
-    // ask for progress on this person's site. `data-row` is the roster index.
-    function actionsTd(rowIdx, account, duId){
+    // Per-row action buttons at the far right: copy the whole subcont plan, or
+    // copy a progress question for this person's site. `data-row` is the roster index.
+    function actionsTd(rowIdx, account, duId, subcon){
       const shareBtnStyle = 'background:#128c7e;border:1px solid #25d366;border-radius:4px;color:#fff;cursor:pointer;font-size:10px;padding:2px 5px;line-height:1.3;white-space:nowrap;';
       const askBtnStyle   = 'background:#075e54;border:1px solid #25d366;border-radius:4px;color:#fff;cursor:pointer;font-size:10px;padding:2px 5px;line-height:1.3;white-space:nowrap;';
       const noSite = !duId;
       return '<td data-row="' + rowIdx + '" data-col="actions" style="padding:6px 6px; text-align:center; white-space:nowrap;">' +
-        '<button type="button" class="plan-row-share" data-row="' + rowIdx + '" title="Share the plan for ' + escAttr(account) + ' via WhatsApp"' +
+        '<button type="button" class="plan-row-share" data-row="' + rowIdx + '" title="Copy the plan for every site in ' + escAttr(subcon) + ' to the clipboard"' +
           ' style="' + shareBtnStyle + (noSite ? ' opacity:.4; cursor:not-allowed;' : '') + '">Share</button> ' +
-        '<button type="button" class="plan-row-ask" data-row="' + rowIdx + '" title="Ask progress for ' + escAttr(account) + ' via WhatsApp"' +
+        '<button type="button" class="plan-row-ask" data-row="' + rowIdx + '" title="Copy a progress question for ' + escAttr(account) + ' to the clipboard"' +
           ' style="' + askBtnStyle + (noSite ? ' opacity:.4; cursor:not-allowed;' : '') + '">Ask</button>' +
       '</td>';
     }
@@ -5870,7 +5870,7 @@ function _applyPlanCellStyle(el, col, val){
         return cellTd(p[1], i, p[0], val, isBlocked);
       }).join('');
       if (showDel) html += delTd(i, row.account || '');
-      html += actionsTd(i, row.account || '', row.duId || '');
+      html += actionsTd(i, row.account || '', row.duId || '', row.subcon || '');
       return html;
     }
 
@@ -6313,15 +6313,25 @@ function _applyPlanCellStyle(el, col, val){
     if (!row) return null;
     const duId = String(row.duId == null ? '' : row.duId).trim();
     if (!duId) return null; // no site assigned — nothing to share
+    // The subcont lives on the ROSTER entry, not on planRows (the sheet column
+    // is often empty for rows written before subcont was tracked). Fall back
+    // through planRows and then the roster so the subcont is never undefined.
+    let subcon = String(row.subcon == null ? '' : row.subcon).trim();
+    if (!subcon) {
+      const roster = effectiveRoster();
+      const r = roster[i];
+      if (r) subcon = String(r.subcon == null ? '' : r.subcon).trim();
+    }
     return {
       account:  String(row.account == null ? '' : row.account).trim(),
       duId:     duId,
       siteName: String(row.siteName == null ? '' : row.siteName).trim(),
-      subcon:   String(row.subcon == null ? '' : row.subcon).trim()
+      subcon:   subcon
     };
   }
 
-  // Per-row "Share" button: shares THIS person's plan entry only.
+  // Per-row "Share" button: shares the whole plan for that row's SUBCONT —
+  // every person in that subcont, not just the person on this row.
   function sharePlanForRow(rowIdx){
     if (!planCurrentDate) { setPlanStatus('Pick a date first'); return; }
     const row = _planRowByIndex(rowIdx);
@@ -6329,11 +6339,15 @@ function _applyPlanCellStyle(el, col, val){
       setPlanStatus('No site assigned for this row yet (DU ID is empty)');
       return;
     }
+    const rows = _planShareRows(row.subcon);
+    if (rows.length === 0) {
+      setPlanStatus('No sites assigned for ' + row.subcon + ' yet');
+      return;
+    }
     const targetEl = document.getElementById('planShareTargetInput');
     const target = targetEl ? targetEl.value.trim() : '';
-    const text = _buildSharePlanText([row], target);
-    _shareViaWhatsApp(text);
-    setPlanStatus('Shared plan for ' + row.account);
+    const text = _buildSharePlanText(rows, target);
+    _copyPlanShareText(text, 'Copied plan for ' + row.subcon + ' (' + rows.length + ' site(s)) — paste it into WhatsApp');
   }
 
   // Per-row "Ask" button: asks for progress on THIS person's site only.
@@ -6345,29 +6359,34 @@ function _applyPlanCellStyle(el, col, val){
       return;
     }
     const text = _buildAskProgressText(row);
-    _shareViaWhatsApp(text);
-    setPlanStatus('Asking progress for ' + row.duId);
+    _copyPlanShareText(text, 'Copied progress question for ' + row.duId + ' — paste it into WhatsApp');
   }
 
-  // Collect the rows the share messages are built from: the rows currently
-  // visible for this subcont that have a DU ID assigned (i.e. an actual site).
-  function _planShareRows(){
+  // Collect the rows the share message is built from: every row belonging to
+  // `subconFilter` that has a DU ID assigned (i.e. an actual site).
+  // When no subcont is given, the viewer's own subcont is used.
+  function _planShareRows(subconFilter){
     const roster = effectiveRoster();
-    const mySub = mySubcont ? String(mySubcont).toLowerCase() : '';
+    const want = subconFilter
+      ? String(subconFilter).toLowerCase()
+      : (mySubcont ? String(mySubcont).toLowerCase() : '');
     const out = [];
     for (let i = 0; i < roster.length; i++) {
       const r = roster[i];
       if (!r) continue;
-      if (mySub && String(r.subcon || '').toLowerCase() !== mySub) continue;
       const row = planRows[i];
       if (!row) continue;
+      // The subcont is authoritative on the roster entry; planRows may have an
+      // empty sheet column for rows written before subcont was tracked.
+      const rowSubcon = String(r.subcon || '').trim() || String(row.subcon || '').trim();
+      if (want && rowSubcon.toLowerCase() !== want) continue;
       const duId = String(row.duId == null ? '' : row.duId).trim();
       if (!duId) continue; // no site assigned — not part of the shared plan
       out.push({
         account:   String(row.account == null ? '' : row.account).trim(),
         duId:      duId,
         siteName:  String(row.siteName == null ? '' : row.siteName).trim(),
-        subcon:    String(row.subcon == null ? '' : row.subcon).trim()
+        subcon:    rowSubcon
       });
     }
     return out;
@@ -6411,40 +6430,43 @@ function _applyPlanCellStyle(el, col, val){
            'untuk site ini progressnya gimana ' + row.account;
   }
 
-  // Open WhatsApp with the message pre-filled. Falls back to the clipboard
-  // when the WhatsApp link cannot be opened (e.g. no handler for wa.me).
-  function _shareViaWhatsApp(text){
-    const url = 'https://wa.me/?text=' + encodeURIComponent(text);
-    const w = window.open(url, '_blank');
-    if (!w) {
-      // Popup blocked — copy the text instead so nothing is lost.
-      _copyPlanShareText(text);
-      setPlanStatus('WhatsApp blocked — text copied to clipboard');
-    }
-  }
-
-  function _copyPlanShareText(text){
+  // Copy the message to the clipboard so the user can paste it into WhatsApp
+  // (or any other chat) themselves. No link is opened.
+  function _copyPlanShareText(text, okMessage){
+    const done = function(ok){
+      if (ok) setPlanStatus(okMessage || 'Copied to clipboard');
+      else setPlanStatus('Copy failed — select the text manually');
+    };
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).catch(function(){
-        _copyPlanShareFallback(text);
+      navigator.clipboard.writeText(text).then(function(){
+        done(true);
+      }).catch(function(){
+        done(_copyPlanShareFallback(text));
       });
     } else {
-      _copyPlanShareFallback(text);
+      done(_copyPlanShareFallback(text));
     }
   }
 
+  // Fallback for browsers/contexts where the async clipboard API is blocked
+  // (e.g. http:// pages, older browsers). Returns true on success.
   function _copyPlanShareFallback(text){
     try {
       const ta = document.createElement('textarea');
       ta.value = text;
+      ta.setAttribute('readonly', '');
       ta.style.position = 'fixed';
+      ta.style.top = '0';
       ta.style.left = '-9999px';
       document.body.appendChild(ta);
       ta.select();
-      document.execCommand('copy');
+      ta.setSelectionRange(0, ta.value.length);
+      const ok = document.execCommand('copy');
       document.body.removeChild(ta);
+      return ok;
     } catch (e) {
       console.warn('[planShare] copy failed', e);
+      return false;
     }
   }
 
