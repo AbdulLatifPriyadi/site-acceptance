@@ -1957,7 +1957,6 @@ Remark = ${remark}`;
   // Plan roster delta (surge-managed additions + removals layered on top of PLAN_ROSTER base).
   // Mirror of the server's `planRoster` script property. Reconciles on dashboard init.
   let planRosterDelta = { added: [], removed: [] };
-  let planRosterDirty = false; // (reserved for future retry queue; not used in v1)
   // Plan roster field edits: maps account name -> { account, subcon, teamType, resourceRemark }.
   // Loaded from server on init; updated deltas POSTed on save. Applied in effectiveRoster().
   let planRosterEdits = {};
@@ -1966,9 +1965,15 @@ Remark = ${remark}`;
   let planSelEnd = null;
   let planIsSelecting = false;
   let _planMouseDown, _planMouseMove, _planSelectStart, _planClick, _planDblClick, _planPaste;
+  // Document-level mouseup handler for finishing a drag-select. Kept at module
+  // scope so it can be removed before re-adding — otherwise every re-render
+  // leaks another permanent listener on `document`.
+  let _planUpHandler = null;
   // Active date broadcast (surge sets it, subcont users follow it via 5s polling)
-  let planActiveDate = '';
   let planDatePollTimer = null;
+  // Date the user picked in the date input but has NOT applied yet (Load button
+  // not pressed). While set, re-renders must not overwrite the input value.
+  let planPendingDate = '';
   const PLAN_DATE_POLL_MS = 5000;
   // Auto-refresh dashboard data every 10 min
   let dashRefreshTimer = null;
@@ -4798,6 +4803,7 @@ Remark = ${remark}`;
             if (dashView !== 'plan') return; // user navigated away mid-fetch
             if (planDirty && !confirm('Surge changed the active date to ' + active + '. Discard unsaved changes and switch?')) return;
             planCurrentDate = active;
+            planPendingDate = '';
             planDirty = false;
             _applySaveButtonState();
             setPlanStatus('');
@@ -4811,7 +4817,8 @@ Remark = ${remark}`;
       }
       // Disable the date input for non-surge users (visible, read-only)
       const di = document.getElementById('planDateInput');
-      if (di && di.value !== planCurrentDate) di.value = planCurrentDate;
+      // Don't clobber an un-applied date pick.
+      if (di && !planPendingDate && di.value !== planCurrentDate) di.value = planCurrentDate;
       // Disable the date input for non-surge users (visible, read-only)
       if (di) di.disabled = !!mySubcont;
       // Surge-only: show the + Add member button
@@ -4902,19 +4909,45 @@ Remark = ${remark}`;
     });
   }
 
-  // Map a fetched row to its roster slot. Prefers explicit `rowIdx`,
-  // falls back to roster-position-in-order.
+  // Map a fetched row to its roster slot.
+  //
+  // Matching is by `account` (a stable, unique identity) rather than by
+  // `rowIdx` (a positional index). Positional matching breaks whenever the
+  // roster changes: removing a member shifts every later index, which would
+  // silently reassign one person's plan data to another person.
+  //
+  // Legacy rows (written before account-keyed saves) may have no account at
+  // all. The positional fallback is used ONLY when those legacy rows form a
+  // complete, exactly-aligned set — otherwise a partially-populated roster
+  // would hand one person's row to a different person.
   function _assignSavedRows(roster, saved){
-    // Build by rowIdx
-    const byIdx = {};
-    saved.forEach(function(r){
-      if (typeof r.rowIdx === 'number' && r.rowIdx >= 0 && r.rowIdx < roster.length) {
-        byIdx[r.rowIdx] = r;
-      }
+    const savedList = Array.isArray(saved) ? saved : [];
+    // Build by account
+    const byAccount = {};
+    savedList.forEach(function(r){
+      const acct = String(r.account == null ? '' : r.account).trim();
+      if (acct && !byAccount[acct]) byAccount[acct] = r;
     });
-    let cursor = 0;
+    // Build by rowIdx — legacy fallback ONLY.
+    // Safe to use only when the legacy rows (those without an account) are a
+    // complete, exactly-aligned positional set for the current roster.
+    const legacyRows = savedList.filter(function(r){
+      return !String(r.account == null ? '' : r.account).trim();
+    });
+    let byIdx = null;
+    if (legacyRows.length > 0 && legacyRows.length === roster.length) {
+      const candidate = {};
+      let aligned = true;
+      legacyRows.forEach(function(r){
+        if (typeof r.rowIdx !== 'number' || r.rowIdx < 0 || r.rowIdx >= roster.length) { aligned = false; return; }
+        if (candidate[r.rowIdx]) { aligned = false; return; }
+        candidate[r.rowIdx] = r;
+      });
+      if (aligned) byIdx = candidate;
+    }
     return roster.map(function(r, i){
-      const src = byIdx[i] || saved[cursor++];
+      const acct = String(r.account == null ? '' : r.account).trim();
+      const src = (acct && byAccount[acct]) ? byAccount[acct] : (byIdx ? byIdx[i] : null);
       if (!src) {
         return {
           account: r.account, subcon: r.subcon, teamType: r.teamType,
@@ -4942,7 +4975,6 @@ Remark = ${remark}`;
       const res = await fetchWithTimeout(SCRIPT_URL + '?type=plan&date=' + encodeURIComponent(date), 10000);
       if (!res.ok) return [];
       const json = await res.json();
-      try { console.log('[plan] fetchPlanData', date, 'rows:', (json || []).length, 'first:', (json && json[0]) || null); } catch (_) {}
       return json;
     } catch (e) {
       console.warn('[plan] fetch failed', e);
@@ -5020,11 +5052,11 @@ Remark = ${remark}`;
   async function postPlanRosterSave(delta) {
     if (!serverConfigured()) return false;
     try {
-      const res = await fetch(SCRIPT_URL, {
+      const res = await fetchWithTimeout(SCRIPT_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ type: 'planRosterSave', added: delta.added, removed: delta.removed })
-      });
+      }, 15000);
       if (!res.ok) console.warn('[planRoster] save failed: HTTP ' + res.status);
       return res.ok;
     } catch (e) {
@@ -5047,11 +5079,11 @@ Remark = ${remark}`;
   async function postPlanRosterEdits(edits) {
     if (!serverConfigured()) return false;
     try {
-      const res = await fetch(SCRIPT_URL, {
+      const res = await fetchWithTimeout(SCRIPT_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ type: 'planRosterEdit', edits: edits })
-      });
+      }, 15000);
       if (!res.ok) console.warn('[planRosterEdits] save failed: HTTP ' + res.status);
       return res.ok;
     } catch (e) {
@@ -5104,11 +5136,13 @@ Remark = ${remark}`;
       // Surge changed the date. Auto-switch (with discard-changes guard).
       if (planDirty && !confirm('Surge changed the active date to ' + active + '. Discard unsaved changes and switch?')) return;
       planCurrentDate = active;
+      planPendingDate = '';
       planDirty = false;
       _applySaveButtonState();
       setPlanStatus('');
       const di = document.getElementById('planDateInput');
       if (di) di.value = active;
+      try { localStorage.setItem('planDate', active); } catch(e) {}
       renderPlanView();
     }, PLAN_DATE_POLL_MS);
   }
@@ -5183,11 +5217,18 @@ Remark = ${remark}`;
   async function renderPlanView(){
     const container = document.getElementById('dashPlan');
     if (!container) return;
-    // Sync date from the input
+    // The date input is a *picker* until the user presses "Load". It may hold
+    // a date that was picked but not applied, so we must NOT read it here —
+    // doing so would silently switch the view to an un-applied date on any
+    // re-render (sort, activityRemark change, Query work).
+    // planCurrentDate is the single source of truth for what is displayed.
     const dateInput = document.getElementById('planDateInput');
-    let date = (dateInput && dateInput.value) ? dateInput.value : (planCurrentDate || todayISO());
+    let date = planCurrentDate || todayISO();
     planCurrentDate = date;
-    if (dateInput && dateInput.value !== date) dateInput.value = date;
+    // Only sync the input when the user has no un-applied pick pending —
+    // otherwise a re-render (sort, roster change, background fetch) would
+    // silently discard the date the user selected.
+    if (dateInput && !planPendingDate && dateInput.value !== date) dateInput.value = date;
     // Reflect current dirty state immediately (button may still be showing the
     // stale green from a prior edit when re-entering the tab).
     _applySaveButtonState();
@@ -5237,7 +5278,10 @@ Remark = ${remark}`;
       btn.addEventListener('click', function(e){
         e.preventDefault();
         e.stopPropagation();
-        handlePlanDeleteRow(btn.getAttribute('data-account'));
+        handlePlanDeleteRow(btn.getAttribute('data-account')).catch(function(err){
+          console.warn('[plan] delete row failed', err);
+          setPlanStatus('Delete failed: ' + (err && err.message ? err.message : String(err)));
+        });
       });
     });
 
@@ -5418,11 +5462,15 @@ Remark = ${remark}`;
         e.preventDefault();
       });
 
-      // Finalize the drag on mouseup (mirrors Table view pattern)
-      document.addEventListener('mouseup', function _planUpHandler(){
+      // Finalize the drag on mouseup (mirrors Table view pattern).
+      // Remove any previous document-level handler first so repeated renders
+      // don't accumulate listeners.
+      if (_planUpHandler) document.removeEventListener('mouseup', _planUpHandler);
+      _planUpHandler = function(){
         planIsSelecting = false;
         if (planSelStart && planSelEnd) _planJustSelected = true;
-      });
+      };
+      document.addEventListener('mouseup', _planUpHandler);
     }
   }
 
@@ -5539,8 +5587,8 @@ Remark = ${remark}`;
 
 
   // Shared cell-coloring helper. Called by both _onPlanCellEdit (typed input)
-// and _planPaste (clipboard write) so the visual state stays in sync
-// regardless of how the cell value changed.
+  // and _planPaste (clipboard write) so the visual state stays in sync
+  // regardless of how the cell value changed.
 function _applyPlanCellStyle(el, col, val){
     if (col === 'subcon') {
       const bg = dashSubcontColor(val);
@@ -5557,10 +5605,87 @@ function _applyPlanCellStyle(el, col, val){
         el.style.color = '';
         el.style.fontWeight = '';
       }
-      // activityRemark drives blocked state (duId/siteName/dailyPlanActivity/result cells).
-      // Re-render the whole table so blocked styles + disabled attrs update correctly.
-      if (dashView === 'plan') _refreshPlanTableOnly();
+      // activityRemark drives the blocked state of duId/siteName/dailyPlanActivity/result.
+      // Update those cells in place rather than re-rendering the whole table —
+      // a full re-render destroys the selection and steals focus from the
+      // dropdown the user is still interacting with.
+      _applyPlanBlockedState(el, val);
     }
+  }
+
+  // Apply the blocked (greyed + disabled) state to a row's dependent cells
+  // based on its activityRemark value. Mutates the DOM in place.
+  function _applyPlanBlockedState(actCell, actVal){
+    const td = actCell.closest('td');
+    if (!td) return;
+    const tr = td.closest('tr');
+    if (!tr) return;
+    const isBlocked = !!PLAN_BLOCKED_ACTIVITY[String(actVal || '')];
+    // Blocked input/select styling
+    const blockedInputStyle = 'width:100%;box-sizing:border-box;padding:5px 7px;border:1px solid #cfd7df;border-radius:5px;background:#e8eaec;color:#9aa0a6;font-size:11.5px;outline:none;cursor:not-allowed;';
+    const normalInputStyle = 'width:100%; box-sizing:border-box; padding:5px 7px; border:1px solid #cfd7df; border-radius:5px; background:#fff; color:#24292f; font-size:11.5px; outline:none;';
+    const normalSelectStyle = normalInputStyle + ' cursor:pointer;';
+    const blockedSelectStyle = blockedInputStyle + ' cursor:not-allowed;';
+
+    // Dependent columns: duId, siteName, dailyPlanActivity, result
+    const DEP = ['duId', 'siteName', 'dailyPlanActivity', 'result'];
+    DEP.forEach(function(colKey){
+      const cell = tr.querySelector('td[data-col="' + colKey + '"]');
+      if (!cell) return;
+      cell.setAttribute('data-blocked', isBlocked ? '1' : '0');
+      const isResult = (colKey === 'result');
+      // The result cell has two renderings: an editable input (+ preview
+      // button), or — when blocked — a plain grey text div. Decide which one
+      // is wanted explicitly so the swap works in BOTH directions.
+      const hasResultInput = !!cell.querySelector('input.plan-cell');
+      const hasResultDiv   = !!cell.querySelector('div.plan-result-text');
+      const wantsResultDiv = isResult && isBlocked;
+
+      if (isResult && (wantsResultDiv ? !hasResultDiv : hasResultDiv)) {
+        const val = cell.getAttribute('data-val') || '';
+        const rowAttr = cell.getAttribute('data-row') || '';
+        if (wantsResultDiv) {
+          // Blocked: plain grey text, no input, no preview button.
+          cell.innerHTML = '<div class="plan-result-text" style="box-sizing:border-box;padding:5px 7px;background:#e8eaec;color:#9aa0a6;font-size:11px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + escAttr(val) + '">' + escHtml(val || '—') + '</div>';
+        } else {
+          // Unblocked: restore the editable input + preview button.
+          const inputStyle = 'flex:1 1 0;box-sizing:border-box;padding:4px 6px;border:1px solid #cfd7df;border-radius:4px;background:#fff;color:#24292f;font-size:11px;outline:none;';
+          const btnStyle  = 'flex:0 0 auto;padding:3px 6px;border:1px solid #1f6feb;border-radius:4px;background:#1f6feb;color:#fff;font-size:11px;cursor:pointer;line-height:1.4;white-space:nowrap;';
+          cell.innerHTML = '<div class="plan-result-wrap" style="display:flex;align-items:center;gap:4px;width:100%;">' +
+            '<input type="text" class="plan-cell" data-row="' + rowAttr + '" data-col="result" value="' + escAttr(val) + '" style="' + inputStyle + '" placeholder="—" spellcheck="false">' +
+            '<button type="button" class="plan-result-query" data-row="' + rowAttr + '" title="Preview from Table tab" style="' + btnStyle + '">&#8981;</button>' +
+            '</div>';
+          // Re-bind the newly created input.
+          const newInput = cell.querySelector('input.plan-cell');
+          if (newInput) {
+            newInput.addEventListener('input', _onPlanCellEdit);
+            newInput.addEventListener('change', _onPlanCellEdit);
+          }
+        }
+        return;
+      }
+
+      const control = cell.querySelector('input.plan-cell, select.plan-cell');
+      if (!control) return;
+      if (control.tagName === 'SELECT') {
+        control.disabled = isBlocked;
+        control.setAttribute('tabindex', isBlocked ? '-1' : '');
+        control.style.cssText = isBlocked ? blockedSelectStyle : normalSelectStyle;
+      } else {
+        control.disabled = isBlocked;
+        control.setAttribute('tabindex', isBlocked ? '-1' : '');
+        if (isBlocked) control.setAttribute('readonly', 'readonly');
+        else control.removeAttribute('readonly');
+        control.style.cssText = isBlocked ? blockedInputStyle : normalInputStyle;
+      }
+      // Hide the "preview from Table" button while the row is blocked — it
+      // performs a lookup that has no meaning for a non-working row.
+      const qBtn = cell.querySelector('button.plan-result-query');
+      if (qBtn) qBtn.style.display = isBlocked ? 'none' : '';
+    });
+    // Row background + blocked marker
+    tr.setAttribute('data-blocked', isBlocked ? '1' : '0');
+    tr.style.background = isBlocked ? '#f0f0f0;' : '';
   }
 
   function _onPlanCellEdit(e){
@@ -5583,7 +5708,6 @@ function _applyPlanCellStyle(el, col, val){
   function setPlanStatus(text){
     const el = document.getElementById('planStatus');
     if (el) el.textContent = text || '';
-    try { console.log('[plan] status:', text || ''); } catch (_) {}
   }
 
   // Toggle Save button visual based on planDirty. Gray = nothing to save,
@@ -5659,7 +5783,7 @@ function _applyPlanCellStyle(el, col, val){
     // When blocked, renders as a plain grey div (no input/button).
     function resultCell(rowIdx, result, blocked){
       if (blocked) {
-        return '<div style="box-sizing:border-box;padding:5px 7px;background:#e8eaec;color:#9aa0a6;font-size:11px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + escAttr(result || '') + '">' + escHtml(result || '—') + '</div>';
+        return '<div class="plan-result-text" style="box-sizing:border-box;padding:5px 7px;background:#e8eaec;color:#9aa0a6;font-size:11px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + escAttr(result || '') + '">' + escHtml(result || '—') + '</div>';
       }
       var inputStyle = 'flex:1 1 0;box-sizing:border-box;padding:4px 6px;border:1px solid #cfd7df;border-radius:4px;background:#fff;color:#24292f;font-size:11px;outline:none;';
       var btnStyle  = 'flex:0 0 auto;padding:3px 6px;border:1px solid #1f6feb;border-radius:4px;background:#1f6feb;color:#fff;font-size:11px;cursor:pointer;line-height:1.4;white-space:nowrap;';
@@ -5884,8 +6008,16 @@ function _applyPlanCellStyle(el, col, val){
 
   // ----- Plan button handlers -----
 
+  // Warn before leaving the page with unsaved plan edits. Switching tabs
+  // inside the app already prompts; this covers reload / close / navigation.
+  window.addEventListener('beforeunload', function(e){
+    if (!planDirty) return;
+    e.preventDefault();
+    e.returnValue = '';
+    return '';
+  });
+
   document.getElementById('planSaveBtn').addEventListener('click', async function(){
-    try { console.log('[plan] save click', { serverConfigured: serverConfigured(), date: planCurrentDate }); } catch (_) {}
     if (!serverConfigured()) { setPlanStatus('Server not configured'); return; }
     if (!planCurrentDate) { setPlanStatus('Pick a date first'); return; }
     setPlanStatus('Saving…');
@@ -5905,16 +6037,21 @@ function _applyPlanCellStyle(el, col, val){
           setPlanStatus('Save failed: cannot read current state to safely merge');
           return;
         }
-        const byIdx = {};
+        // Merge by `account` (stable identity) so a roster change never
+        // reassigns one person's plan data to another person.
+        const byAccount = {};
         (current || []).forEach(function(r){
-          if (typeof r.rowIdx === 'number' && r.rowIdx >= 0 && r.rowIdx < roster.length) {
-            byIdx[r.rowIdx] = r;
-          }
+          const acct = String(r.account == null ? '' : r.account).trim();
+          if (acct && !byAccount[acct]) byAccount[acct] = r;
         });
         // Local edits win for visible rows; untouched rows keep server values.
-        planRows.forEach(function(local, i){ byIdx[i] = local; });
+        planRows.forEach(function(local){
+          const acct = String(local.account == null ? '' : local.account).trim();
+          if (acct) byAccount[acct] = local;
+        });
         rowsToSend = roster.map(function(r, i){
-          const src = byIdx[i];
+          const acct = String(r.account == null ? '' : r.account).trim();
+          const src = acct ? byAccount[acct] : null;
           if (src) return src;
           return {
             account: r.account, subcon: r.subcon, teamType: r.teamType,
@@ -5930,6 +6067,9 @@ function _applyPlanCellStyle(el, col, val){
       const payload = {
         type: 'planSave',
         date: planCurrentDate,
+        // Surge-only: accounts removed from the roster. The server deletes
+        // their rows for this date instead of keeping them forever.
+        pruneAccounts: mySubcont ? [] : (planRosterDelta.removed || []).map(String),
         rows: rowsToSend.map(function(r, i){
           return Object.assign({ rowIdx: i }, r);
         })
@@ -5945,25 +6085,33 @@ function _applyPlanCellStyle(el, col, val){
       setPlanStatus('Saved');
 
       // Feature 3: detect roster field edits and persist them for future dates.
-      // Compare planRows against the base roster (PLAN_ROSTER + removed/added, but
-      // WITHOUT planRosterEdits) so we detect changes from their original values.
+      // Compare planRows against the base roster (PLAN_ROSTER + added, minus
+      // removed, but WITHOUT planRosterEdits) so we detect changes from their
+      // original values.
+      //
+      // The base lookup is by ACCOUNT, not by index: effectiveRoster() filters
+      // removed entries first, so roster index i does not correspond to
+      // PLAN_ROSTER[i] once anyone has been removed.
       const ROSTER_FIELDS = ['account', 'subcon', 'teamType', 'resourceRemark'];
       const removedSet = new Set((planRosterDelta.removed || []).map(String));
-      const addedMap = {};
-      (planRosterDelta.added || []).forEach(function(r){ addedMap[r.account] = r; });
+      // Base roster = PLAN_ROSTER (minus removed) + added, keyed by account.
+      const baseByAccount = {};
+      PLAN_ROSTER.forEach(function(r){
+        if (removedSet.has(r.account)) return;
+        baseByAccount[String(r.account || '').trim()] = r;
+      });
+      (planRosterDelta.added || []).forEach(function(r){
+        const acct = String(r.account || '').trim();
+        if (!acct) return;
+        baseByAccount[acct] = r;
+      });
       const edits = [];
       for (let i = 0; i < planRows.length; i++) {
         const local = planRows[i];
         if (!local) continue;
-        // Find the base roster entry for this slot.
-        let base;
-        if (i < PLAN_ROSTER.length) {
-          const r = PLAN_ROSTER[i];
-          base = removedSet.has(r.account) ? null : r;
-        } else {
-          const addedList = planRosterDelta.added || [];
-          base = addedList[i - PLAN_ROSTER.length] || null;
-        }
+        const localAcct = String(local.account == null ? '' : local.account).trim();
+        if (!localAcct) continue;
+        const base = baseByAccount[localAcct];
         if (!base) continue;
         // Check if any of the 4 roster fields differ.
         let changed = false;
@@ -5981,11 +6129,23 @@ function _applyPlanCellStyle(el, col, val){
         }
       }
       if (edits.length > 0) {
-        // Merge into local planRosterEdits and POST to server.
+        // Merge into local planRosterEdits and POST to server. Awaited so a
+        // failure is surfaced instead of silently reverting on next load.
+        const prevEdits = {};
+        edits.forEach(function(e){ prevEdits[e.account] = planRosterEdits[e.account]; });
         edits.forEach(function(e){ planRosterEdits[e.account] = e; });
-        postPlanRosterEdits(edits).then(function(ok){
-          console.log('[planRosterEdits] saved', edits.length, 'accounts:', ok ? 'ok' : 'failed');
-        });
+        const editsOk = await postPlanRosterEdits(edits);
+        if (!editsOk) {
+          // Revert the local map so the UI matches the server, and keep the
+          // dirty flag so the user can retry.
+          edits.forEach(function(e){
+            if (prevEdits[e.account] === undefined) delete planRosterEdits[e.account];
+            else planRosterEdits[e.account] = prevEdits[e.account];
+          });
+          planDirty = true;
+          _applySaveButtonState();
+          setPlanStatus('Saved (roster changes failed to sync — press Save to retry)');
+        }
       }
     } catch (e) {
       console.warn('[plan] save failed', e);
@@ -5994,7 +6154,6 @@ function _applyPlanCellStyle(el, col, val){
       _hidePlanLoading();
     }
   });
-  try { console.log('[plan] save handler bound'); } catch (_) {}
 
   document.getElementById('planSetActiveBtn').addEventListener('click', async function(){
     // Defensive: the button is also hidden for subcont users.
@@ -6010,15 +6169,18 @@ function _applyPlanCellStyle(el, col, val){
     // Defensive: subcont users can't change the active date (input is disabled).
     if (mySubcont) {
       e.target.value = planCurrentDate || '';
+      planPendingDate = '';
       return;
     }
     const newDate = e.target.value;
-    if (!newDate) return;
+    if (!newDate) { planPendingDate = ''; return; }
     // Per UX request: changing the date does NOT auto-render. The user must
     // click the explicit "Load" button beside the date to apply the new date.
     // We keep the input value (so the user sees what they picked) but leave
     // planRows + the table alone until they confirm.
-    if (newDate === planCurrentDate) return;
+    if (newDate === planCurrentDate) { planPendingDate = ''; return; }
+    // Remember the pending pick so a re-render doesn't discard it.
+    planPendingDate = newDate;
     setPlanStatus('Picked ' + newDate + ' — click Load to fetch');
   });
 
@@ -6027,9 +6189,11 @@ function _applyPlanCellStyle(el, col, val){
     const dateInput = document.getElementById('planDateInput');
     const newDate = dateInput ? dateInput.value : '';
     if (!newDate) { setPlanStatus('Pick a date first'); return; }
-    if (newDate === planCurrentDate) { setPlanStatus('Already showing ' + newDate); return; }
+    if (newDate === planCurrentDate) { planPendingDate = ''; setPlanStatus('Already showing ' + newDate); return; }
     if (planDirty && !confirm('Discard unsaved changes for ' + (planCurrentDate || 'this date') + ' and load ' + newDate + '?')) return;
     planCurrentDate = newDate;
+    planPendingDate = '';
+    if (dateInput) dateInput.value = newDate;
     try { localStorage.setItem('planDate', newDate); } catch(e) {}
     planDirty = false;
     _applySaveButtonState();
@@ -6046,33 +6210,41 @@ function _applyPlanCellStyle(el, col, val){
     if (!prior) { setPlanStatus('No previous data to copy'); return; }
     if (!confirm('Copy plan from ' + prior + ' into ' + planCurrentDate + '? This will overwrite current rows.')) return;
     const priorRows = await fetchPlanData(prior);
-    // priorRows preserves save order — sort by rowIdx if present, else assume in-order
+    // Match prior rows to the current roster by `account` (stable identity),
+    // so a roster change never copies one person's plan onto another person.
     const roster = effectiveRoster();
-    const byIdx = {};
+    const byAccount = {};
     (priorRows || []).forEach(function(r){
-      if (typeof r.rowIdx === 'number' && r.rowIdx >= 0 && r.rowIdx < roster.length) {
-        byIdx[r.rowIdx] = r;
-      }
+      const acct = String(r.account == null ? '' : r.account).trim();
+      if (acct && !byAccount[acct]) byAccount[acct] = r;
     });
-    let cursor = 0;
+    let copied = 0;
     for (let i = 0; i < planRows.length; i++) {
-      const src = byIdx[i] || (priorRows || [])[cursor++];
+      const acct = String((planRows[i] && planRows[i].account) || '').trim();
+      const src = acct ? byAccount[acct] : null;
       if (src) {
+        const fb = roster[i] || {};
         planRows[i] = {
-          account:           src.account           != null ? String(src.account)           : (roster[i] ? roster[i].account : ''),
-          subcon:            src.subcon            != null ? String(src.subcon)            : (roster[i] ? roster[i].subcon  : ''),
-          teamType:          src.teamType          != null ? String(src.teamType)          : (roster[i] ? roster[i].teamType: ''),
-          resourceRemark:    src.resourceRemark    != null ? String(src.resourceRemark)    : (roster[i] ? roster[i].resourceRemark : ''),
+          account:           src.account           != null ? String(src.account)           : (planRows[i].account || fb.account || ''),
+          subcon:            src.subcon            != null ? String(src.subcon)            : (planRows[i].subcon  || fb.subcon  || ''),
+          teamType:          src.teamType          != null ? String(src.teamType)          : (planRows[i].teamType|| fb.teamType|| ''),
+          resourceRemark:    src.resourceRemark    != null ? String(src.resourceRemark)    : (planRows[i].resourceRemark || fb.resourceRemark || ''),
           duId:              src.duId              != null ? String(src.duId)              : '',
           siteName:          src.siteName          != null ? String(src.siteName)          : '',
           activityRemark:    src.activityRemark    != null ? String(src.activityRemark)    : '',
-          dailyPlanActivity: src.dailyPlanActivity != null ? String(src.dailyPlanActivity) : ''
+          dailyPlanActivity: src.dailyPlanActivity != null ? String(src.dailyPlanActivity) : '',
+          result:            src.result            != null ? String(src.result)            : ''
         };
+        copied++;
       }
+    }
+    if (copied === 0) {
+      setPlanStatus('No matching rows to copy from ' + prior);
+      return;
     }
     planDirty = true;
     _applySaveButtonState();
-    setPlanStatus('Copied from ' + prior + ' (unsaved)');
+    setPlanStatus('Copied ' + copied + ' row(s) from ' + prior + ' (unsaved)');
     // Re-render so the inputs reflect the new planRows.
     const container = document.getElementById('dashPlan');
     if (container) {
@@ -6081,6 +6253,10 @@ function _applyPlanCellStyle(el, col, val){
       _wirePlanTable(container);
       _wirePlanSortHeaders(container);
       _wirePlanResultRefresh(container);
+      // Recalculate planWrap top so the header stays visible on narrow viewports.
+      const pb = document.getElementById('dashPlanBar');
+      const pw = document.getElementById('planWrap');
+      if (pb && pw) pw.style.top = pb.offsetHeight + 'px';
     }
   });
 
@@ -6123,10 +6299,15 @@ function _applyPlanCellStyle(el, col, val){
 
     var filled = 0;
     var noMatch = 0;
-    var debugInfo = [];
+    var skipped = 0;
     for (var i = 0; i < planRows.length; i++) {
       var row = planRows[i];
       if (!row) continue;
+
+      // Skip rows that are blocked (non-working activity). Their duId/siteName
+      // cells are disabled in the UI — writing to them would persist data the
+      // user can never see or correct.
+      if (PLAN_BLOCKED_ACTIVITY[String(row.activityRemark || '')]) { skipped++; continue; }
 
       // Skip rows that already have a DU ID
       if (row.duId && row.duId.trim()) continue;
@@ -6158,15 +6339,20 @@ function _applyPlanCellStyle(el, col, val){
       var unmatched = [];
       for (var i = 0; i < planRows.length; i++) {
         var r = planRows[i];
-        if (r && !(r.duId && r.duId.trim()) && r.account) unmatched.push(r.account);
+        if (r && !(r.duId && r.duId.trim()) && r.account && !PLAN_BLOCKED_ACTIVITY[String(r.activityRemark || '')]) unmatched.push(r.account);
       }
       setPlanStatus('No matches — ' + noMatch + ' rows with no clock-in. Check: ' + unmatched.slice(0, 3).join(', '));
     } else {
-      setPlanStatus('Filled ' + filled + ' row(s)' + (noMatch > 0 ? ' (' + noMatch + ' no match)' : ''));
+      var skipNote = skipped > 0 ? ' (' + skipped + ' blocked row(s) skipped)' : '';
+      setPlanStatus('Filled ' + filled + ' row(s)' + (noMatch > 0 ? ' (' + noMatch + ' no match)' : '') + skipNote);
     }
 
-    planDirty = true;
-    _applySaveButtonState();
+    // Only mark dirty if we actually wrote something — otherwise the Save
+    // button lights up green with nothing to save.
+    if (filled > 0) {
+      planDirty = true;
+      _applySaveButtonState();
+    }
 
     // Re-render so the inputs reflect the new values.
     var container = document.getElementById('dashPlan');
@@ -6213,7 +6399,7 @@ function _applyPlanCellStyle(el, col, val){
     if (ov) ov.classList.remove('show');
   }
 
-  function submitPlanAddMember(){
+  async function submitPlanAddMember(){
     if (mySubcont) return;
     const acc = String((document.getElementById('planAddAccount') || {}).value || '').trim();
     const sub = String((document.getElementById('planAddSubcon')  || {}).value || '').trim();
@@ -6233,17 +6419,29 @@ function _applyPlanCellStyle(el, col, val){
     planRosterDelta.removed = (planRosterDelta.removed || []).filter(function(a){ return a !== acc; });
 
     savePlanRosterDeltaLocal();
-    // Fire-and-forget server save (the local value is the source of truth for v1).
-    postPlanRosterSave(planRosterDelta);
     closePlanAddMemberModal();
     renderPlanView();
+    // Await the server save so a failure is surfaced rather than silently
+    // reverting the roster on the next page load.
+    const ok = await postPlanRosterSave(planRosterDelta);
+    if (!ok) setPlanStatus('Member added locally — server sync FAILED (will revert on reload)');
   }
 
   document.getElementById('planAddMemberBtn').addEventListener('click', openPlanAddMemberModal);
   document.getElementById('planAddCancel').addEventListener('click', closePlanAddMemberModal);
-  document.getElementById('planAddSubmit').addEventListener('click', submitPlanAddMember);
+  document.getElementById('planAddSubmit').addEventListener('click', function(){
+    submitPlanAddMember().catch(function(err){
+      console.warn('[plan] add member failed', err);
+      setPlanStatus('Add failed: ' + (err && err.message ? err.message : String(err)));
+    });
+  });
   document.getElementById('planAddAccount').addEventListener('keydown', function(e){
-    if (e.key === 'Enter') submitPlanAddMember();
+    if (e.key === 'Enter') {
+      submitPlanAddMember().catch(function(err){
+        console.warn('[plan] add member failed', err);
+        setPlanStatus('Add failed: ' + (err && err.message ? err.message : String(err)));
+      });
+    }
     else if (e.key === 'Escape') closePlanAddMemberModal();
   });
   // Click-outside to close
@@ -6252,7 +6450,7 @@ function _applyPlanCellStyle(el, col, val){
   });
 
   // ----- Delete roster member (surge-only, delegated via _wirePlanTable) -----
-  function handlePlanDeleteRow(account){
+  async function handlePlanDeleteRow(account){
     if (mySubcont) return;
     if (!account) return;
     if (!confirm('Delete member "' + account + '" from the roster?\n\n' +
@@ -6264,8 +6462,11 @@ function _applyPlanCellStyle(el, col, val){
     planRosterDelta.added   = (planRosterDelta.added   || []).filter(function(r){ return r.account !== account; });
 
     savePlanRosterDeltaLocal();
-    postPlanRosterSave(planRosterDelta);
     renderPlanView();
+    // Await the server save so a failure is surfaced rather than silently
+    // restoring the member on the next page load.
+    const ok = await postPlanRosterSave(planRosterDelta);
+    if (!ok) setPlanStatus('Member removed locally — server sync FAILED (will revert on reload)');
   }
 
   async function initDashboard(){
@@ -6450,6 +6651,11 @@ function _applyPlanCellStyle(el, col, val){
     stopPlanDatePolling();
     stopDashRefresh();
     hideHoverBox();
+    // Clear the plan dirty flag — the plan table is re-rendered from the
+    // server on the next open, so there are no unsaved edits left to warn about.
+    planDirty = false;
+    planPendingDate = '';
+    _applySaveButtonState();
     document.body.classList.remove('dashboard-mode');
     document.getElementById('dashboardScreen').style.display = 'none';
     document.getElementById('dashboardScreen').style.position = '';
