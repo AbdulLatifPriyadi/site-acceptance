@@ -4976,16 +4976,6 @@ Remark = ${remark}`;
       throw e;
     }
   }
-        durationMin,
-        geometry: geojson,
-        imageDataUrl
-      };
-    } catch (e) {
-      if (map) map.remove();
-      document.body.removeChild(mapContainer);
-      throw e;
-    }
-  }
 
   function renderPrpoResults() {
     const container = document.getElementById('dashPrpo');

@@ -51,6 +51,9 @@
 <title>Site Acceptance Diagram</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-image@0.1.0/leaflet-image.js"></script>
+<script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script src="https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   :root{
@@ -1016,6 +1019,7 @@ window.fetch = function(url, options) {
         <button class="dash-view-btn" id="viewTableBtn">Table</button>
         <button class="dash-view-btn" id="viewPlanBtn">Plan</button>
         <button class="dash-view-btn" id="viewRingBtn">Ring</button>
+        <button class="dash-view-btn" id="viewPrpoBtn">PRPO</button>
       </div>
       <div class="dash-topbar-right">
         <div class="dash-status" id="dashStatus"></div>
@@ -1059,6 +1063,9 @@ window.fetch = function(url, options) {
           style="padding:5px 9px;border:1px solid #2f6bc4;border-radius:6px;background:#2f6feb;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;">Copy from last date</button>
         <button id="planQueryWorkBtn" title="Fill DU ID &amp; Site Name from current clock-in data"
           style="padding:5px 9px;border:1px solid #4caf7d;border-radius:6px;background:#1a7f4b;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;">Query work</button>
+        <input type="text" id="planShareTargetInput" placeholder="Target"
+          title="Target — copied with the plan message as 'Target = ...'"
+          style="padding:5px 9px; border:1px solid rgba(255,255,255,.2); border-radius:6px; background:#0d1117; color:#e6edf3; font-size:11.5px; outline:none; width:110px;">
         <button id="planSaveBtn"
           style="position:absolute; right:14px; top:50%; transform:translateY(-50%); z-index:2; padding:5px 14px;border:1px solid #4caf7d;border-radius:6px;background:#4caf7d;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;box-shadow:0 1px 4px rgba(0,0,0,.25);">Save</button>
         <span id="planSelInfo" style="font-size:11px; color:#a8d4f0; font-weight:700; display:none;"></span>
@@ -1066,6 +1073,29 @@ window.fetch = function(url, options) {
       </div>
       <div id="dashPlan" style="display:none; position:absolute; inset:0; overflow:auto; background:#fff; padding-top:46px;"></div>
       <div id="dashRing" style="display:none; position:absolute; inset:0; overflow:auto; background:#fff; padding:14px 16px;"></div>
+      <div id="dashPrpoBar" style="display:none; position:absolute; top:0; left:0; right:0; z-index:100; background:#1c2530; border-bottom:1px solid rgba(255,255,255,.1); padding:6px 14px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+        <span style="font-size:13px; font-weight:800; color:#fff;">PRPO Routes</span>
+        <select id="prpoBatchTypeSelect" style="padding:5px 9px; border:1px solid rgba(255,255,255,.2); border-radius:6px; background:#0d1117; color:#e6edf3; font-size:11.5px; outline:none; min-width:140px;">
+          <option value="batchRfi">Batch RFI</option>
+          <option value="batchCsg">Batch CSG</option>
+        </select>
+        <select id="prpoBatchSelect" style="padding:5px 9px; border:1px solid rgba(255,255,255,.2); border-radius:6px; background:#0d1117; color:#e6edf3; font-size:11.5px; outline:none; min-width:180px;">
+          <option value="">Select batch…</option>
+        </select>
+        <select id="prpoOriginSelect" style="padding:5px 9px; border:1px solid rgba(255,255,255,.2); border-radius:6px; background:#0d1117; color:#e6edf3; font-size:11.5px; outline:none; min-width:160px;">
+          <option value="huawei" selected>WH Huawei (-6.316, 107.180)</option>
+          <option value="janjora">WH Janjora (-6.198, 106.628)</option>
+          <option value="ecs">WH ECS (-6.142, 106.914)</option>
+        </select>
+        <button id="prpoGenerateBtn" title="Generate route screenshots for all sites in batch"
+          style="padding:5px 12px;border:1px solid #2f6bc4;border-radius:6px;background:#2f6bc4;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;">Generate Routes</button>
+        <button id="prpoDownloadBtn" title="Download all screenshots as HTML"
+          style="padding:5px 12px;border:1px solid #4caf7d;border-radius:6px;background:#4caf7d;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;display:none;">Download HTML</button>
+        <button id="prpoPdfBtn" title="Export all routes as PDF"
+          style="padding:5px 12px;border:1px solid #e84343;border-radius:6px;background:#e84343;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;display:none;">Export PDF</button>
+        <span id="prpoStatus" style="margin-left:auto; font-size:11px; color:#b7c0c9;"></span>
+      </div>
+      <div id="dashPrpo" style="display:none; position:absolute; inset:0; overflow:auto; background:#fff; padding-top:46px;"></div>
       <div id="planLoadingOverlay" style="display:none; position:absolute; inset:0; background:rgba(0,0,0,.5); z-index:50; align-items:center; justify-content:center;">
         <div style="display:inline-flex; align-items:center; gap:8px; background:#fff; color:#1c2530; padding:10px 18px; border-radius:8px; box-shadow:0 4px 14px rgba(0,0,0,.3); font-size:12px; font-weight:600;">
           <svg viewBox="0 0 24 24" width="16" height="16" style="animation:spin .8s linear infinite;"><circle cx="12" cy="12" r="9" fill="none" stroke="#cfd7df" stroke-width="3"/><path d="M21 12a9 9 0 0 0-9-9" fill="none" stroke="#2f6bc4" stroke-width="3" stroke-linecap="round"/></svg>
@@ -2042,7 +2072,6 @@ Remark = ${remark}`;
   // Plan roster delta (surge-managed additions + removals layered on top of PLAN_ROSTER base).
   // Mirror of the server's `planRoster` script property. Reconciles on dashboard init.
   let planRosterDelta = { added: [], removed: [] };
-  let planRosterDirty = false; // (reserved for future retry queue; not used in v1)
   // Plan roster field edits: maps account name -> { account, subcon, teamType, resourceRemark }.
   // Loaded from server on init; updated deltas POSTed on save. Applied in effectiveRoster().
   let planRosterEdits = {};
@@ -2051,9 +2080,15 @@ Remark = ${remark}`;
   let planSelEnd = null;
   let planIsSelecting = false;
   let _planMouseDown, _planMouseMove, _planSelectStart, _planClick, _planDblClick, _planPaste;
+  // Document-level mouseup handler for finishing a drag-select. Kept at module
+  // scope so it can be removed before re-adding — otherwise every re-render
+  // leaks another permanent listener on `document`.
+  let _planUpHandler = null;
   // Active date broadcast (surge sets it, subcont users follow it via 5s polling)
-  let planActiveDate = '';
   let planDatePollTimer = null;
+  // Date the user picked in the date input but has NOT applied yet (Load button
+  // not pressed). While set, re-renders must not overwrite the input value.
+  let planPendingDate = '';
   const PLAN_DATE_POLL_MS = 5000;
   // Auto-refresh dashboard data every 10 min
   let dashRefreshTimer = null;
@@ -2559,6 +2594,7 @@ Remark = ${remark}`;
     else if(dashView === 'table') renderTableView();
     else if(dashView === 'plan') renderPlanView();
     else if(dashView === 'ring') renderRingView();
+    else if(dashView === 'prpo') renderPrpoView();
     renderStatsBar();
   }
 
@@ -2798,14 +2834,20 @@ Remark = ${remark}`;
         })
       : colFiltered;
 
+    // Auto-filter: Remove sites without subcontractor plan
+    const subcontFiltered = workOnlyFiltered.filter(s => {
+      const sub = String(s.subcontPlan || '').trim().toLowerCase();
+      return sub && sub !== 'unknown';
+    });
+
     // Apply search (supports multi-line paste — one DU ID per line)
-    let filtered = workOnlyFiltered;
+    let filtered = subcontFiltered;
     if (tableSearch.trim()) {
       const lines = tableSearch.trim().split(/\s+/).filter(Boolean);
       if (lines.length === 1) {
         // Single-line search: search across all columns
         const s2 = lines[0].toLowerCase();
-        filtered = workOnlyFiltered.filter(s =>
+        filtered = subcontFiltered.filter(s =>
           (s.duId || '').toLowerCase().includes(s2) ||
           (s.siteName || '').toLowerCase().includes(s2) ||
           (s.subcontPlan || '').toLowerCase().includes(s2) ||
@@ -2820,7 +2862,7 @@ Remark = ${remark}`;
       } else {
         // Multi-line: each token finds rows where it appears in ANY field; all matched rows are combined (OR logic)
         const tokens = lines.map(l => l.toLowerCase());
-        filtered = workOnlyFiltered.filter(s => {
+        filtered = subcontFiltered.filter(s => {
           return tokens.some(t => {
             return (
               (s.duId || '').toLowerCase().includes(t) ||
@@ -4779,6 +4821,463 @@ Remark = ${remark}`;
     }
   }
 
+  // ========== PRPO Tab Functions ==========
+  // Origin coordinates
+  const PRPO_ORIGINS = {
+    huawei: { lat: -6.316122607800728, lng: 107.1798044919228, label: 'WH Huawei' },
+    janjora: { lat: -6.197734426456106, lng: 106.62791741553316, label: 'WH Janjora' },
+    ecs: { lat: -6.142341728331444, lng: 106.91435225729944, label: 'WH ECS' }
+  };
+
+  // PRPO state
+  let prpoGeneratedData = [];
+
+  function populatePrpoBatchSelect() {
+    const batchType = document.getElementById('prpoBatchTypeSelect').value;
+    const batchSelect = document.getElementById('prpoBatchSelect');
+    const sites = getFilteredSites();
+    const batches = [...new Set(sites.map(s => String(s[batchType] || '').trim()).filter(Boolean))].sort();
+    batchSelect.innerHTML = '<option value="">Select batch…</option>' +
+      batches.map(b => '<option value="' + escapeHtml(b) + '">' + escapeHtml(b) + '</option>').join('');
+    prpoGeneratedData = [];
+    document.getElementById('prpoDownloadBtn').style.display = 'none';
+    document.getElementById('prpoStatus').textContent = '';
+  }
+
+  async function generatePrpoRoutes() {
+    const batchType = document.getElementById('prpoBatchTypeSelect').value;
+    const batchValue = document.getElementById('prpoBatchSelect').value;
+    const originKey = document.getElementById('prpoOriginSelect').value;
+    const origin = PRPO_ORIGINS[originKey];
+
+    if (!batchValue) {
+      alert('Please select a batch first');
+      return;
+    }
+
+    const sites = getFilteredSites().filter(s => String(s[batchType] || '').trim() === batchValue);
+    if (sites.length === 0) {
+      alert('No sites found for this batch');
+      return;
+    }
+
+    // Filter sites that have valid lat/lng
+    const validSites = sites.filter(s => s.lat != null && s.lng != null && !isNaN(s.lat) && !isNaN(s.lng));
+    if (validSites.length === 0) {
+      alert('No sites with valid coordinates in this batch');
+      return;
+    }
+
+    const statusEl = document.getElementById('prpoStatus');
+    const generateBtn = document.getElementById('prpoGenerateBtn');
+    const downloadBtn = document.getElementById('prpoDownloadBtn');
+
+    generateBtn.disabled = true;
+    generateBtn.textContent = 'Generating…';
+    statusEl.textContent = 'Fetching routes…';
+    prpoGeneratedData = [];
+
+    try {
+      for (let i = 0; i < validSites.length; i++) {
+        const site = validSites[i];
+        statusEl.textContent = `Generating route ${i + 1} of ${validSites.length}: ${site.siteName || site.duId}…`;
+
+        const routeData = await fetchRouteAndCapture(origin, site);
+        if (routeData) {
+          prpoGeneratedData.push({
+            site: site,
+            route: routeData,
+            imageDataUrl: routeData.imageDataUrl
+          });
+        }
+
+        // Small delay to avoid hammering OSRM
+        if (i < validSites.length - 1) await new Promise(r => setTimeout(r, 150));
+      }
+
+      renderPrpoResults();
+      downloadBtn.style.display = 'inline-block';
+      document.getElementById('prpoPdfBtn').style.display = 'inline-block';
+      statusEl.textContent = `Done: ${prpoGeneratedData.length} routes generated`;
+    } catch (e) {
+      console.error('[PRPO] Generation failed:', e);
+      statusEl.textContent = 'Error: ' + e.message;
+    } finally {
+      generateBtn.disabled = false;
+      generateBtn.textContent = 'Generate Routes';
+    }
+  }
+
+  async function fetchRouteAndCapture(origin, site) {
+    // Wait for Leaflet to be available
+    let leafletReady = !!window.L;
+    if (!leafletReady) {
+      for (let i = 0; i < 30 && !window.L; i++) {
+        await new Promise(r => setTimeout(r, 500));
+      }
+      leafletReady = !!window.L;
+    }
+    if (!leafletReady) {
+      throw new Error('Leaflet (L) not loaded — check internet connection');
+    }
+
+    const url = `https://router.project-osrm.org/route/v1/driving/${origin.lng},${origin.lat};${site.lng},${site.lat}?geometries=geojson&overview=full&steps=false`;
+
+    const response = await fetch(url);
+    if (!response.ok) throw new Error('OSRM request failed: ' + response.status);
+    const data = await response.json();
+
+    if (!data.routes || data.routes.length === 0) {
+      console.warn('[PRPO] No route found for', site.duId);
+      return null;
+    }
+
+    const route = data.routes[0];
+    const distanceKm = (route.distance / 1000).toFixed(1);
+    const durationMin = Math.round(route.duration / 60);
+
+    // Create map container - VISIBLE during tile loading, positioned off-screen
+    const mapContainer = document.createElement('div');
+    mapContainer.style.width = '500px';
+    mapContainer.style.height = '400px';
+    mapContainer.style.position = 'fixed';
+    mapContainer.style.left = '-9999px';
+    mapContainer.style.top = '-9999px';
+    mapContainer.style.zIndex = '-1';
+    mapContainer.style.opacity = '1';
+    mapContainer.style.pointerEvents = 'none';
+    document.body.appendChild(mapContainer);
+
+    let map;
+    try {
+      // Use default CRS (EPSG3857) - L.geoJSON will project WGS84 GeoJSON automatically
+      map = L.map(mapContainer);
+      const tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors',
+        maxZoom: 19
+      }).addTo(map);
+
+      // Add route polyline - OSRM returns GeoJSON in WGS84 [lng, lat], Leaflet handles projection
+      const geojson = route.geometry;
+      const routeLayer = L.geoJSON(geojson, {
+        style: { color: '#2f6bc4', weight: 4, opacity: 0.8 }
+      }).addTo(map);
+
+      // Add markers
+      L.marker([origin.lat, origin.lng], {
+        icon: L.divIcon({ className: 'prpo-marker', html: '<div style="background:#2f6bc4;color:#fff;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:bold;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.3);">S</div>', iconSize: [28, 28], iconAnchor: [14, 14] })
+      }).bindPopup('Start: ' + origin.label).addTo(map);
+
+      L.marker([site.lat, site.lng], {
+        icon: L.divIcon({ className: 'prpo-marker', html: '<div style="background:#4caf7d;color:#fff;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:bold;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.3);">D</div>', iconSize: [28, 28], iconAnchor: [14, 14] })
+      }).bindPopup('Destination: ' + (site.siteName || site.duId)).addTo(map);
+
+      // Fit bounds to route - do this after layers are added
+      const bounds = routeLayer.getBounds();
+      map.fitBounds(bounds, { padding: [30, 30], maxZoom: 16 });
+
+      // Wait for tiles to fully load - track tiles in current viewport
+      await new Promise(resolve => {
+        let tilesLoaded = 0;
+        let tilesTotal = 0;
+        let resolved = false;
+
+        tileLayer.on('tileloadstart', (e) => { tilesTotal++; });
+        tileLayer.on('tileload', (e) => {
+          tilesLoaded++;
+          if (tilesLoaded >= tilesTotal && tilesTotal > 0 && !resolved) {
+            resolved = true;
+            setTimeout(resolve, 500); // extra render time
+          }
+        });
+        tileLayer.on('tileerror', (e) => {
+          tilesLoaded++;
+          if (tilesLoaded >= tilesTotal && tilesTotal > 0 && !resolved) {
+            resolved = true;
+            setTimeout(resolve, 500);
+          }
+        });
+        // Fallback timeout
+        setTimeout(() => {
+          if (!resolved) {
+            resolved = true;
+            resolve();
+          }
+        }, 8000);
+      });
+
+      // Extra render time
+      await new Promise(r => setTimeout(r, 500));
+
+      // Now hide for capture
+      mapContainer.style.opacity = '0';
+
+      // Capture screenshot using html2canvas
+      let imageDataUrl = '';
+      try {
+        mapContainer.style.opacity = '1';
+        map.invalidateSize();
+
+        await new Promise(r => setTimeout(r, 300));
+
+        if (typeof html2canvas === 'function') {
+          const canvas = await html2canvas(mapContainer, {
+            useCORS: true,
+            logging: false,
+            scale: 1.5,
+            backgroundColor: '#ffffff',
+            allowTaint: true
+          });
+          imageDataUrl = canvas.toDataURL('image/png');
+        } else if (typeof leafletImage === 'function') {
+          imageDataUrl = await new Promise((resolve, reject) => {
+            leafletImage(map, (err, canvas) => {
+              if (err) reject(err);
+              else resolve(canvas.toDataURL('image/png'));
+            });
+          });
+        } else {
+          console.warn('[PRPO] No screenshot library available');
+        }
+
+        mapContainer.style.opacity = '0';
+      } catch (imgErr) {
+        console.warn('[PRPO] Screenshot failed:', imgErr);
+        imageDataUrl = '';
+      }
+
+      map.remove();
+      document.body.removeChild(mapContainer);
+
+      return {
+        distanceKm,
+        durationMin,
+        geometry: geojson,
+        imageDataUrl
+      };
+    } catch (e) {
+      if (map) map.remove();
+      document.body.removeChild(mapContainer);
+      throw e;
+    }
+  }
+
+  function renderPrpoResults() {
+    const container = document.getElementById('dashPrpo');
+    if (prpoGeneratedData.length === 0) {
+      container.innerHTML = '<div style="padding:40px;text-align:center;color:#6b7688;">No routes generated yet. Select a batch and click Generate Routes.</div>';
+      return;
+    }
+
+    const rowsHtml = prpoGeneratedData.map((item, idx) => {
+      const site = item.site;
+      const route = item.route;
+      const img = route.imageDataUrl
+        ? '<img src="' + route.imageDataUrl + '" alt="Route" style="width:100%;max-width:350px;height:auto;border:1px solid #e2e5e8;border-radius:4px;background:#fafbfc;">'
+        : '<div style="width:350px;height:200px;background:#f6f8fa;border:1px dashed #d0d7de;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#9aa0a6;">No image</div>';
+
+      return '<tr style="border-bottom:1px solid #eef1f3;">' +
+        '<td style="padding:8px 12px;vertical-align:top;">' + (idx + 1) + '</td>' +
+        '<td style="padding:8px 12px;vertical-align:top;font-weight:600;">' + escapeHtml(site.siteName || '-') + '</td>' +
+        '<td style="padding:8px 12px;vertical-align:top;font-family:monospace;font-size:11px;">' + escapeHtml(site.duId || '-') + '</td>' +
+        '<td style="padding:8px 12px;vertical-align:top;">' + img + '</td>' +
+        '<td style="padding:8px 12px;vertical-align:middle;text-align:center;">' + route.distanceKm + ' km</td>' +
+        '<td style="padding:8px 12px;vertical-align:middle;text-align:center;">' + route.durationMin + ' min</td>' +
+        '</tr>';
+    }).join('');
+
+    container.innerHTML =
+      '<div style="padding:12px 16px;">' +
+        '<table style="width:100%;border-collapse:collapse;font-size:11.5px;min-width:900px;">' +
+          '<thead style="background:#f6f8fa;position:sticky;top:0;z-index:1;">' +
+            '<tr>' +
+              '<th style="padding:8px 12px;text-align:left;border-bottom:2px solid #d0d7de;width:40px;">#</th>' +
+              '<th style="padding:8px 12px;text-align:left;border-bottom:2px solid #d0d7de;">Site Name</th>' +
+              '<th style="padding:8px 12px;text-align:left;border-bottom:2px solid #d0d7de;">DU ID</th>' +
+              '<th style="padding:8px 12px;text-align:left;border-bottom:2px solid #d0d7de;">Route Screenshot</th>' +
+              '<th style="padding:8px 12px;text-align:center;border-bottom:2px solid #d0d7de;width:100px;">Distance</th>' +
+              '<th style="padding:8px 12px;text-align:center;border-bottom:2px solid #d0d7de;width:100px;">ETA</th>' +
+            '</tr>' +
+          '</thead>' +
+          '<tbody>' + rowsHtml + '</tbody>' +
+        '</table>' +
+      '</div>';
+  }
+
+  function downloadPrpoZip() {
+    if (prpoGeneratedData.length === 0) return;
+
+    const batchType = document.getElementById('prpoBatchTypeSelect').value;
+    const batchValue = document.getElementById('prpoBatchSelect').value;
+    const originKey = document.getElementById('prpoOriginSelect').value;
+    const origin = PRPO_ORIGINS[originKey];
+
+    // Create a simple HTML report that can be saved/printed
+    let html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>PRPO Routes - ' + escapeHtml(batchValue) + '</title>' +
+      '<style>body{font-family:Arial,sans-serif;padding:20px;}table{border-collapse:collapse;width:100%;margin-bottom:30px;}th,td{border:1px solid #ddd;padding:8px;text-align:left;}th{background:#f6f8fa;}img{max-width:100%;height:auto;border:1px solid #ddd;border-radius:4px;}.header{margin-bottom:20px;}@media print{.no-print{display:none;}img{page-break-inside:avoid;}}</style>' +
+      '</head><body>' +
+      '<div class="header no-print" style="margin-bottom:20px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">' +
+        '<h1 style="margin:0;">PRPO Route Report</h1>' +
+        '<span>Batch: <strong>' + escapeHtml(batchValue) + '</strong> (' + (batchType === 'batchRfi' ? 'Batch RFI' : 'Batch CSG') + ')</span>' +
+        '<span>Origin: <strong>' + origin.label + '</strong></span>' +
+        '<span>Generated: ' + new Date().toLocaleString() + '</span>' +
+        '<button onclick="window.print()" style="margin-left:auto;padding:8px 16px;background:#2f6bc4;color:#fff;border:none;border-radius:4px;cursor:pointer;">Print / Save as PDF</button>' +
+      '</div>';
+
+    prpoGeneratedData.forEach((item, idx) => {
+      const site = item.site;
+      const route = item.route;
+      const img = route.imageDataUrl
+        ? '<img src="' + route.imageDataUrl + '" alt="Route ' + (idx + 1) + '" style="max-width:500px;">'
+        : '<div style="width:500px;height:250px;background:#f6f8fa;border:1px dashed #ddd;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#999;">No image</div>';
+
+      html += '<table>' +
+        '<tr><th colspan="2" style="background:#1c2530;color:#fff;padding:10px;">Site ' + (idx + 1) + ': ' + escapeHtml(site.siteName || '-') + ' (' + escapeHtml(site.duId || '-') + ')</th></tr>' +
+        '<tr><td style="width:150px;"><strong>Distance</strong></td><td>' + route.distanceKm + ' km</td></tr>' +
+        '<tr><td><strong>ETA</strong></td><td>' + route.durationMin + ' min</td></tr>' +
+        '<tr><td><strong>DU ID</strong></td><td>' + escapeHtml(site.duId || '-') + '</td></tr>' +
+        '<tr><td><strong>City</strong></td><td>' + escapeHtml(site.city || '-') + '</td></tr>' +
+        '<tr><td><strong>Subcont Plan</strong></td><td>' + escapeHtml(site.subcontPlan || '-') + '</td></tr>' +
+        '<tr><td colspan="2">' + img + '</td></tr>' +
+      '</table>';
+    });
+
+    html += '</body></html>';
+
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'PRPO_Routes_' + batchValue.replace(/[^a-z0-9]/gi, '_') + '_' + new Date().toISOString().slice(0,10) + '.html';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function exportPrpoPdf() {
+    if (prpoGeneratedData.length === 0) return;
+
+    const { jsPDF } = window.jspdf || {};
+    if (!jsPDF) {
+      alert('jsPDF library not loaded. Please check internet connection.');
+      return;
+    }
+
+    const batchType = document.getElementById('prpoBatchTypeSelect').value;
+    const batchValue = document.getElementById('prpoBatchSelect').value;
+    const originKey = document.getElementById('prpoOriginSelect').value;
+    const origin = PRPO_ORIGINS[originKey];
+
+    const doc = new jsPDF('p', 'mm', 'a4');
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 15;
+    const contentWidth = pageWidth - 2 * margin;
+    let y = margin;
+
+    // Title
+    doc.setFontSize(18);
+    doc.setFont(undefined, 'bold');
+    doc.text('PRPO Route Report', margin, y);
+    y += 10;
+
+    // Meta info
+    doc.setFontSize(10);
+    doc.setFont(undefined, 'normal');
+    doc.text('Batch: ' + batchValue + ' (' + (batchType === 'batchRfi' ? 'Batch RFI' : 'Batch CSG') + ')', margin, y);
+    y += 5;
+    doc.text('Origin: ' + origin.label, margin, y);
+    y += 5;
+    doc.text('Generated: ' + new Date().toLocaleString(), margin, y);
+    y += 5;
+    doc.text('Total Sites: ' + prpoGeneratedData.length, margin, y);
+    y += 10;
+
+    prpoGeneratedData.forEach((item, idx) => {
+      const site = item.site;
+      const route = item.route;
+
+      // Check if we need a new page (estimate space needed: ~80mm per site)
+      if (y > pageHeight - 80) {
+        doc.addPage();
+        y = margin;
+      }
+
+      // Site header
+      doc.setFontSize(12);
+      doc.setFont(undefined, 'bold');
+      doc.setFillColor(28, 37, 48);
+      doc.setTextColor(255, 255, 255);
+      doc.rect(margin, y - 4, contentWidth, 10, 'F');
+      doc.text('Site ' + (idx + 1) + ': ' + (site.siteName || '-') + ' (' + (site.duId || '-') + ')', margin + 2, y + 3);
+      y += 12;
+      doc.setTextColor(0, 0, 0);
+
+      // Info table
+      doc.setFontSize(9);
+      doc.setFont(undefined, 'normal');
+      const info = [
+        ['Distance', route.distanceKm + ' km'],
+        ['ETA', route.durationMin + ' min'],
+        ['DU ID', site.duId || '-'],
+        ['City', site.city || '-'],
+        ['Subcont Plan', site.subcontPlan || '-']
+      ];
+
+      info.forEach(([label, value]) => {
+        doc.setFont(undefined, 'bold');
+        doc.text(label, margin, y);
+        doc.setFont(undefined, 'normal');
+        doc.text(value, margin + 40, y);
+        y += 5;
+      });
+      y += 3;
+
+      // Route image
+      if (route.imageDataUrl) {
+        try {
+          const imgProps = doc.getImageProperties(route.imageDataUrl);
+          const imgWidth = contentWidth;
+          const imgHeight = (imgProps.height * imgWidth) / imgProps.width;
+          const maxImgHeight = 80;
+
+          if (y + Math.min(imgHeight, maxImgHeight) > pageHeight - margin) {
+            doc.addPage();
+            y = margin;
+          }
+
+          doc.addImage(route.imageDataUrl, 'PNG', margin, y, imgWidth, Math.min(imgHeight, maxImgHeight));
+          y += Math.min(imgHeight, maxImgHeight) + 10;
+        } catch (e) {
+          console.warn('[PRPO PDF] Failed to add image for site ' + (idx + 1), e);
+          doc.setFontSize(8);
+          doc.setTextColor(150, 0, 0);
+          doc.text('[Image could not be embedded]', margin, y);
+          doc.setTextColor(0, 0, 0);
+          y += 10;
+        }
+      } else {
+        doc.setFontSize(8);
+        doc.setTextColor(150, 0, 0);
+        doc.text('[No route image available]', margin, y);
+        doc.setTextColor(0, 0, 0);
+        y += 10;
+      }
+    });
+
+    // Save
+    const filename = 'PRPO_Routes_' + batchValue.replace(/[^a-z0-9]/gi, '_') + '_' + new Date().toISOString().slice(0,10) + '.pdf';
+    doc.save(filename);
+  }
+
+  function renderPrpoView() {
+    const container = document.getElementById('dashPrpo');
+    // Populate batch select on first render
+    populatePrpoBatchSelect();
+    container.innerHTML = '<div style="padding:40px;text-align:center;color:#6b7688;">Select a batch and origin, then click Generate Routes.</div>';
+  }
+
   function getSVGPoint(svg, e) {
     var rect = svg.getBoundingClientRect();
     // Use rect dimensions directly (sketch SVG uses width="100%" which
@@ -4845,6 +5344,7 @@ Remark = ${remark}`;
     document.getElementById('viewTableBtn').classList.toggle('active', view === 'table');
     document.getElementById('viewPlanBtn').classList.toggle('active', view === 'plan');
     document.getElementById('viewRingBtn').classList.toggle('active', view === 'ring');
+    document.getElementById('viewPrpoBtn').classList.toggle('active', view === 'prpo');
     document.getElementById('dashMap').style.display = view === 'map' ? '' : 'none';
     document.getElementById('dashLegend').style.display = (view === 'map') ? '' : 'none';
     document.getElementById('dashStatsBar').style.display = view === 'plan' ? 'none' : '';
@@ -4854,7 +5354,9 @@ Remark = ${remark}`;
     document.getElementById('dashPlan').style.display = view === 'plan' ? 'block' : 'none';
     document.getElementById('dashPlanBar').style.display = view === 'plan' ? 'flex' : 'none';
     document.getElementById('dashRing').style.display = view === 'ring' ? 'block' : 'none';
-    document.getElementById('dashFilterPanel').style.display = (view === 'table' || view === 'plan') ? 'none' : '';
+    document.getElementById('dashPrpo').style.display = view === 'prpo' ? 'block' : 'none';
+    document.getElementById('dashPrpoBar').style.display = view === 'prpo' ? 'flex' : 'none';
+    document.getElementById('dashFilterPanel').style.display = (view === 'table' || view === 'plan' || view === 'prpo') ? 'none' : '';
     // Leaving plan view: stop polling so the active-date fetcher doesn't run in the background.
     if (wasPlan && view !== 'plan') stopPlanDatePolling();
     if (view === 'table') {
@@ -4883,6 +5385,7 @@ Remark = ${remark}`;
             if (dashView !== 'plan') return; // user navigated away mid-fetch
             if (planDirty && !confirm('Surge changed the active date to ' + active + '. Discard unsaved changes and switch?')) return;
             planCurrentDate = active;
+            planPendingDate = '';
             planDirty = false;
             _applySaveButtonState();
             setPlanStatus('');
@@ -4896,7 +5399,8 @@ Remark = ${remark}`;
       }
       // Disable the date input for non-surge users (visible, read-only)
       const di = document.getElementById('planDateInput');
-      if (di && di.value !== planCurrentDate) di.value = planCurrentDate;
+      // Don't clobber an un-applied date pick.
+      if (di && !planPendingDate && di.value !== planCurrentDate) di.value = planCurrentDate;
       // Disable the date input for non-surge users (visible, read-only)
       if (di) di.disabled = !!mySubcont;
       // Surge-only: show the + Add member button
@@ -4911,6 +5415,8 @@ Remark = ${remark}`;
       else stopPlanDatePolling();
     } else if (view === 'ring') {
       renderRingView();
+    } else if (view === 'prpo') {
+      renderPrpoView();
     } else if (view === 'map') {
       // map view — trigger a refresh so drawDashboardMap runs
       try { refreshDashboardView(); } catch(e) { console.warn('[setDashView map]', e); }
@@ -4987,19 +5493,45 @@ Remark = ${remark}`;
     });
   }
 
-  // Map a fetched row to its roster slot. Prefers explicit `rowIdx`,
-  // falls back to roster-position-in-order.
+  // Map a fetched row to its roster slot.
+  //
+  // Matching is by `account` (a stable, unique identity) rather than by
+  // `rowIdx` (a positional index). Positional matching breaks whenever the
+  // roster changes: removing a member shifts every later index, which would
+  // silently reassign one person's plan data to another person.
+  //
+  // Legacy rows (written before account-keyed saves) may have no account at
+  // all. The positional fallback is used ONLY when those legacy rows form a
+  // complete, exactly-aligned set — otherwise a partially-populated roster
+  // would hand one person's row to a different person.
   function _assignSavedRows(roster, saved){
-    // Build by rowIdx
-    const byIdx = {};
-    saved.forEach(function(r){
-      if (typeof r.rowIdx === 'number' && r.rowIdx >= 0 && r.rowIdx < roster.length) {
-        byIdx[r.rowIdx] = r;
-      }
+    const savedList = Array.isArray(saved) ? saved : [];
+    // Build by account
+    const byAccount = {};
+    savedList.forEach(function(r){
+      const acct = String(r.account == null ? '' : r.account).trim();
+      if (acct && !byAccount[acct]) byAccount[acct] = r;
     });
-    let cursor = 0;
+    // Build by rowIdx — legacy fallback ONLY.
+    // Safe to use only when the legacy rows (those without an account) are a
+    // complete, exactly-aligned positional set for the current roster.
+    const legacyRows = savedList.filter(function(r){
+      return !String(r.account == null ? '' : r.account).trim();
+    });
+    let byIdx = null;
+    if (legacyRows.length > 0 && legacyRows.length === roster.length) {
+      const candidate = {};
+      let aligned = true;
+      legacyRows.forEach(function(r){
+        if (typeof r.rowIdx !== 'number' || r.rowIdx < 0 || r.rowIdx >= roster.length) { aligned = false; return; }
+        if (candidate[r.rowIdx]) { aligned = false; return; }
+        candidate[r.rowIdx] = r;
+      });
+      if (aligned) byIdx = candidate;
+    }
     return roster.map(function(r, i){
-      const src = byIdx[i] || saved[cursor++];
+      const acct = String(r.account == null ? '' : r.account).trim();
+      const src = (acct && byAccount[acct]) ? byAccount[acct] : (byIdx ? byIdx[i] : null);
       if (!src) {
         return {
           account: r.account, subcon: r.subcon, teamType: r.teamType,
@@ -5027,7 +5559,6 @@ Remark = ${remark}`;
       const res = await fetchWithTimeout(SCRIPT_URL + '?type=plan&date=' + encodeURIComponent(date), 10000);
       if (!res.ok) return [];
       const json = await res.json();
-      try { console.log('[plan] fetchPlanData', date, 'rows:', (json || []).length, 'first:', (json && json[0]) || null); } catch (_) {}
       return json;
     } catch (e) {
       console.warn('[plan] fetch failed', e);
@@ -5105,11 +5636,11 @@ Remark = ${remark}`;
   async function postPlanRosterSave(delta) {
     if (!serverConfigured()) return false;
     try {
-      const res = await fetch(SCRIPT_URL, {
+      const res = await fetchWithTimeout(SCRIPT_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ type: 'planRosterSave', added: delta.added, removed: delta.removed })
-      });
+      }, 15000);
       if (!res.ok) console.warn('[planRoster] save failed: HTTP ' + res.status);
       return res.ok;
     } catch (e) {
@@ -5132,11 +5663,11 @@ Remark = ${remark}`;
   async function postPlanRosterEdits(edits) {
     if (!serverConfigured()) return false;
     try {
-      const res = await fetch(SCRIPT_URL, {
+      const res = await fetchWithTimeout(SCRIPT_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ type: 'planRosterEdit', edits: edits })
-      });
+      }, 15000);
       if (!res.ok) console.warn('[planRosterEdits] save failed: HTTP ' + res.status);
       return res.ok;
     } catch (e) {
@@ -5189,11 +5720,13 @@ Remark = ${remark}`;
       // Surge changed the date. Auto-switch (with discard-changes guard).
       if (planDirty && !confirm('Surge changed the active date to ' + active + '. Discard unsaved changes and switch?')) return;
       planCurrentDate = active;
+      planPendingDate = '';
       planDirty = false;
       _applySaveButtonState();
       setPlanStatus('');
       const di = document.getElementById('planDateInput');
       if (di) di.value = active;
+      try { localStorage.setItem('planDate', active); } catch(e) {}
       renderPlanView();
     }, PLAN_DATE_POLL_MS);
   }
@@ -5268,11 +5801,18 @@ Remark = ${remark}`;
   async function renderPlanView(){
     const container = document.getElementById('dashPlan');
     if (!container) return;
-    // Sync date from the input
+    // The date input is a *picker* until the user presses "Load". It may hold
+    // a date that was picked but not applied, so we must NOT read it here —
+    // doing so would silently switch the view to an un-applied date on any
+    // re-render (sort, activityRemark change, Query work).
+    // planCurrentDate is the single source of truth for what is displayed.
     const dateInput = document.getElementById('planDateInput');
-    let date = (dateInput && dateInput.value) ? dateInput.value : (planCurrentDate || todayISO());
+    let date = planCurrentDate || todayISO();
     planCurrentDate = date;
-    if (dateInput && dateInput.value !== date) dateInput.value = date;
+    // Only sync the input when the user has no un-applied pick pending —
+    // otherwise a re-render (sort, roster change, background fetch) would
+    // silently discard the date the user selected.
+    if (dateInput && !planPendingDate && dateInput.value !== date) dateInput.value = date;
     // Reflect current dirty state immediately (button may still be showing the
     // stale green from a prior edit when re-entering the tab).
     _applySaveButtonState();
@@ -5322,7 +5862,28 @@ Remark = ${remark}`;
       btn.addEventListener('click', function(e){
         e.preventDefault();
         e.stopPropagation();
-        handlePlanDeleteRow(btn.getAttribute('data-account'));
+        handlePlanDeleteRow(btn.getAttribute('data-account')).catch(function(err){
+          console.warn('[plan] delete row failed', err);
+          setPlanStatus('Delete failed: ' + (err && err.message ? err.message : String(err)));
+        });
+      });
+    });
+
+    // Per-row share buttons. The row index is stored on the button as data-row
+    // (the roster index), so the correct person is shared regardless of the
+    // current sort order or filter.
+    container.querySelectorAll('button.plan-row-share').forEach(function(btn){
+      btn.addEventListener('click', function(e){
+        e.preventDefault();
+        e.stopPropagation();
+        sharePlanForRow(btn.getAttribute('data-row'));
+      });
+    });
+    container.querySelectorAll('button.plan-row-ask').forEach(function(btn){
+      btn.addEventListener('click', function(e){
+        e.preventDefault();
+        e.stopPropagation();
+        askProgressForRow(btn.getAttribute('data-row'));
       });
     });
 
@@ -5503,11 +6064,15 @@ Remark = ${remark}`;
         e.preventDefault();
       });
 
-      // Finalize the drag on mouseup (mirrors Table view pattern)
-      document.addEventListener('mouseup', function _planUpHandler(){
+      // Finalize the drag on mouseup (mirrors Table view pattern).
+      // Remove any previous document-level handler first so repeated renders
+      // don't accumulate listeners.
+      if (_planUpHandler) document.removeEventListener('mouseup', _planUpHandler);
+      _planUpHandler = function(){
         planIsSelecting = false;
         if (planSelStart && planSelEnd) _planJustSelected = true;
-      });
+      };
+      document.addEventListener('mouseup', _planUpHandler);
     }
   }
 
@@ -5624,8 +6189,8 @@ Remark = ${remark}`;
 
 
   // Shared cell-coloring helper. Called by both _onPlanCellEdit (typed input)
-// and _planPaste (clipboard write) so the visual state stays in sync
-// regardless of how the cell value changed.
+  // and _planPaste (clipboard write) so the visual state stays in sync
+  // regardless of how the cell value changed.
 function _applyPlanCellStyle(el, col, val){
     if (col === 'subcon') {
       const bg = dashSubcontColor(val);
@@ -5642,10 +6207,87 @@ function _applyPlanCellStyle(el, col, val){
         el.style.color = '';
         el.style.fontWeight = '';
       }
-      // activityRemark drives blocked state (duId/siteName/dailyPlanActivity/result cells).
-      // Re-render the whole table so blocked styles + disabled attrs update correctly.
-      if (dashView === 'plan') _refreshPlanTableOnly();
+      // activityRemark drives the blocked state of duId/siteName/dailyPlanActivity/result.
+      // Update those cells in place rather than re-rendering the whole table —
+      // a full re-render destroys the selection and steals focus from the
+      // dropdown the user is still interacting with.
+      _applyPlanBlockedState(el, val);
     }
+  }
+
+  // Apply the blocked (greyed + disabled) state to a row's dependent cells
+  // based on its activityRemark value. Mutates the DOM in place.
+  function _applyPlanBlockedState(actCell, actVal){
+    const td = actCell.closest('td');
+    if (!td) return;
+    const tr = td.closest('tr');
+    if (!tr) return;
+    const isBlocked = !!PLAN_BLOCKED_ACTIVITY[String(actVal || '')];
+    // Blocked input/select styling
+    const blockedInputStyle = 'width:100%;box-sizing:border-box;padding:5px 7px;border:1px solid #cfd7df;border-radius:5px;background:#e8eaec;color:#9aa0a6;font-size:11.5px;outline:none;cursor:not-allowed;';
+    const normalInputStyle = 'width:100%; box-sizing:border-box; padding:5px 7px; border:1px solid #cfd7df; border-radius:5px; background:#fff; color:#24292f; font-size:11.5px; outline:none;';
+    const normalSelectStyle = normalInputStyle + ' cursor:pointer;';
+    const blockedSelectStyle = blockedInputStyle + ' cursor:not-allowed;';
+
+    // Dependent columns: duId, siteName, dailyPlanActivity, result
+    const DEP = ['duId', 'siteName', 'dailyPlanActivity', 'result'];
+    DEP.forEach(function(colKey){
+      const cell = tr.querySelector('td[data-col="' + colKey + '"]');
+      if (!cell) return;
+      cell.setAttribute('data-blocked', isBlocked ? '1' : '0');
+      const isResult = (colKey === 'result');
+      // The result cell has two renderings: an editable input (+ preview
+      // button), or — when blocked — a plain grey text div. Decide which one
+      // is wanted explicitly so the swap works in BOTH directions.
+      const hasResultInput = !!cell.querySelector('input.plan-cell');
+      const hasResultDiv   = !!cell.querySelector('div.plan-result-text');
+      const wantsResultDiv = isResult && isBlocked;
+
+      if (isResult && (wantsResultDiv ? !hasResultDiv : hasResultDiv)) {
+        const val = cell.getAttribute('data-val') || '';
+        const rowAttr = cell.getAttribute('data-row') || '';
+        if (wantsResultDiv) {
+          // Blocked: plain grey text, no input, no preview button.
+          cell.innerHTML = '<div class="plan-result-text" style="box-sizing:border-box;padding:5px 7px;background:#e8eaec;color:#9aa0a6;font-size:11px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + escAttr(val) + '">' + escHtml(val || '—') + '</div>';
+        } else {
+          // Unblocked: restore the editable input + preview button.
+          const inputStyle = 'flex:1 1 0;box-sizing:border-box;padding:4px 6px;border:1px solid #cfd7df;border-radius:4px;background:#fff;color:#24292f;font-size:11px;outline:none;';
+          const btnStyle  = 'flex:0 0 auto;padding:3px 6px;border:1px solid #1f6feb;border-radius:4px;background:#1f6feb;color:#fff;font-size:11px;cursor:pointer;line-height:1.4;white-space:nowrap;';
+          cell.innerHTML = '<div class="plan-result-wrap" style="display:flex;align-items:center;gap:4px;width:100%;">' +
+            '<input type="text" class="plan-cell" data-row="' + rowAttr + '" data-col="result" value="' + escAttr(val) + '" style="' + inputStyle + '" placeholder="—" spellcheck="false">' +
+            '<button type="button" class="plan-result-query" data-row="' + rowAttr + '" title="Preview from Table tab" style="' + btnStyle + '">&#8981;</button>' +
+            '</div>';
+          // Re-bind the newly created input.
+          const newInput = cell.querySelector('input.plan-cell');
+          if (newInput) {
+            newInput.addEventListener('input', _onPlanCellEdit);
+            newInput.addEventListener('change', _onPlanCellEdit);
+          }
+        }
+        return;
+      }
+
+      const control = cell.querySelector('input.plan-cell, select.plan-cell');
+      if (!control) return;
+      if (control.tagName === 'SELECT') {
+        control.disabled = isBlocked;
+        control.setAttribute('tabindex', isBlocked ? '-1' : '');
+        control.style.cssText = isBlocked ? blockedSelectStyle : normalSelectStyle;
+      } else {
+        control.disabled = isBlocked;
+        control.setAttribute('tabindex', isBlocked ? '-1' : '');
+        if (isBlocked) control.setAttribute('readonly', 'readonly');
+        else control.removeAttribute('readonly');
+        control.style.cssText = isBlocked ? blockedInputStyle : normalInputStyle;
+      }
+      // Hide the "preview from Table" button while the row is blocked — it
+      // performs a lookup that has no meaning for a non-working row.
+      const qBtn = cell.querySelector('button.plan-result-query');
+      if (qBtn) qBtn.style.display = isBlocked ? 'none' : '';
+    });
+    // Row background + blocked marker
+    tr.setAttribute('data-blocked', isBlocked ? '1' : '0');
+    tr.style.background = isBlocked ? '#f0f0f0;' : '';
   }
 
   function _onPlanCellEdit(e){
@@ -5668,7 +6310,6 @@ function _applyPlanCellStyle(el, col, val){
   function setPlanStatus(text){
     const el = document.getElementById('planStatus');
     if (el) el.textContent = text || '';
-    try { console.log('[plan] status:', text || ''); } catch (_) {}
   }
 
   // Toggle Save button visual based on planDirty. Gray = nothing to save,
@@ -5710,7 +6351,7 @@ function _applyPlanCellStyle(el, col, val){
     const colW = {
       account: 200, subcon: 130, teamType: 110, resourceRemark: 140,
       duId: 150, siteName: 170, activityRemark: 160, dailyPlanActivity: 160,
-      result: 160, del: 32
+      result: 160, del: 32, actions: 128
     };
     const headers = [
       ['account',           'Account'],
@@ -5737,6 +6378,19 @@ function _applyPlanCellStyle(el, col, val){
         '<button type="button" class="plan-del-row" data-account="' + escAttr(account) + '" title="Delete ' + escAttr(account) + ' from roster" style="background:transparent;border:1px solid #cfd7df;border-radius:4px;color:#6b7688;cursor:pointer;font-size:12px;padding:2px 6px;line-height:1;">✕</button>' +
       '</td>';
     }
+    // Per-row action buttons at the far right: copy the whole subcont plan, or
+    // copy a progress question for this person's site. `data-row` is the roster index.
+    function actionsTd(rowIdx, account, duId, subcon){
+      const shareBtnStyle = 'background:#128c7e;border:1px solid #25d366;border-radius:4px;color:#fff;cursor:pointer;font-size:10px;padding:2px 5px;line-height:1.3;white-space:nowrap;';
+      const askBtnStyle   = 'background:#075e54;border:1px solid #25d366;border-radius:4px;color:#fff;cursor:pointer;font-size:10px;padding:2px 5px;line-height:1.3;white-space:nowrap;';
+      const noSite = !duId;
+      return '<td data-row="' + rowIdx + '" data-col="actions" style="padding:6px 6px; text-align:center; white-space:nowrap;">' +
+        '<button type="button" class="plan-row-share" data-row="' + rowIdx + '" title="Copy the plan for every site in ' + escAttr(subcon) + ' to the clipboard"' +
+          ' style="' + shareBtnStyle + (noSite ? ' opacity:.4; cursor:not-allowed;' : '') + '">Share</button> ' +
+        '<button type="button" class="plan-row-ask" data-row="' + rowIdx + '" title="Copy a progress question for ' + escAttr(account) + ' to the clipboard"' +
+          ' style="' + askBtnStyle + (noSite ? ' opacity:.4; cursor:not-allowed;' : '') + '">Ask</button>' +
+      '</td>';
+    }
     // Result cell: free-text <input> where the user types the daily result text.
     // data-col="result" — persisted to the 11th sheet column.
     // A small search-icon button sits on the right — clicking it looks up the
@@ -5744,7 +6398,7 @@ function _applyPlanCellStyle(el, col, val){
     // When blocked, renders as a plain grey div (no input/button).
     function resultCell(rowIdx, result, blocked){
       if (blocked) {
-        return '<div style="box-sizing:border-box;padding:5px 7px;background:#e8eaec;color:#9aa0a6;font-size:11px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + escAttr(result || '') + '">' + escHtml(result || '—') + '</div>';
+        return '<div class="plan-result-text" style="box-sizing:border-box;padding:5px 7px;background:#e8eaec;color:#9aa0a6;font-size:11px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + escAttr(result || '') + '">' + escHtml(result || '—') + '</div>';
       }
       var inputStyle = 'flex:1 1 0;box-sizing:border-box;padding:4px 6px;border:1px solid #cfd7df;border-radius:4px;background:#fff;color:#24292f;font-size:11px;outline:none;';
       var btnStyle  = 'flex:0 0 auto;padding:3px 6px;border:1px solid #1f6feb;border-radius:4px;background:#1f6feb;color:#fff;font-size:11px;cursor:pointer;line-height:1.4;white-space:nowrap;';
@@ -5797,6 +6451,7 @@ function _applyPlanCellStyle(el, col, val){
         return cellTd(p[1], i, p[0], val, isBlocked);
       }).join('');
       if (showDel) html += delTd(i, row.account || '');
+      html += actionsTd(i, row.account || '', row.duId || '', row.subcon || '');
       return html;
     }
 
@@ -5823,6 +6478,9 @@ function _applyPlanCellStyle(el, col, val){
       displayHeaders = displayHeaders.concat([['del', '']]);
       displayColW = displayColW.concat([colW.del]);
     }
+    // Per-row action buttons column, always at the far right.
+    displayHeaders = displayHeaders.concat([['actions', '']]);
+    displayColW = displayColW.concat([colW.actions]);
     const colgroup = displayColW.map(function(w, i){ return '<col style="width:' + w + 'px; min-width:' + w + 'px;">'; }).join('');
 
     // Header row: each non-del column is click-to-sort, shows a caret indicator.
@@ -5836,6 +6494,9 @@ function _applyPlanCellStyle(el, col, val){
         if (key === 'del') {
           return '<th style="padding:8px 8px; text-align:left; font-weight:700; font-size:11.5px; border-bottom:2px solid #d0d7de; width:32px; min-width:32px;"></th>';
         }
+        if (key === 'actions') {
+          return '<th style="padding:8px 8px; text-align:center; font-weight:700; font-size:11.5px; border-bottom:2px solid #d0d7de; width:' + colW.actions + 'px; min-width:' + colW.actions + 'px;">Share</th>';
+        }
         return '<th data-sort-key="' + key + '" style="padding:8px 8px; text-align:left; font-weight:700; font-size:11.5px; border-bottom:2px solid #d0d7de; cursor:pointer; user-select:none;" title="Click to sort by ' + h[1] + '">' + h[1] + _sortIndicator(key) + '</th>';
       }).join('') +
       '</tr>';
@@ -5845,7 +6506,7 @@ function _applyPlanCellStyle(el, col, val){
     // that stole focus from the input, making typing unusable. Only sort remains.
 
     return '<div id="planWrap" tabindex="0" style="overflow:auto;position:absolute;top:0;left:0;right:0;bottom:0;user-select:none;-webkit-user-select:none;background:#fff;">' +
-        '<table id="planData" style="width:100%; table-layout:fixed; border-collapse:collapse; font-size:11.5px; min-width:' + (showDel ? 1472 : 1440) + 'px;">' +
+        '<table id="planData" style="width:100%; table-layout:fixed; border-collapse:collapse; font-size:11.5px; min-width:' + (showDel ? 1600 : 1568) + 'px;">' +
         '<colgroup>' + colgroup + '</colgroup>' +
         '<thead style="position:sticky; top:0; z-index:3; background:#f6f8fa; box-shadow:0 2px 0 #d0d7de;">' + thead + '</thead>' +
         '<tbody>' + rowsHtml + '</tbody>' +
@@ -5969,8 +6630,16 @@ function _applyPlanCellStyle(el, col, val){
 
   // ----- Plan button handlers -----
 
+  // Warn before leaving the page with unsaved plan edits. Switching tabs
+  // inside the app already prompts; this covers reload / close / navigation.
+  window.addEventListener('beforeunload', function(e){
+    if (!planDirty) return;
+    e.preventDefault();
+    e.returnValue = '';
+    return '';
+  });
+
   document.getElementById('planSaveBtn').addEventListener('click', async function(){
-    try { console.log('[plan] save click', { serverConfigured: serverConfigured(), date: planCurrentDate }); } catch (_) {}
     if (!serverConfigured()) { setPlanStatus('Server not configured'); return; }
     if (!planCurrentDate) { setPlanStatus('Pick a date first'); return; }
     setPlanStatus('Saving…');
@@ -5990,16 +6659,21 @@ function _applyPlanCellStyle(el, col, val){
           setPlanStatus('Save failed: cannot read current state to safely merge');
           return;
         }
-        const byIdx = {};
+        // Merge by `account` (stable identity) so a roster change never
+        // reassigns one person's plan data to another person.
+        const byAccount = {};
         (current || []).forEach(function(r){
-          if (typeof r.rowIdx === 'number' && r.rowIdx >= 0 && r.rowIdx < roster.length) {
-            byIdx[r.rowIdx] = r;
-          }
+          const acct = String(r.account == null ? '' : r.account).trim();
+          if (acct && !byAccount[acct]) byAccount[acct] = r;
         });
         // Local edits win for visible rows; untouched rows keep server values.
-        planRows.forEach(function(local, i){ byIdx[i] = local; });
+        planRows.forEach(function(local){
+          const acct = String(local.account == null ? '' : local.account).trim();
+          if (acct) byAccount[acct] = local;
+        });
         rowsToSend = roster.map(function(r, i){
-          const src = byIdx[i];
+          const acct = String(r.account == null ? '' : r.account).trim();
+          const src = acct ? byAccount[acct] : null;
           if (src) return src;
           return {
             account: r.account, subcon: r.subcon, teamType: r.teamType,
@@ -6015,6 +6689,9 @@ function _applyPlanCellStyle(el, col, val){
       const payload = {
         type: 'planSave',
         date: planCurrentDate,
+        // Surge-only: accounts removed from the roster. The server deletes
+        // their rows for this date instead of keeping them forever.
+        pruneAccounts: mySubcont ? [] : (planRosterDelta.removed || []).map(String),
         rows: rowsToSend.map(function(r, i){
           return Object.assign({ rowIdx: i }, r);
         })
@@ -6030,25 +6707,33 @@ function _applyPlanCellStyle(el, col, val){
       setPlanStatus('Saved');
 
       // Feature 3: detect roster field edits and persist them for future dates.
-      // Compare planRows against the base roster (PLAN_ROSTER + removed/added, but
-      // WITHOUT planRosterEdits) so we detect changes from their original values.
+      // Compare planRows against the base roster (PLAN_ROSTER + added, minus
+      // removed, but WITHOUT planRosterEdits) so we detect changes from their
+      // original values.
+      //
+      // The base lookup is by ACCOUNT, not by index: effectiveRoster() filters
+      // removed entries first, so roster index i does not correspond to
+      // PLAN_ROSTER[i] once anyone has been removed.
       const ROSTER_FIELDS = ['account', 'subcon', 'teamType', 'resourceRemark'];
       const removedSet = new Set((planRosterDelta.removed || []).map(String));
-      const addedMap = {};
-      (planRosterDelta.added || []).forEach(function(r){ addedMap[r.account] = r; });
+      // Base roster = PLAN_ROSTER (minus removed) + added, keyed by account.
+      const baseByAccount = {};
+      PLAN_ROSTER.forEach(function(r){
+        if (removedSet.has(r.account)) return;
+        baseByAccount[String(r.account || '').trim()] = r;
+      });
+      (planRosterDelta.added || []).forEach(function(r){
+        const acct = String(r.account || '').trim();
+        if (!acct) return;
+        baseByAccount[acct] = r;
+      });
       const edits = [];
       for (let i = 0; i < planRows.length; i++) {
         const local = planRows[i];
         if (!local) continue;
-        // Find the base roster entry for this slot.
-        let base;
-        if (i < PLAN_ROSTER.length) {
-          const r = PLAN_ROSTER[i];
-          base = removedSet.has(r.account) ? null : r;
-        } else {
-          const addedList = planRosterDelta.added || [];
-          base = addedList[i - PLAN_ROSTER.length] || null;
-        }
+        const localAcct = String(local.account == null ? '' : local.account).trim();
+        if (!localAcct) continue;
+        const base = baseByAccount[localAcct];
         if (!base) continue;
         // Check if any of the 4 roster fields differ.
         let changed = false;
@@ -6066,11 +6751,23 @@ function _applyPlanCellStyle(el, col, val){
         }
       }
       if (edits.length > 0) {
-        // Merge into local planRosterEdits and POST to server.
+        // Merge into local planRosterEdits and POST to server. Awaited so a
+        // failure is surfaced instead of silently reverting on next load.
+        const prevEdits = {};
+        edits.forEach(function(e){ prevEdits[e.account] = planRosterEdits[e.account]; });
         edits.forEach(function(e){ planRosterEdits[e.account] = e; });
-        postPlanRosterEdits(edits).then(function(ok){
-          console.log('[planRosterEdits] saved', edits.length, 'accounts:', ok ? 'ok' : 'failed');
-        });
+        const editsOk = await postPlanRosterEdits(edits);
+        if (!editsOk) {
+          // Revert the local map so the UI matches the server, and keep the
+          // dirty flag so the user can retry.
+          edits.forEach(function(e){
+            if (prevEdits[e.account] === undefined) delete planRosterEdits[e.account];
+            else planRosterEdits[e.account] = prevEdits[e.account];
+          });
+          planDirty = true;
+          _applySaveButtonState();
+          setPlanStatus('Saved (roster changes failed to sync — press Save to retry)');
+        }
       }
     } catch (e) {
       console.warn('[plan] save failed', e);
@@ -6079,7 +6776,6 @@ function _applyPlanCellStyle(el, col, val){
       _hidePlanLoading();
     }
   });
-  try { console.log('[plan] save handler bound'); } catch (_) {}
 
   document.getElementById('planSetActiveBtn').addEventListener('click', async function(){
     // Defensive: the button is also hidden for subcont users.
@@ -6095,15 +6791,18 @@ function _applyPlanCellStyle(el, col, val){
     // Defensive: subcont users can't change the active date (input is disabled).
     if (mySubcont) {
       e.target.value = planCurrentDate || '';
+      planPendingDate = '';
       return;
     }
     const newDate = e.target.value;
-    if (!newDate) return;
+    if (!newDate) { planPendingDate = ''; return; }
     // Per UX request: changing the date does NOT auto-render. The user must
     // click the explicit "Load" button beside the date to apply the new date.
     // We keep the input value (so the user sees what they picked) but leave
     // planRows + the table alone until they confirm.
-    if (newDate === planCurrentDate) return;
+    if (newDate === planCurrentDate) { planPendingDate = ''; return; }
+    // Remember the pending pick so a re-render doesn't discard it.
+    planPendingDate = newDate;
     setPlanStatus('Picked ' + newDate + ' — click Load to fetch');
   });
 
@@ -6112,9 +6811,11 @@ function _applyPlanCellStyle(el, col, val){
     const dateInput = document.getElementById('planDateInput');
     const newDate = dateInput ? dateInput.value : '';
     if (!newDate) { setPlanStatus('Pick a date first'); return; }
-    if (newDate === planCurrentDate) { setPlanStatus('Already showing ' + newDate); return; }
+    if (newDate === planCurrentDate) { planPendingDate = ''; setPlanStatus('Already showing ' + newDate); return; }
     if (planDirty && !confirm('Discard unsaved changes for ' + (planCurrentDate || 'this date') + ' and load ' + newDate + '?')) return;
     planCurrentDate = newDate;
+    planPendingDate = '';
+    if (dateInput) dateInput.value = newDate;
     try { localStorage.setItem('planDate', newDate); } catch(e) {}
     planDirty = false;
     _applySaveButtonState();
@@ -6131,33 +6832,41 @@ function _applyPlanCellStyle(el, col, val){
     if (!prior) { setPlanStatus('No previous data to copy'); return; }
     if (!confirm('Copy plan from ' + prior + ' into ' + planCurrentDate + '? This will overwrite current rows.')) return;
     const priorRows = await fetchPlanData(prior);
-    // priorRows preserves save order — sort by rowIdx if present, else assume in-order
+    // Match prior rows to the current roster by `account` (stable identity),
+    // so a roster change never copies one person's plan onto another person.
     const roster = effectiveRoster();
-    const byIdx = {};
+    const byAccount = {};
     (priorRows || []).forEach(function(r){
-      if (typeof r.rowIdx === 'number' && r.rowIdx >= 0 && r.rowIdx < roster.length) {
-        byIdx[r.rowIdx] = r;
-      }
+      const acct = String(r.account == null ? '' : r.account).trim();
+      if (acct && !byAccount[acct]) byAccount[acct] = r;
     });
-    let cursor = 0;
+    let copied = 0;
     for (let i = 0; i < planRows.length; i++) {
-      const src = byIdx[i] || (priorRows || [])[cursor++];
+      const acct = String((planRows[i] && planRows[i].account) || '').trim();
+      const src = acct ? byAccount[acct] : null;
       if (src) {
+        const fb = roster[i] || {};
         planRows[i] = {
-          account:           src.account           != null ? String(src.account)           : (roster[i] ? roster[i].account : ''),
-          subcon:            src.subcon            != null ? String(src.subcon)            : (roster[i] ? roster[i].subcon  : ''),
-          teamType:          src.teamType          != null ? String(src.teamType)          : (roster[i] ? roster[i].teamType: ''),
-          resourceRemark:    src.resourceRemark    != null ? String(src.resourceRemark)    : (roster[i] ? roster[i].resourceRemark : ''),
+          account:           src.account           != null ? String(src.account)           : (planRows[i].account || fb.account || ''),
+          subcon:            src.subcon            != null ? String(src.subcon)            : (planRows[i].subcon  || fb.subcon  || ''),
+          teamType:          src.teamType          != null ? String(src.teamType)          : (planRows[i].teamType|| fb.teamType|| ''),
+          resourceRemark:    src.resourceRemark    != null ? String(src.resourceRemark)    : (planRows[i].resourceRemark || fb.resourceRemark || ''),
           duId:              src.duId              != null ? String(src.duId)              : '',
           siteName:          src.siteName          != null ? String(src.siteName)          : '',
           activityRemark:    src.activityRemark    != null ? String(src.activityRemark)    : '',
-          dailyPlanActivity: src.dailyPlanActivity != null ? String(src.dailyPlanActivity) : ''
+          dailyPlanActivity: src.dailyPlanActivity != null ? String(src.dailyPlanActivity) : '',
+          result:            src.result            != null ? String(src.result)            : ''
         };
+        copied++;
       }
+    }
+    if (copied === 0) {
+      setPlanStatus('No matching rows to copy from ' + prior);
+      return;
     }
     planDirty = true;
     _applySaveButtonState();
-    setPlanStatus('Copied from ' + prior + ' (unsaved)');
+    setPlanStatus('Copied ' + copied + ' row(s) from ' + prior + ' (unsaved)');
     // Re-render so the inputs reflect the new planRows.
     const container = document.getElementById('dashPlan');
     if (container) {
@@ -6166,8 +6875,181 @@ function _applyPlanCellStyle(el, col, val){
       _wirePlanTable(container);
       _wirePlanSortHeaders(container);
       _wirePlanResultRefresh(container);
+      // Recalculate planWrap top so the header stays visible on narrow viewports.
+      const pb = document.getElementById('dashPlanBar');
+      const pw = document.getElementById('planWrap');
+      if (pb && pw) pw.style.top = pb.offsetHeight + 'px';
     }
   });
+
+  // ----- Share: WhatsApp messages built from the visible Plan rows -----
+
+  // Resolve a single plan row by its roster index (the value carried on the
+  // per-row buttons as data-row). Returns null when the index is invalid or
+  // the row has no DU ID assigned.
+  function _planRowByIndex(rowIdx){
+    const i = Number(rowIdx);
+    if (!isFinite(i) || i < 0) return null;
+    const row = planRows[i];
+    if (!row) return null;
+    const duId = String(row.duId == null ? '' : row.duId).trim();
+    if (!duId) return null; // no site assigned — nothing to share
+    // The subcont lives on the ROSTER entry, not on planRows (the sheet column
+    // is often empty for rows written before subcont was tracked). Fall back
+    // through planRows and then the roster so the subcont is never undefined.
+    let subcon = String(row.subcon == null ? '' : row.subcon).trim();
+    if (!subcon) {
+      const roster = effectiveRoster();
+      const r = roster[i];
+      if (r) subcon = String(r.subcon == null ? '' : r.subcon).trim();
+    }
+    return {
+      account:  String(row.account == null ? '' : row.account).trim(),
+      duId:     duId,
+      siteName: String(row.siteName == null ? '' : row.siteName).trim(),
+      subcon:   subcon
+    };
+  }
+
+  // Per-row "Share" button: shares the whole plan for that row's SUBCONT —
+  // every person in that subcont, not just the person on this row.
+  function sharePlanForRow(rowIdx){
+    if (!planCurrentDate) { setPlanStatus('Pick a date first'); return; }
+    const row = _planRowByIndex(rowIdx);
+    if (!row) {
+      setPlanStatus('No site assigned for this row yet (DU ID is empty)');
+      return;
+    }
+    const rows = _planShareRows(row.subcon);
+    if (rows.length === 0) {
+      setPlanStatus('No sites assigned for ' + row.subcon + ' yet');
+      return;
+    }
+    const targetEl = document.getElementById('planShareTargetInput');
+    const target = targetEl ? targetEl.value.trim() : '';
+    const text = _buildSharePlanText(rows, target);
+    _copyPlanShareText(text, 'Copied plan for ' + row.subcon + ' (' + rows.length + ' site(s)) — paste it into WhatsApp');
+  }
+
+  // Per-row "Ask" button: asks for progress on THIS person's site only.
+  function askProgressForRow(rowIdx){
+    if (!planCurrentDate) { setPlanStatus('Pick a date first'); return; }
+    const row = _planRowByIndex(rowIdx);
+    if (!row) {
+      setPlanStatus('No site assigned for this row yet (DU ID is empty)');
+      return;
+    }
+    const text = _buildAskProgressText(row);
+    _copyPlanShareText(text, 'Copied progress question for ' + row.duId + ' — paste it into WhatsApp');
+  }
+
+  // Collect the rows the share message is built from: every row belonging to
+  // `subconFilter` that has a DU ID assigned (i.e. an actual site).
+  // When no subcont is given, the viewer's own subcont is used.
+  function _planShareRows(subconFilter){
+    const roster = effectiveRoster();
+    const want = subconFilter
+      ? String(subconFilter).toLowerCase()
+      : (mySubcont ? String(mySubcont).toLowerCase() : '');
+    const out = [];
+    for (let i = 0; i < roster.length; i++) {
+      const r = roster[i];
+      if (!r) continue;
+      const row = planRows[i];
+      if (!row) continue;
+      // The subcont is authoritative on the roster entry; planRows may have an
+      // empty sheet column for rows written before subcont was tracked.
+      const rowSubcon = String(r.subcon || '').trim() || String(row.subcon || '').trim();
+      if (want && rowSubcon.toLowerCase() !== want) continue;
+      const duId = String(row.duId == null ? '' : row.duId).trim();
+      if (!duId) continue; // no site assigned — not part of the shared plan
+      out.push({
+        account:   String(row.account == null ? '' : row.account).trim(),
+        duId:      duId,
+        siteName:  String(row.siteName == null ? '' : row.siteName).trim(),
+        subcon:    rowSubcon
+      });
+    }
+    return out;
+  }
+
+  // Format the plan date as DD/MM/YYYY for the message header.
+  function _planShareDate(){
+    const d = String(planCurrentDate || todayISO());
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d);
+    if (!m) return d;
+    return m[3] + '/' + m[2] + '/' + m[1];
+  }
+
+  // Build the "Share Plan" message.
+  //
+  //   *Plan 24/11/2026*
+  //   intisel_tl_deni_32053528 = 32BDG_0610_NEW<TAB>PTI_SITE2163_WJ_CICALENGKA
+  //   ...
+  //   Target = <target>
+  //
+  //   Terima kasih
+  function _buildSharePlanText(rows, target){
+    const lines = [];
+    lines.push('*Plan ' + _planShareDate() + '*');
+    rows.forEach(function(r){
+      lines.push(r.account + ' = ' + r.duId + '\t' + r.siteName);
+    });
+    lines.push('Target = ' + (target || ''));
+    lines.push('');
+    lines.push('Terimakasih');
+    return lines.join('\n');
+  }
+
+  // Build the "Asking Progress" message — one question for ONE site.
+  //
+  //   32BDG_0610_NEW<TAB>PTI_SITE2163_WJ_CICALENGKA
+  //   untuk site ini progressnya gimana intisel_tl_deni_32053528
+  function _buildAskProgressText(row){
+    if (!row) return '';
+    return row.duId + '\t' + row.siteName + '\n' +
+           'untuk site ini progressnya gimana ' + row.account;
+  }
+
+  // Copy the message to the clipboard so the user can paste it into WhatsApp
+  // (or any other chat) themselves. No link is opened.
+  function _copyPlanShareText(text, okMessage){
+    const done = function(ok){
+      if (ok) setPlanStatus(okMessage || 'Copied to clipboard');
+      else setPlanStatus('Copy failed — select the text manually');
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function(){
+        done(true);
+      }).catch(function(){
+        done(_copyPlanShareFallback(text));
+      });
+    } else {
+      done(_copyPlanShareFallback(text));
+    }
+  }
+
+  // Fallback for browsers/contexts where the async clipboard API is blocked
+  // (e.g. http:// pages, older browsers). Returns true on success.
+  function _copyPlanShareFallback(text){
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.top = '0';
+      ta.style.left = '-9999px';
+      document.body.appendChild(ta);
+      ta.select();
+      ta.setSelectionRange(0, ta.value.length);
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return ok;
+    } catch (e) {
+      console.warn('[planShare] copy failed', e);
+      return false;
+    }
+  }
 
   // ----- Query work: fill DU ID & Site Name from clock-in data -----
   document.getElementById('planQueryWorkBtn').addEventListener('click', function(){
@@ -6208,10 +7090,15 @@ function _applyPlanCellStyle(el, col, val){
 
     var filled = 0;
     var noMatch = 0;
-    var debugInfo = [];
+    var skipped = 0;
     for (var i = 0; i < planRows.length; i++) {
       var row = planRows[i];
       if (!row) continue;
+
+      // Skip rows that are blocked (non-working activity). Their duId/siteName
+      // cells are disabled in the UI — writing to them would persist data the
+      // user can never see or correct.
+      if (PLAN_BLOCKED_ACTIVITY[String(row.activityRemark || '')]) { skipped++; continue; }
 
       // Skip rows that already have a DU ID
       if (row.duId && row.duId.trim()) continue;
@@ -6243,15 +7130,20 @@ function _applyPlanCellStyle(el, col, val){
       var unmatched = [];
       for (var i = 0; i < planRows.length; i++) {
         var r = planRows[i];
-        if (r && !(r.duId && r.duId.trim()) && r.account) unmatched.push(r.account);
+        if (r && !(r.duId && r.duId.trim()) && r.account && !PLAN_BLOCKED_ACTIVITY[String(r.activityRemark || '')]) unmatched.push(r.account);
       }
       setPlanStatus('No matches — ' + noMatch + ' rows with no clock-in. Check: ' + unmatched.slice(0, 3).join(', '));
     } else {
-      setPlanStatus('Filled ' + filled + ' row(s)' + (noMatch > 0 ? ' (' + noMatch + ' no match)' : ''));
+      var skipNote = skipped > 0 ? ' (' + skipped + ' blocked row(s) skipped)' : '';
+      setPlanStatus('Filled ' + filled + ' row(s)' + (noMatch > 0 ? ' (' + noMatch + ' no match)' : '') + skipNote);
     }
 
-    planDirty = true;
-    _applySaveButtonState();
+    // Only mark dirty if we actually wrote something — otherwise the Save
+    // button lights up green with nothing to save.
+    if (filled > 0) {
+      planDirty = true;
+      _applySaveButtonState();
+    }
 
     // Re-render so the inputs reflect the new values.
     var container = document.getElementById('dashPlan');
@@ -6298,7 +7190,7 @@ function _applyPlanCellStyle(el, col, val){
     if (ov) ov.classList.remove('show');
   }
 
-  function submitPlanAddMember(){
+  async function submitPlanAddMember(){
     if (mySubcont) return;
     const acc = String((document.getElementById('planAddAccount') || {}).value || '').trim();
     const sub = String((document.getElementById('planAddSubcon')  || {}).value || '').trim();
@@ -6318,17 +7210,29 @@ function _applyPlanCellStyle(el, col, val){
     planRosterDelta.removed = (planRosterDelta.removed || []).filter(function(a){ return a !== acc; });
 
     savePlanRosterDeltaLocal();
-    // Fire-and-forget server save (the local value is the source of truth for v1).
-    postPlanRosterSave(planRosterDelta);
     closePlanAddMemberModal();
     renderPlanView();
+    // Await the server save so a failure is surfaced rather than silently
+    // reverting the roster on the next page load.
+    const ok = await postPlanRosterSave(planRosterDelta);
+    if (!ok) setPlanStatus('Member added locally — server sync FAILED (will revert on reload)');
   }
 
   document.getElementById('planAddMemberBtn').addEventListener('click', openPlanAddMemberModal);
   document.getElementById('planAddCancel').addEventListener('click', closePlanAddMemberModal);
-  document.getElementById('planAddSubmit').addEventListener('click', submitPlanAddMember);
+  document.getElementById('planAddSubmit').addEventListener('click', function(){
+    submitPlanAddMember().catch(function(err){
+      console.warn('[plan] add member failed', err);
+      setPlanStatus('Add failed: ' + (err && err.message ? err.message : String(err)));
+    });
+  });
   document.getElementById('planAddAccount').addEventListener('keydown', function(e){
-    if (e.key === 'Enter') submitPlanAddMember();
+    if (e.key === 'Enter') {
+      submitPlanAddMember().catch(function(err){
+        console.warn('[plan] add member failed', err);
+        setPlanStatus('Add failed: ' + (err && err.message ? err.message : String(err)));
+      });
+    }
     else if (e.key === 'Escape') closePlanAddMemberModal();
   });
   // Click-outside to close
@@ -6337,7 +7241,7 @@ function _applyPlanCellStyle(el, col, val){
   });
 
   // ----- Delete roster member (surge-only, delegated via _wirePlanTable) -----
-  function handlePlanDeleteRow(account){
+  async function handlePlanDeleteRow(account){
     if (mySubcont) return;
     if (!account) return;
     if (!confirm('Delete member "' + account + '" from the roster?\n\n' +
@@ -6349,8 +7253,11 @@ function _applyPlanCellStyle(el, col, val){
     planRosterDelta.added   = (planRosterDelta.added   || []).filter(function(r){ return r.account !== account; });
 
     savePlanRosterDeltaLocal();
-    postPlanRosterSave(planRosterDelta);
     renderPlanView();
+    // Await the server save so a failure is surfaced rather than silently
+    // restoring the member on the next page load.
+    const ok = await postPlanRosterSave(planRosterDelta);
+    if (!ok) setPlanStatus('Member removed locally — server sync FAILED (will revert on reload)');
   }
 
   async function initDashboard(){
@@ -6452,6 +7359,7 @@ function _applyPlanCellStyle(el, col, val){
   document.getElementById('viewTableBtn').addEventListener('click', ()=> setDashView('table'));
   document.getElementById('viewPlanBtn').addEventListener('click', ()=> setDashView('plan'));
   document.getElementById('viewRingBtn').addEventListener('click', ()=> setDashView('ring'));
+  document.getElementById('viewPrpoBtn').addEventListener('click', ()=> setDashView('prpo'));
 
   document.getElementById('dashRefreshBtn').addEventListener('click', _doRefresh);
 
@@ -6481,6 +7389,12 @@ function _applyPlanCellStyle(el, col, val){
     renderChecklistFilters();
     refreshDashboardView();
   });
+  // PRPO event listeners
+  document.getElementById('prpoBatchTypeSelect').addEventListener('change', ()=> populatePrpoBatchSelect());
+  document.getElementById('prpoBatchSelect').addEventListener('change', ()=> { prpoGeneratedData = []; document.getElementById('prpoDownloadBtn').style.display = 'none'; document.getElementById('prpoPdfBtn').style.display = 'none'; });
+  document.getElementById('prpoGenerateBtn').addEventListener('click', generatePrpoRoutes);
+  document.getElementById('prpoDownloadBtn').addEventListener('click', downloadPrpoZip);
+  document.getElementById('prpoPdfBtn').addEventListener('click', exportPrpoPdf);
   // Delegated click for Work Only toggle (created dynamically in renderStatsBar)
   document.getElementById('dashStatsBar').addEventListener('click', (e)=>{
     if(e.target.closest('#dashWorkOnlyToggle')){
@@ -6535,6 +7449,11 @@ function _applyPlanCellStyle(el, col, val){
     stopPlanDatePolling();
     stopDashRefresh();
     hideHoverBox();
+    // Clear the plan dirty flag — the plan table is re-rendered from the
+    // server on the next open, so there are no unsaved edits left to warn about.
+    planDirty = false;
+    planPendingDate = '';
+    _applySaveButtonState();
     document.body.classList.remove('dashboard-mode');
     document.getElementById('dashboardScreen').style.display = 'none';
     document.getElementById('dashboardScreen').style.position = '';
@@ -6881,6 +7800,5 @@ function _applyPlanCellStyle(el, col, val){
     function _l(id,mn,mx){setTimeout(function(){_s(id);_l(id,mn,mx);},mn+Math.random()*(mx-mn));}
     _l('wB1',4000,9000);_l('wB2',6000,12000);_l('wB3',5000,10000);
   })();
-})
-();
+})();
 </script>

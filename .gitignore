@@ -1,0 +1,13 @@
+# Local backup artifacts (timestamped copies written by scripts\backup.bat)
+backups/*
+!backups/README.txt
+
+# Editor / OS noise
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Node / tooling
+node_modules/
+*.log

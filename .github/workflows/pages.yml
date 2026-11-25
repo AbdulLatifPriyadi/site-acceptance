@@ -29,3 +29,16 @@ jobs:
         uses: actions/upload-pages-artifact@v3
         with:
           path: '.'
+          # Publish only the production app + its assets.
+          # Excludes: index-test.html (mock-data build), scripts/, backups/,
+          #           .github/, SiteAcceptanceTracker.gs (Apps Script backend).
+          exclude:
+            - 'index-test.html'
+            - 'backups'
+            - 'scripts'
+            - '.github'
+            - 'SiteAcceptanceTracker.gs'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
