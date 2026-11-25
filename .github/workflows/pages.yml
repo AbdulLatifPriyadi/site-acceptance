@@ -25,19 +25,22 @@ jobs:
         uses: actions/checkout@v4
       - name: Setup Pages
         uses: actions/configure-pages@v4
+
+      - name: Stage publishable files
+        run: |
+          mkdir -p _site
+          # Only the production app and its runtime assets go live.
+          # Excluded on purpose:
+          #   index-test.html          - mock-data build (DO NOT DEPLOY)
+          #   SiteAcceptanceTracker.gs - Apps Script backend source
+          #   backups/ scripts/ .github/
+          cp index.html _site/
+          cp bg-login.png walk.gif worker.webp _site/ 2>/dev/null || true
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: '.'
-          # Publish only the production app + its assets.
-          # Excludes: index-test.html (mock-data build), scripts/, backups/,
-          #           .github/, SiteAcceptanceTracker.gs (Apps Script backend).
-          exclude:
-            - 'index-test.html'
-            - 'backups'
-            - 'scripts'
-            - '.github'
-            - 'SiteAcceptanceTracker.gs'
+          path: '_site'
 
       - name: Deploy to GitHub Pages
         id: deployment
