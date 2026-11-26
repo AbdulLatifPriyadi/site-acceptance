@@ -410,6 +410,11 @@ function doPost(e) {
       return handlePlanRosterEdit(body);
     }
 
+    // Handle removal of a stored plan roster field edit
+    if (body.type === 'planRosterEditDelete') {
+      return handlePlanRosterEditDelete(body);
+    }
+
     // Handle forward/submission
     return handleForward(body);
 
@@ -971,6 +976,13 @@ function handlePlanRosterEdit(body) {
       var e = edits[i];
       var acct = String(e.account || '').trim();
       if (!acct) continue;
+      // Remove any existing key that differs only by case, otherwise the same
+      // person can end up with two entries ("Warsidi_poca_tl" vs "warsidi_poca_tl")
+      // and an edit to one of them will not apply to the other.
+      var lc = acct.toLowerCase();
+      Object.keys(props).forEach(function(k){
+        if (k !== acct && String(k).trim().toLowerCase() === lc) delete props[k];
+      });
       props[acct] = {
         account:        acct,
         subcon:         String(e.subcon || '').trim(),
@@ -981,6 +993,47 @@ function handlePlanRosterEdit(body) {
     PropertiesService.getScriptProperties().setProperty('planRosterEdits', JSON.stringify(props));
     return ContentService
       .createTextOutput(JSON.stringify({ status: 'ok', count: edits.length }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// Remove one stored plan roster field edit (matched case-insensitively).
+// Used to clear stale/duplicate entries so a rename does not leave the old
+// account behind.
+function handlePlanRosterEditDelete(body) {
+  var acct = String(body.account || '').trim();
+  if (!acct) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ status: 'error', message: 'account is required' }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(30000);
+  } catch (lockErr) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ status: 'error', message: 'Server busy, please retry' }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  try {
+    var props = {};
+    try {
+      var existing = PropertiesService.getScriptProperties().getProperty('planRosterEdits') || '{}';
+      props = JSON.parse(existing);
+    } catch (e) {
+      props = {};
+    }
+    if (!props || typeof props !== 'object') props = {};
+    var lc = acct.toLowerCase();
+    var removed = 0;
+    Object.keys(props).forEach(function(k){
+      if (String(k).trim().toLowerCase() === lc) { delete props[k]; removed++; }
+    });
+    PropertiesService.getScriptProperties().setProperty('planRosterEdits', JSON.stringify(props));
+    return ContentService
+      .createTextOutput(JSON.stringify({ status: 'ok', removed: removed }))
       .setMimeType(ContentService.MimeType.JSON);
   } finally {
     lock.releaseLock();

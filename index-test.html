@@ -2230,12 +2230,27 @@ Remark = ${remark}`;
     return dashColorMode === 'gap' ? dashGapColor(site.gap) : dashSubcontColor(site);
   }
 
-  // Helper: fetch with timeout
-  async function fetchWithTimeout(url, timeoutMs = 10000){
+  // Helper: fetch with timeout.
+  // Supports both call styles:
+  //   fetchWithTimeout(url, 10000)                       -> GET, 10s timeout
+  //   fetchWithTimeout(url, { method:'POST', ... }, 15000) -> request options, 15s timeout
+  // The options object MUST be forwarded to fetch(), otherwise POST bodies
+  // and headers are dropped and the request goes out as a bodyless GET.
+  async function fetchWithTimeout(url, timeoutMsOrOptions = 10000, maybeTimeoutMs){
+    let timeoutMs, options;
+    if (timeoutMsOrOptions && typeof timeoutMsOrOptions === 'object') {
+      options = Object.assign({}, timeoutMsOrOptions);
+      timeoutMs = typeof maybeTimeoutMs === 'number' ? maybeTimeoutMs : 10000;
+    } else {
+      options = {};
+      timeoutMs = typeof timeoutMsOrOptions === 'number' ? timeoutMsOrOptions : 10000;
+    }
     const controller = new AbortController();
     const id = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const res = await fetch(url, { signal: controller.signal });
+      // Merge the caller's signal last so our timeout still applies unless
+      // the caller passed no signal at all.
+      const res = await fetch(url, Object.assign({}, options, { signal: controller.signal }));
       clearTimeout(id);
       return res;
     } catch(e) {
@@ -5115,7 +5130,16 @@ Remark = ${remark}`;
       // Now hide for capture
       mapContainer.style.opacity = '0';
 
-      // Capture screenshot using html2canvas
+      // Capture the map.
+      //
+      // NOTE: html2canvas cannot be used here. Leaflet renders vector overlays
+      // (the route polyline) into an SVG pane that is positioned with a
+      // `transform: translate3d(...)` plus a `viewBox`. html2canvas does not
+      // apply the viewBox offset, so the polyline ends up drawn ~250px away
+      // from the tiles and from the S/D markers — the route appears shifted.
+      // We therefore draw the image ourselves on a canvas: tiles at their
+      // real DOM positions, and the polyline/markers using Leaflet's own
+      // projection, so everything lines up exactly.
       let imageDataUrl = '';
       try {
         mapContainer.style.opacity = '1';
@@ -5127,25 +5151,10 @@ Remark = ${remark}`;
 
         await new Promise(r => setTimeout(r, 300));
 
-        if (typeof html2canvas === 'function') {
-          const canvas = await html2canvas(mapContainer, {
-            useCORS: true,
-            logging: false,
-            scale: 1.5,
-            backgroundColor: '#ffffff',
-            allowTaint: true
-          });
-          imageDataUrl = canvas.toDataURL('image/png');
-        } else if (typeof leafletImage === 'function') {
-          imageDataUrl = await new Promise((resolve, reject) => {
-            leafletImage(map, (err, canvas) => {
-              if (err) reject(err);
-              else resolve(canvas.toDataURL('image/png'));
-            });
-          });
-        } else {
-          console.warn('[PRPO] No screenshot library available');
-        }
+        imageDataUrl = await renderMapToDataUrl(map, mapContainer, geojson, [
+          { lat: origin.lat, lng: origin.lng, bg: '#2f6bc4', label: 'S' },
+          { lat: site.lat,   lng: site.lng,   bg: '#4caf7d', label: 'D' }
+        ]);
 
         mapContainer.style.opacity = '0';
       } catch (imgErr) {
@@ -5167,6 +5176,94 @@ Remark = ${remark}`;
       document.body.removeChild(mapContainer);
       throw e;
     }
+  }
+
+  // Render a Leaflet map to a PNG data URL by drawing onto a canvas.
+  //
+  // Tiles are drawn at their real on-screen positions (read from the DOM), and
+  // the route polyline plus markers are drawn with Leaflet's own projection
+  // (latLngToContainerPoint). This keeps every layer in the same coordinate
+  // space, which html2canvas does not manage for Leaflet's SVG overlay pane.
+  //
+  // Tiles are fetched with CORS so the canvas is not tainted and toDataURL()
+  // keeps working.
+  async function renderMapToDataUrl(map, mapContainer, geojson, markers, scale = 1.5) {
+    const rect = mapContainer.getBoundingClientRect();
+    const W = Math.round(rect.width) || mapContainer.offsetWidth || 500;
+    const H = Math.round(rect.height) || mapContainer.offsetHeight || 400;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(W * scale);
+    canvas.height = Math.round(H * scale);
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.scale(scale, scale);
+
+    // 1) Tiles — use their real DOM position so they match the map view.
+    const tileEls = Array.prototype.slice.call(mapContainer.querySelectorAll('img.leaflet-tile'));
+    const tileImages = [];
+    await Promise.all(tileEls.map(async function(t){
+      const src = t.getAttribute('src');
+      if (!src) return;
+      try {
+        // Re-fetch with CORS so the canvas stays exportable.
+        const res = await fetch(src, { mode: 'cors', credentials: 'omit' });
+        if (!res.ok) return;
+        const blob = await res.blob();
+        const bmp = await createImageBitmap(blob);
+        const tr = t.getBoundingClientRect();
+        tileImages.push({
+          img: bmp,
+          x: tr.left - rect.left,
+          y: tr.top - rect.top,
+          w: parseFloat(t.style.width) || bmp.width,
+          h: parseFloat(t.style.height) || bmp.height
+        });
+      } catch (e) { /* tile unavailable — leave a gap */ }
+    }));
+    tileImages.sort(function(a,b){ return (a.y - b.y) || (a.x - b.x); });
+    tileImages.forEach(function(t){ ctx.drawImage(t.img, t.x, t.y, t.w, t.h); });
+
+    // 2) Route polyline — drawn with the exact same projection as the map.
+    if (geojson && geojson.coordinates && geojson.coordinates.length > 1) {
+      ctx.save();
+      ctx.strokeStyle = '#2f6bc4';
+      ctx.lineWidth = 4;
+      ctx.globalAlpha = 0.8;
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      for (let i = 0; i < geojson.coordinates.length; i++) {
+        const c = geojson.coordinates[i];
+        const p = map.latLngToContainerPoint([c[1], c[0]]);
+        if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // 3) Markers — same projection, so they land exactly on the route ends.
+    (markers || []).forEach(function(m){
+      const p = map.latLngToContainerPoint([m.lat, m.lng]);
+      const r = 14;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+      ctx.fillStyle = m.bg;
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#ffffff';
+      ctx.stroke();
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 11px Arial, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(m.label, p.x, p.y);
+      ctx.restore();
+    });
+
+    return canvas.toDataURL('image/png');
   }
 
   function renderPrpoResults() {
@@ -5795,18 +5892,48 @@ Remark = ${remark}`;
     }
   }
 
+  // Remove a stored roster field edit (matched case-insensitively by the
+  // server). Used when a roster member is renamed or deleted so the old
+  // account override does not linger.
+  async function postPlanRosterEditDelete(account) {
+    if (!serverConfigured()) return false;
+    try {
+      const res = await fetchWithTimeout(SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ type: 'planRosterEditDelete', account: account })
+      }, 15000);
+      if (!res.ok) console.warn('[planRosterEdits] delete failed: HTTP ' + res.status);
+      return res.ok;
+    } catch (e) {
+      console.warn('[planRosterEdits] delete failed', e);
+      return false;
+    }
+  }
+
   // Effective roster = PLAN_ROSTER base minus `removed`, plus `added`, plus `planRosterEdits`.
   // planRosterEdits overrides base values for matching accounts (4 fields: account, subcon,
   // teamType, resourceRemark). Edits take priority over added/removed deltas.
   // Pure / synchronous / cheap — called on every render.
   function effectiveRoster() {
-    const removed = new Set((planRosterDelta.removed || []).map(String));
-    const base    = PLAN_ROSTER.filter(function(r){ return !removed.has(r.account); });
-    const added   = (planRosterDelta.added || []).filter(function(r){ return !removed.has(r.account); });
+    const removed = new Set((planRosterDelta.removed || []).map(s => String(s).trim().toLowerCase()));
+    const isRemoved = (acct) => removed.has(String(acct == null ? '' : acct).trim().toLowerCase());
+    const base    = PLAN_ROSTER.filter(function(r){ return !isRemoved(r.account); });
+    const added   = (planRosterDelta.added || []).filter(function(r){ return !isRemoved(r.account); });
     // Apply planRosterEdits on top: edit overrides base + added fields for matching accounts.
+    // Lookup is case-insensitive — the same person can be stored with a
+    // different capitalisation ("Warsidi_poca_tl" vs "warsidi_poca_tl").
     const edits   = planRosterEdits || {};
-    const merged  = base.map(function(r){
-      const edit = edits[String(r.account || '').trim()];
+    const editFor = (acct) => {
+      const key = String(acct == null ? '' : acct).trim();
+      if (!key) return undefined;
+      if (edits[key]) return edits[key];
+      const lc = key.toLowerCase();
+      const match = Object.keys(edits).find(function(k){ return String(k).trim().toLowerCase() === lc; });
+      return match ? edits[match] : undefined;
+    };
+    const mergeEdit = function(r){
+      const edit = editFor(r.account);
       if (!edit) return r;
       return {
         account:        edit.account        !== undefined ? edit.account        : r.account,
@@ -5814,18 +5941,9 @@ Remark = ${remark}`;
         teamType:       edit.teamType       !== undefined ? edit.teamType       : r.teamType,
         resourceRemark: edit.resourceRemark !== undefined ? edit.resourceRemark : r.resourceRemark
       };
-    });
-    // For added rows, also apply edits if the account matches.
-    const addedMerged = added.map(function(r){
-      const edit = edits[String(r.account || '').trim()];
-      if (!edit) return r;
-      return {
-        account:        edit.account        !== undefined ? edit.account        : r.account,
-        subcon:         edit.subcon         !== undefined ? edit.subcon         : r.subcon,
-        teamType:       edit.teamType       !== undefined ? edit.teamType       : r.teamType,
-        resourceRemark: edit.resourceRemark !== undefined ? edit.resourceRemark : r.resourceRemark
-      };
-    });
+    };
+    const merged = base.map(mergeEdit);
+    const addedMerged = added.map(mergeEdit);
     return merged.concat(addedMerged);
   }
   // -------------------------------------------------------------------
@@ -6833,27 +6951,54 @@ function _applyPlanCellStyle(el, col, val){
       // The base lookup is by ACCOUNT, not by index: effectiveRoster() filters
       // removed entries first, so roster index i does not correspond to
       // PLAN_ROSTER[i] once anyone has been removed.
+      //
+      // Matching is case-insensitive, and a RENAMED account is matched by
+      // position as a fallback — otherwise renaming a member would never be
+      // detected as an edit (the new name is not a key in the base map).
       const ROSTER_FIELDS = ['account', 'subcon', 'teamType', 'resourceRemark'];
-      const removedSet = new Set((planRosterDelta.removed || []).map(String));
+      const removedSet = new Set((planRosterDelta.removed || []).map(s => String(s).trim().toLowerCase()));
+      const isRemovedAcct = (acct) => removedSet.has(String(acct == null ? '' : acct).trim().toLowerCase());
       // Base roster = PLAN_ROSTER (minus removed) + added, keyed by account.
       const baseByAccount = {};
+      const baseByAccountLc = {};
+      const baseList = [];
       PLAN_ROSTER.forEach(function(r){
-        if (removedSet.has(r.account)) return;
+        if (isRemovedAcct(r.account)) return;
         baseByAccount[String(r.account || '').trim()] = r;
+        baseByAccountLc[String(r.account || '').trim().toLowerCase()] = r;
+        baseList.push(r);
       });
       (planRosterDelta.added || []).forEach(function(r){
         const acct = String(r.account || '').trim();
         if (!acct) return;
         baseByAccount[acct] = r;
+        baseByAccountLc[acct.toLowerCase()] = r;
+        baseList.push(r);
       });
+      // Accounts consumed by an exact/lc match, so the positional fallback
+      // does not match the same base row twice.
+      const usedBase = new Set();
       const edits = [];
       for (let i = 0; i < planRows.length; i++) {
         const local = planRows[i];
         if (!local) continue;
         const localAcct = String(local.account == null ? '' : local.account).trim();
         if (!localAcct) continue;
-        const base = baseByAccount[localAcct];
+        let base = baseByAccount[localAcct] || baseByAccountLc[localAcct.toLowerCase()];
+        let matchedByPosition = false;
+        if (!base) {
+          // Renamed account: the row at the same position in the base roster.
+          // Only valid while the base and edited lists still line up.
+          if (i < baseList.length) {
+            const candidate = baseList[i];
+            if (!isRemovedAcct(candidate.account) && !usedBase.has(candidate)) {
+              base = candidate;
+              matchedByPosition = true;
+            }
+          }
+        }
         if (!base) continue;
+        usedBase.add(base);
         // Check if any of the 4 roster fields differ.
         let changed = false;
         for (let fi = 0; fi < ROSTER_FIELDS.length; fi++) {
@@ -6861,12 +7006,18 @@ function _applyPlanCellStyle(el, col, val){
           if (String(local[fk] || '') !== String(base[fk] || '')) { changed = true; break; }
         }
         if (changed) {
-          edits.push({
+          const edit = {
             account:        local.account        || '',
             subcon:         local.subcon         || '',
             teamType:       local.teamType       || '',
             resourceRemark: local.resourceRemark || ''
-          });
+          };
+          // On a rename the old account override must be removed, otherwise
+          // the stale entry keeps overriding the renamed row.
+          if (matchedByPosition || String(base.account).trim() !== localAcct) {
+            edit.previousAccount = String(base.account || '').trim();
+          }
+          edits.push(edit);
         }
       }
       if (edits.length > 0) {
@@ -6876,6 +7027,18 @@ function _applyPlanCellStyle(el, col, val){
         edits.forEach(function(e){ prevEdits[e.account] = planRosterEdits[e.account]; });
         edits.forEach(function(e){ planRosterEdits[e.account] = e; });
         const editsOk = await postPlanRosterEdits(edits);
+        if (editsOk) {
+          // Drop the old account override for renamed rows.
+          const renames = edits.filter(function(e){ return e.previousAccount; });
+          for (const rn of renames) {
+            await postPlanRosterEditDelete(rn.previousAccount);
+            Object.keys(planRosterEdits).forEach(function(k){
+              if (k !== rn.account && k.trim().toLowerCase() === rn.previousAccount.trim().toLowerCase()) {
+                delete planRosterEdits[k];
+              }
+            });
+          }
+        }
         if (!editsOk) {
           // Revert the local map so the UI matches the server, and keep the
           // dirty flag so the user can retry.
@@ -7319,14 +7482,14 @@ function _applyPlanCellStyle(el, col, val){
     function showErr(msg){ if (err) { err.textContent = msg; err.style.display = 'block'; } }
 
     if (!acc) { showErr('Account is required.'); return; }
-    const existingAccounts = new Set(effectiveRoster().map(function(r){ return r.account; }));
-    if (existingAccounts.has(acc)) { showErr('Account "' + acc + '" is already in the roster.'); return; }
+    const existingAccounts = new Set(effectiveRoster().map(function(r){ return String(r.account || '').trim().toLowerCase(); }));
+    if (existingAccounts.has(acc.toLowerCase())) { showErr('Account "' + acc + '" is already in the roster.'); return; }
 
     // Append to added (not base) and clear removed if it was there.
     planRosterDelta.added = (planRosterDelta.added || []).concat([{
       account: acc, subcon: sub, teamType: tt, resourceRemark: rr
     }]);
-    planRosterDelta.removed = (planRosterDelta.removed || []).filter(function(a){ return a !== acc; });
+    planRosterDelta.removed = (planRosterDelta.removed || []).filter(function(a){ return String(a).trim().toLowerCase() !== acc.toLowerCase(); });
 
     savePlanRosterDeltaLocal();
     closePlanAddMemberModal();
@@ -7365,18 +7528,25 @@ function _applyPlanCellStyle(el, col, val){
     if (!account) return;
     if (!confirm('Delete member "' + account + '" from the roster?\n\n' +
                  'Their plan rows on all dates will be dropped on the next save.')) return;
-    // Add to removed (dedupe); defensively remove from added if present.
-    const removed = (planRosterDelta.removed || []).filter(function(a){ return a !== account; });
+    // Add to removed (dedupe, case-insensitive); defensively remove from added if present.
+    const lcAcc = String(account).trim().toLowerCase();
+    const removed = (planRosterDelta.removed || []).filter(function(a){ return String(a).trim().toLowerCase() !== lcAcc; });
     removed.push(account);
     planRosterDelta.removed = removed;
-    planRosterDelta.added   = (planRosterDelta.added   || []).filter(function(r){ return r.account !== account; });
+    planRosterDelta.added   = (planRosterDelta.added   || []).filter(function(r){ return String(r.account || '').trim().toLowerCase() !== lcAcc; });
 
     savePlanRosterDeltaLocal();
     renderPlanView();
     // Await the server save so a failure is surfaced rather than silently
     // restoring the member on the next page load.
     const ok = await postPlanRosterSave(planRosterDelta);
-    if (!ok) setPlanStatus('Member removed locally — server sync FAILED (will revert on reload)');
+    if (!ok) {
+      setPlanStatus('Member removed locally — server sync FAILED (will revert on reload)');
+    } else {
+      // Also drop any stored field override for the removed account so it
+      // does not linger on the server and re-apply later.
+      await postPlanRosterEditDelete(account);
+    }
   }
 
   async function initDashboard(){
