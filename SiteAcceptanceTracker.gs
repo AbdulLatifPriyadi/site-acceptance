@@ -34,6 +34,7 @@ var COL = {
   peOwner:    16,  // Q — PE Owner
   lat:        17,  // R — Latitude
   lng:        18,  // S — Longitude
+  subcontCsg: 24,  // Y — Subcont for Batch CSG (used by the PRPO tab)
   csgStatus:  26,  // AA — CSG Status
   priority:   32   // AG — Priority
 };
@@ -257,6 +258,7 @@ function serveTracker() {
       duId:        duId,
       siteName:    siteName,
       subcontPlan: String(row[COL.subcontPlan] || '').trim(),
+      subcontCsg:  String(row[COL.subcontCsg]  || '').trim(),
       gap:         String(row[COL.gap]         || '').trim(),
       remark:      String(row[COL.remark]      || '').trim(),
       fo:         String(row[COL.fo]          || '').trim(),

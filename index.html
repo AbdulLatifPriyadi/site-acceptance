@@ -1413,7 +1413,9 @@ Remark = ${remark}`;
   const FORWARD_SHARED_CACHE_KEY = 'forward_shared_cache_v1';   // cached copy of the full shared log (for History)
   const FORWARD_SUMMARY_CACHE_KEY = 'forward_summary_cache_v1'; // cached lightweight log (for Leaderboard, no message/state)
   const SAVED_TOKEN_KEY = 'savedToken';
-  const TRACKER_CACHE_KEY = 'dashTrackerCache_v1';
+  // v2 — bumped when the tracker payload gained a field (subcontCsg, column
+  // Y) so cached rows are refetched instead of silently missing it.
+  const TRACKER_CACHE_KEY = 'dashTrackerCache_v2';
   const MESSAGE_CACHE_KEY = 'dashMessageCache_v1';
 
   // Get cached tracker data — returns null when no cache (caller can distinguish from empty array)
@@ -4902,6 +4904,19 @@ Remark = ${remark}`;
     return site.lat != null && site.lng != null && !isNaN(site.lat) && !isNaN(site.lng);
   }
 
+  // The subcont shown in the PRPO view depends on the batch type: for Batch
+  // CSG the subcont is taken from column Y of the tracker sheet, for Batch RFI
+  // it stays the regular "Subcont Plan" column (J). Falls back to "Subcont
+  // Plan" when column Y is empty.
+  function prpoSubcontOf(site) {
+    const isCsg = document.getElementById('prpoBatchTypeSelect').value === 'batchCsg';
+    if (isCsg) {
+      const csg = String((site && site.subcontCsg) || '').trim();
+      if (csg) return csg;
+    }
+    return String((site && site.subcontPlan) || '').trim();
+  }
+
   function prpoBatchSites() {
     const batchType = document.getElementById('prpoBatchTypeSelect').value;
     const batchValue = document.getElementById('prpoBatchSelect').value;
@@ -5284,7 +5299,7 @@ Remark = ${remark}`;
           (hasCoords ? '' : ' <span style="color:#b26a00;font-size:10px;">(no coordinates)</span>') + '</td>' +
         '<td style="padding:6px 10px;">' + escapeHtml(s.siteName || '-') + '</td>' +
         '<td style="padding:6px 10px;">' + escapeHtml(s.city || '-') + '</td>' +
-        '<td style="padding:6px 10px;">' + escapeHtml(s.subcontPlan || '-') + '</td>' +
+        '<td style="padding:6px 10px;">' + escapeHtml(prpoSubcontOf(s) || '-') + '</td>' +
       '</tr>';
     }).join('');
 
@@ -5551,7 +5566,7 @@ Remark = ${remark}`;
         '<tr><td><strong>ETA</strong></td><td>' + route.durationMin + ' min</td></tr>' +
         '<tr><td><strong>DU ID</strong></td><td>' + escapeHtml(site.duId || '-') + '</td></tr>' +
         '<tr><td><strong>City</strong></td><td>' + escapeHtml(site.city || '-') + '</td></tr>' +
-        '<tr><td><strong>Subcont Plan</strong></td><td>' + escapeHtml(site.subcontPlan || '-') + '</td></tr>' +
+        '<tr><td><strong>Subcont Plan</strong></td><td>' + escapeHtml(prpoSubcontOf(site) || '-') + '</td></tr>' +
         '<tr><td colspan="2">' + img + '</td></tr>' +
       '</table>';
     });
@@ -5648,7 +5663,7 @@ Remark = ${remark}`;
         ['ETA', route.durationMin + ' min'],
         ['DU ID', site.duId || '-'],
         ['City', site.city || '-'],
-        ['Subcont Plan', site.subcontPlan || '-']
+        ['Subcont Plan', prpoSubcontOf(site) || '-']
       ];
 
       info.forEach(([label, value]) => {

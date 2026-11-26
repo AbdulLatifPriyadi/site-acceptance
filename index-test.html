@@ -903,19 +903,19 @@
 // ============================================================
 
 var MOCK_TRACKER = [
-  { batchRfi:'BATCH-A', batchCsg:'CSG-01', tpId:'TP001', surgeId:'SURG-001', duId:'32CMH_0057_CSG', siteName:'PTI_DESA_UTAMA', subcontPlan:'Intisel', gap:'GAP-A', remark:'OK - installed', fo:'RFS', city:'Bandung', tp:'Telkom', km:'12', peOwner:'John Doe', lat:-6.9175, lng:107.6191, ring:'Andir - Ciroyom', seq:'1', csgStatus:'Active', priority:'P2' },
-  { batchRfi:'BATCH-A', batchCsg:'CSG-01', tpId:'TP002', surgeId:'SURG-002', duId:'32CMH_0024_NEW', siteName:'TBG_BAROS', subcontPlan:'NIM', gap:'GAP-B', remark:'Pending ATP', fo:'Termination done', city:'Bandung', tp:'Telkom', km:'8', peOwner:'Jane Doe', lat:-6.9148, lng:107.6172, ring:'Andir - Ciroyom', seq:'2', csgStatus:'Done', priority:'P2' },
-  { batchRfi:'BATCH-A', batchCsg:'CSG-02', tpId:'TP003', surgeId:'SURG-003', duId:'32BDG_0224_NEW', siteName:'TBG_GURUMINDA', subcontPlan:'PAB', gap:'', remark:'Material delay', fo:'Pulling Cable', city:'Bandung', tp:'Telkom', km:'15', peOwner:'Bob Smith', lat:-6.9210, lng:107.6100, ring:'Dago - Hegarsari', seq:'3', csgStatus:'Pending', priority:'P1' },
-  { batchRfi:'BATCH-B', batchCsg:'CSG-02', tpId:'TP004', surgeId:'SURG-004', duId:'32SKB_0072_NEW', siteName:'PTI_PASAR_PELABUHAN', subcontPlan:'ADW', gap:'GAP-C', remark:'OK', fo:'Survey', city:'Sukabumi', tp:'Telkom', km:'22', peOwner:'Alice Lee', lat:-6.9250, lng:107.6050, ring:'Dago - Hegarsari', seq:'4', csgStatus:'Not Started', priority:'P1' },
-  { batchRfi:'BATCH-B', batchCsg:'CSG-03', tpId:'TP005', surgeId:'SURG-005', duId:'32TNG_0011_CSG', siteName:'TNG_TANJUNG', subcontPlan:'CAA', gap:'GAP-A', remark:'Integration done', fo:'Materials', city:'Tanggerang', tp:'Telkom', km:'30', peOwner:'Charlie Ng', lat:-6.9300, lng:107.5900, ring:'Andir - Ciroyom', seq:'5', csgStatus:'Active', priority:'P2' },
-  { batchRfi:'BATCH-C', batchCsg:'CSG-03', tpId:'TP006', surgeId:'SURG-006', duId:'32CMH_0099_WL', siteName:'CMH_KOMP_PLUIT', subcontPlan:'TRITAMA', gap:'', remark:'Work in progress', fo:'Permit', city:'Bandung', tp:'Telkom', km:'5', peOwner:'David Tan', lat:-6.9100, lng:107.6150, ring:'Cikawao - Turangga', seq:'6', csgStatus:'', priority:'P3' },
-  { batchRfi:'BATCH-C', batchCsg:'CSG-04', tpId:'TP007', surgeId:'SURG-007', duId:'32BDG_0333_NEW', siteName:'BDG_OFFICE_TLT', subcontPlan:'INNOVIS', gap:'GAP-B', remark:'Closing only', fo:'NY Assigned', city:'Bandung', tp:'Telkom', km:'10', peOwner:'Eve Wong', lat:-6.9000, lng:107.6200, ring:'Cikawao - Turangga', seq:'7', csgStatus:'Done', priority:'P3' },
-  { batchRfi:'', batchCsg:'', tpId:'TP008', surgeId:'', duId:'32CMH_0010_CSG', siteName:'CMH_DAGO', subcontPlan:'Intisel', gap:'GAP-A', remark:'', fo:'DRM', city:'Bandung', tp:'Telkom', km:'3', peOwner:'Frank Lee', lat:-6.9050, lng:107.6100, ring:'Dago - Hegarsari', seq:'8', csgStatus:'Active', priority:'P1' },
-  { batchRfi:'BATCH-D', batchCsg:'CSG-04', tpId:'TP009', surgeId:'SURG-008', duId:'32SKB_0055_WL', siteName:'SKB_MALL', subcontPlan:'Poca', gap:'GAP-C', remark:'ATP passed', fo:'', city:'Sukabumi', tp:'Telkom', km:'18', peOwner:'Grace Ho', lat:-6.9280, lng:107.6080, ring:'Sukabungah - Sukajadi', seq:'9', csgStatus:'Pending', priority:'P2' },
-  { batchRfi:'BATCH-D', batchCsg:'', tpId:'TP010', surgeId:'', duId:'32TNG_0077_NEW', siteName:'TNG_CITY_CENTER', subcontPlan:'INDOHR', gap:'', remark:'Waiting material', fo:'', city:'Tanggerang', tp:'Telkom', km:'25', peOwner:'Henry Wu', lat:-6.9350, lng:107.5850, ring:'Sukabungah - Sukajadi', seq:'10', csgStatus:'', priority:'P2' },
-  { batchRfi:'BATCH-E', batchCsg:'CSG-05', tpId:'TP011', surgeId:'SURG-009', duId:'32CJR_0043_NEW', siteName:'CJR_SITE_ALPHA', subcontPlan:'Intisel', gap:'ATP', remark:'Ready for test', fo:'RFS', city:'Cirebon', tp:'Telkom', km:'40', peOwner:'Test User', lat:-6.7320, lng:108.5521, ring:'Cirebon - Sumber', seq:'11', csgStatus:'Active', priority:'P1' },
-  { batchRfi:'BATCH-E', batchCsg:'CSG-05', tpId:'TP012', surgeId:'SURG-010', duId:'32BDG_0673_NEW', siteName:'BDG_SITE_BETA', subcontPlan:'NIM', gap:'Install', remark:'In progress', fo:'Drop', city:'Bandung', tp:'Telkom', km:'18', peOwner:'Another User', lat:-6.9001, lng:107.6200, ring:'Cirebon - Sumber', seq:'12', csgStatus:'Working', priority:'P1' },
-  { batchRfi:'BATCH-E', batchCsg:'CSG-06', tpId:'TP013', surgeId:'SURG-011', duId:'32BDG_0298_NEW', siteName:'BDG_SITE_GAMMA', subcontPlan:'PAB', gap:'ON AIR', remark:'Completed', fo:'Pulling Done', city:'Bandung', tp:'Telkom', km:'12', peOwner:'Final User', lat:-6.9100, lng:107.6300, ring:'Cirebon - Sumber', seq:'13', csgStatus:'Done', priority:'P1' }
+  { batchRfi:'BATCH-A', batchCsg:'CSG-01', tpId:'TP001', surgeId:'SURG-001', duId:'32CMH_0057_CSG', siteName:'PTI_DESA_UTAMA', subcontPlan:'Intisel', subcontCsg:'CSGSUB-01', gap:'GAP-A', remark:'OK - installed', fo:'RFS', city:'Bandung', tp:'Telkom', km:'12', peOwner:'John Doe', lat:-6.9175, lng:107.6191, ring:'Andir - Ciroyom', seq:'1', csgStatus:'Active', priority:'P2' },
+  { batchRfi:'BATCH-A', batchCsg:'CSG-01', tpId:'TP002', surgeId:'SURG-002', duId:'32CMH_0024_NEW', siteName:'TBG_BAROS', subcontPlan:'NIM', subcontCsg:'CSGSUB-02', gap:'GAP-B', remark:'Pending ATP', fo:'Termination done', city:'Bandung', tp:'Telkom', km:'8', peOwner:'Jane Doe', lat:-6.9148, lng:107.6172, ring:'Andir - Ciroyom', seq:'2', csgStatus:'Done', priority:'P2' },
+  { batchRfi:'BATCH-A', batchCsg:'CSG-02', tpId:'TP003', surgeId:'SURG-003', duId:'32BDG_0224_NEW', siteName:'TBG_GURUMINDA', subcontPlan:'PAB', subcontCsg:'CSGSUB-03', gap:'', remark:'Material delay', fo:'Pulling Cable', city:'Bandung', tp:'Telkom', km:'15', peOwner:'Bob Smith', lat:-6.9210, lng:107.6100, ring:'Dago - Hegarsari', seq:'3', csgStatus:'Pending', priority:'P1' },
+  { batchRfi:'BATCH-B', batchCsg:'CSG-02', tpId:'TP004', surgeId:'SURG-004', duId:'32SKB_0072_NEW', siteName:'PTI_PASAR_PELABUHAN', subcontPlan:'ADW', subcontCsg:'CSGSUB-04', gap:'GAP-C', remark:'OK', fo:'Survey', city:'Sukabumi', tp:'Telkom', km:'22', peOwner:'Alice Lee', lat:-6.9250, lng:107.6050, ring:'Dago - Hegarsari', seq:'4', csgStatus:'Not Started', priority:'P1' },
+  { batchRfi:'BATCH-B', batchCsg:'CSG-03', tpId:'TP005', surgeId:'SURG-005', duId:'32TNG_0011_CSG', siteName:'TNG_TANJUNG', subcontPlan:'CAA', subcontCsg:'CSGSUB-05', gap:'GAP-A', remark:'Integration done', fo:'Materials', city:'Tanggerang', tp:'Telkom', km:'30', peOwner:'Charlie Ng', lat:-6.9300, lng:107.5900, ring:'Andir - Ciroyom', seq:'5', csgStatus:'Active', priority:'P2' },
+  { batchRfi:'BATCH-C', batchCsg:'CSG-03', tpId:'TP006', surgeId:'SURG-006', duId:'32CMH_0099_WL', siteName:'CMH_KOMP_PLUIT', subcontPlan:'TRITAMA', subcontCsg:'CSGSUB-06', gap:'', remark:'Work in progress', fo:'Permit', city:'Bandung', tp:'Telkom', km:'5', peOwner:'David Tan', lat:-6.9100, lng:107.6150, ring:'Cikawao - Turangga', seq:'6', csgStatus:'', priority:'P3' },
+  { batchRfi:'BATCH-C', batchCsg:'CSG-04', tpId:'TP007', surgeId:'SURG-007', duId:'32BDG_0333_NEW', siteName:'BDG_OFFICE_TLT', subcontPlan:'INNOVIS', subcontCsg:'CSGSUB-07', gap:'GAP-B', remark:'Closing only', fo:'NY Assigned', city:'Bandung', tp:'Telkom', km:'10', peOwner:'Eve Wong', lat:-6.9000, lng:107.6200, ring:'Cikawao - Turangga', seq:'7', csgStatus:'Done', priority:'P3' },
+  { batchRfi:'', batchCsg:'', tpId:'TP008', surgeId:'', duId:'32CMH_0010_CSG', siteName:'CMH_DAGO', subcontPlan:'Intisel', subcontCsg:'CSGSUB-08', gap:'GAP-A', remark:'', fo:'DRM', city:'Bandung', tp:'Telkom', km:'3', peOwner:'Frank Lee', lat:-6.9050, lng:107.6100, ring:'Dago - Hegarsari', seq:'8', csgStatus:'Active', priority:'P1' },
+  { batchRfi:'BATCH-D', batchCsg:'CSG-04', tpId:'TP009', surgeId:'SURG-008', duId:'32SKB_0055_WL', siteName:'SKB_MALL', subcontPlan:'Poca', subcontCsg:'CSGSUB-09', gap:'GAP-C', remark:'ATP passed', fo:'', city:'Sukabumi', tp:'Telkom', km:'18', peOwner:'Grace Ho', lat:-6.9280, lng:107.6080, ring:'Sukabungah - Sukajadi', seq:'9', csgStatus:'Pending', priority:'P2' },
+  { batchRfi:'BATCH-D', batchCsg:'', tpId:'TP010', surgeId:'', duId:'32TNG_0077_NEW', siteName:'TNG_CITY_CENTER', subcontPlan:'INDOHR', subcontCsg:'CSGSUB-10', gap:'', remark:'Waiting material', fo:'', city:'Tanggerang', tp:'Telkom', km:'25', peOwner:'Henry Wu', lat:-6.9350, lng:107.5850, ring:'Sukabungah - Sukajadi', seq:'10', csgStatus:'', priority:'P2' },
+  { batchRfi:'BATCH-E', batchCsg:'CSG-05', tpId:'TP011', surgeId:'SURG-009', duId:'32CJR_0043_NEW', siteName:'CJR_SITE_ALPHA', subcontPlan:'Intisel', subcontCsg:'CSGSUB-11', gap:'ATP', remark:'Ready for test', fo:'RFS', city:'Cirebon', tp:'Telkom', km:'40', peOwner:'Test User', lat:-6.7320, lng:108.5521, ring:'Cirebon - Sumber', seq:'11', csgStatus:'Active', priority:'P1' },
+  { batchRfi:'BATCH-E', batchCsg:'CSG-05', tpId:'TP012', surgeId:'SURG-010', duId:'32BDG_0673_NEW', siteName:'BDG_SITE_BETA', subcontPlan:'NIM', subcontCsg:'CSGSUB-12', gap:'Install', remark:'In progress', fo:'Drop', city:'Bandung', tp:'Telkom', km:'18', peOwner:'Another User', lat:-6.9001, lng:107.6200, ring:'Cirebon - Sumber', seq:'12', csgStatus:'Working', priority:'P1' },
+  { batchRfi:'BATCH-E', batchCsg:'CSG-06', tpId:'TP013', surgeId:'SURG-011', duId:'32BDG_0298_NEW', siteName:'BDG_SITE_GAMMA', subcontPlan:'PAB', subcontCsg:'CSGSUB-13', gap:'ON AIR', remark:'Completed', fo:'Pulling Done', city:'Bandung', tp:'Telkom', km:'12', peOwner:'Final User', lat:-6.9100, lng:107.6300, ring:'Cirebon - Sumber', seq:'13', csgStatus:'Done', priority:'P1' }
 ];
 
 var MOCK_PLAN = [
@@ -1498,7 +1498,9 @@ Remark = ${remark}`;
   const FORWARD_SHARED_CACHE_KEY = 'forward_shared_cache_v1';   // cached copy of the full shared log (for History)
   const FORWARD_SUMMARY_CACHE_KEY = 'forward_summary_cache_v1'; // cached lightweight log (for Leaderboard, no message/state)
   const SAVED_TOKEN_KEY = 'savedToken';
-  const TRACKER_CACHE_KEY = 'dashTrackerCache_v1';
+  // v2 — bumped when the tracker payload gained a field (subcontCsg, column
+  // Y) so cached rows are refetched instead of silently missing it.
+  const TRACKER_CACHE_KEY = 'dashTrackerCache_v2';
   const MESSAGE_CACHE_KEY = 'dashMessageCache_v1';
 
   // Get cached tracker data — returns null when no cache (caller can distinguish from empty array)
@@ -4987,6 +4989,19 @@ Remark = ${remark}`;
     return site.lat != null && site.lng != null && !isNaN(site.lat) && !isNaN(site.lng);
   }
 
+  // The subcont shown in the PRPO view depends on the batch type: for Batch
+  // CSG the subcont is taken from column Y of the tracker sheet, for Batch RFI
+  // it stays the regular "Subcont Plan" column (J). Falls back to "Subcont
+  // Plan" when column Y is empty.
+  function prpoSubcontOf(site) {
+    const isCsg = document.getElementById('prpoBatchTypeSelect').value === 'batchCsg';
+    if (isCsg) {
+      const csg = String((site && site.subcontCsg) || '').trim();
+      if (csg) return csg;
+    }
+    return String((site && site.subcontPlan) || '').trim();
+  }
+
   function prpoBatchSites() {
     const batchType = document.getElementById('prpoBatchTypeSelect').value;
     const batchValue = document.getElementById('prpoBatchSelect').value;
@@ -5369,7 +5384,7 @@ Remark = ${remark}`;
           (hasCoords ? '' : ' <span style="color:#b26a00;font-size:10px;">(no coordinates)</span>') + '</td>' +
         '<td style="padding:6px 10px;">' + escapeHtml(s.siteName || '-') + '</td>' +
         '<td style="padding:6px 10px;">' + escapeHtml(s.city || '-') + '</td>' +
-        '<td style="padding:6px 10px;">' + escapeHtml(s.subcontPlan || '-') + '</td>' +
+        '<td style="padding:6px 10px;">' + escapeHtml(prpoSubcontOf(s) || '-') + '</td>' +
       '</tr>';
     }).join('');
 
@@ -5636,7 +5651,7 @@ Remark = ${remark}`;
         '<tr><td><strong>ETA</strong></td><td>' + route.durationMin + ' min</td></tr>' +
         '<tr><td><strong>DU ID</strong></td><td>' + escapeHtml(site.duId || '-') + '</td></tr>' +
         '<tr><td><strong>City</strong></td><td>' + escapeHtml(site.city || '-') + '</td></tr>' +
-        '<tr><td><strong>Subcont Plan</strong></td><td>' + escapeHtml(site.subcontPlan || '-') + '</td></tr>' +
+        '<tr><td><strong>Subcont Plan</strong></td><td>' + escapeHtml(prpoSubcontOf(site) || '-') + '</td></tr>' +
         '<tr><td colspan="2">' + img + '</td></tr>' +
       '</table>';
     });
@@ -5733,7 +5748,7 @@ Remark = ${remark}`;
         ['ETA', route.durationMin + ' min'],
         ['DU ID', site.duId || '-'],
         ['City', site.city || '-'],
-        ['Subcont Plan', site.subcontPlan || '-']
+        ['Subcont Plan', prpoSubcontOf(site) || '-']
       ];
 
       info.forEach(([label, value]) => {
