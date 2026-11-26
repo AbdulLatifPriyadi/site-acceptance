@@ -4974,20 +4974,54 @@ Remark = ${remark}`;
   // PRPO state
   let prpoGeneratedData = [];
 
+  // PRPO checklist state — the DU IDs the user ticked for map generation.
+  let prpoSelectedDuIds = new Set();
+  let prpoSelectionBatch = '';
+
+  function prpoSiteKey(site, idx) {
+    const duId = String(site.duId || '').trim();
+    return duId || ('idx-' + idx);
+  }
+
+  function prpoSiteHasCoords(site) {
+    return site.lat != null && site.lng != null && !isNaN(site.lat) && !isNaN(site.lng);
+  }
+
+  function prpoBatchSites() {
+    const batchType = document.getElementById('prpoBatchTypeSelect').value;
+    const batchValue = document.getElementById('prpoBatchSelect').value;
+    if (!batchValue) return [];
+    return getFilteredSites().filter(function(s){ return String(s[batchType] || '').trim() === batchValue; });
+  }
+
+  // Ticks every site of the current batch that actually has coordinates.
+  function resetPrpoSelection() {
+    prpoSelectedDuIds = new Set();
+    prpoSelectionBatch = document.getElementById('prpoBatchSelect').value;
+    const sites = prpoBatchSites();
+    sites.forEach(function(s, i){
+      if (prpoSiteHasCoords(s)) prpoSelectedDuIds.add(prpoSiteKey(s, i));
+    });
+  }
+
   function populatePrpoBatchSelect() {
     const batchType = document.getElementById('prpoBatchTypeSelect').value;
     const batchSelect = document.getElementById('prpoBatchSelect');
+    const prevBatch = batchSelect.value;
     const sites = getFilteredSites();
     const batches = [...new Set(sites.map(s => String(s[batchType] || '').trim()).filter(Boolean))].sort();
     batchSelect.innerHTML = '<option value="">Select batch…</option>' +
       batches.map(b => '<option value="' + escapeHtml(b) + '">' + escapeHtml(b) + '</option>').join('');
+    // Keep the chosen batch when the list is rebuilt (the view re-renders
+    // often); a different batch type means a different set of DU IDs.
+    if (prevBatch && batches.indexOf(prevBatch) !== -1) batchSelect.value = prevBatch;
     prpoGeneratedData = [];
     document.getElementById('prpoDownloadBtn').style.display = 'none';
+    document.getElementById('prpoPdfBtn').style.display = 'none';
     document.getElementById('prpoStatus').textContent = '';
   }
 
   async function generatePrpoRoutes() {
-    const batchType = document.getElementById('prpoBatchTypeSelect').value;
     const batchValue = document.getElementById('prpoBatchSelect').value;
     const originKey = document.getElementById('prpoOriginSelect').value;
     const origin = PRPO_ORIGINS[originKey];
@@ -4997,16 +5031,19 @@ Remark = ${remark}`;
       return;
     }
 
-    const sites = getFilteredSites().filter(s => String(s[batchType] || '').trim() === batchValue);
+    const sites = prpoBatchSites();
     if (sites.length === 0) {
       alert('No sites found for this batch');
       return;
     }
 
-    // Filter sites that have valid lat/lng
-    const validSites = sites.filter(s => s.lat != null && s.lng != null && !isNaN(s.lat) && !isNaN(s.lng));
+    // Only the DU IDs ticked in the checklist are processed. Sites without
+    // coordinates can never produce a map, so they are never selectable.
+    const keyed = sites.map((s, i) => ({ site: s, key: prpoSiteKey(s, i) }));
+    const validSites = keyed.filter(k => prpoSiteHasCoords(k.site) && prpoSelectedDuIds.has(k.key));
     if (validSites.length === 0) {
-      alert('No sites with valid coordinates in this batch');
+      alert('No DU IDs selected.\nTick the DU IDs you want a map for in the checklist first.');
+      renderPrpoChecklist();
       return;
     }
 
@@ -5025,10 +5062,10 @@ Remark = ${remark}`;
       // starting a long batch, so a blocked network fails fast with a clear
       // message instead of "Failed to fetch" on every site.
       statusEl.textContent = 'Checking routing service…';
-      await fetchOsrmRoute(origin, validSites[0]);
+      await fetchOsrmRoute(origin, validSites[0].site);
 
       for (let i = 0; i < validSites.length; i++) {
-        const site = validSites[i];
+        const site = validSites[i].site;
         statusEl.textContent = `Generating route ${i + 1} of ${validSites.length}: ${site.siteName || site.duId}…`;
 
         const routeData = await fetchRouteAndCapture(origin, site);
@@ -5296,7 +5333,100 @@ Remark = ${remark}`;
       ctx.restore();
     });
 
-    return canvas.toDataURL('image/png');
+    // JPEG, not PNG. The captured canvas is fully opaque (white background),
+    // so JPEG loses nothing that matters here, but it is roughly 10x smaller
+    // than PNG for map tiles. Every consumer of this data URL (screen preview,
+    // HTML report, PDF) embeds it, so the saving multiplies.
+    return canvas.toDataURL('image/jpeg', 0.9);
+  }
+
+  // Checklist of DU IDs for the current batch. The user ticks the sites they
+  // want a map for; only those are routed and captured.
+  function renderPrpoChecklist() {
+    const container = document.getElementById('dashPrpo');
+    const batchValue = document.getElementById('prpoBatchSelect').value;
+
+    if (!batchValue) {
+      container.innerHTML = '<div style="padding:40px;text-align:center;color:#6b7688;">Select a batch to choose which DU IDs get a map generated.</div>';
+      return;
+    }
+
+    const sites = prpoBatchSites();
+    if (sites.length === 0) {
+      container.innerHTML = '<div style="padding:40px;text-align:center;color:#6b7688;">No sites found for this batch.</div>';
+      return;
+    }
+
+    const rows = sites.map(function(s, i){
+      const key = prpoSiteKey(s, i);
+      const hasCoords = prpoSiteHasCoords(s);
+      const checked = prpoSelectedDuIds.has(key) ? ' checked' : '';
+      return '<tr style="border-bottom:1px solid #eef1f3;">' +
+        '<td style="padding:6px 10px;text-align:center;width:34px;">' +
+          '<input type="checkbox" class="prpo-pick" data-prpo-key="' + escapeHtml(key) + '"' + checked + (hasCoords ? '' : ' disabled') + '>' +
+        '</td>' +
+        '<td style="padding:6px 10px;font-family:monospace;font-size:11px;">' + escapeHtml(s.duId || '-') +
+          (hasCoords ? '' : ' <span style="color:#b26a00;font-size:10px;">(no coordinates)</span>') + '</td>' +
+        '<td style="padding:6px 10px;">' + escapeHtml(s.siteName || '-') + '</td>' +
+        '<td style="padding:6px 10px;">' + escapeHtml(s.city || '-') + '</td>' +
+        '<td style="padding:6px 10px;">' + escapeHtml(s.subcontPlan || '-') + '</td>' +
+      '</tr>';
+    }).join('');
+
+    const btnStyle = 'padding:4px 10px;font-size:11px;border:1px solid #d0d7de;border-radius:6px;background:#f6f8fa;cursor:pointer;';
+
+    container.innerHTML =
+      '<div style="padding:12px 16px;">' +
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;">' +
+          '<strong style="font-size:13px;">Choose DU IDs to generate maps for</strong>' +
+          '<span style="font-size:11.5px;color:#6b7688;">Batch ' + escapeHtml(batchValue) + ' — <span id="prpoPickCount">' + prpoSelectedDuIds.size + '</span> of ' + sites.length + ' selected</span>' +
+          '<span style="margin-left:auto;display:flex;gap:6px;">' +
+            '<button id="prpoSelectAllBtn" style="' + btnStyle + '">Select all</button>' +
+            '<button id="prpoClearBtn" style="' + btnStyle + '">Clear</button>' +
+            '<button id="prpoInvertBtn" style="' + btnStyle + '">Invert</button>' +
+          '</span>' +
+        '</div>' +
+        '<table style="width:100%;border-collapse:collapse;font-size:11.5px;min-width:640px;">' +
+          '<thead style="background:#f6f8fa;position:sticky;top:0;z-index:1;">' +
+            '<tr>' +
+              '<th style="padding:8px 10px;text-align:center;width:34px;">#</th>' +
+              '<th style="padding:8px 10px;text-align:left;">DU ID</th>' +
+              '<th style="padding:8px 10px;text-align:left;">Site Name</th>' +
+              '<th style="padding:8px 10px;text-align:left;">City</th>' +
+              '<th style="padding:8px 10px;text-align:left;">Subcont</th>' +
+            '</tr>' +
+          '</thead>' +
+          '<tbody>' + rows + '</tbody>' +
+        '</table>' +
+      '</div>';
+
+    container.querySelectorAll('.prpo-pick').forEach(function(cb){
+      cb.addEventListener('change', function(){
+        const key = cb.getAttribute('data-prpo-key');
+        if (cb.checked) prpoSelectedDuIds.add(key); else prpoSelectedDuIds.delete(key);
+        const countEl = document.getElementById('prpoPickCount');
+        if (countEl) countEl.textContent = String(prpoSelectedDuIds.size);
+      });
+    });
+
+    const applySelection = function(fn){
+      sites.forEach(function(s, i){
+        if (!prpoSiteHasCoords(s)) return;
+        fn(prpoSiteKey(s, i));
+      });
+      renderPrpoChecklist();
+    };
+
+    const allBtn = document.getElementById('prpoSelectAllBtn');
+    if (allBtn) allBtn.addEventListener('click', function(){ applySelection(function(k){ prpoSelectedDuIds.add(k); }); });
+    const clearBtn = document.getElementById('prpoClearBtn');
+    if (clearBtn) clearBtn.addEventListener('click', function(){ applySelection(function(k){ prpoSelectedDuIds.delete(k); }); });
+    const invertBtn = document.getElementById('prpoInvertBtn');
+    if (invertBtn) invertBtn.addEventListener('click', function(){
+      applySelection(function(k){
+        if (prpoSelectedDuIds.has(k)) prpoSelectedDuIds.delete(k); else prpoSelectedDuIds.add(k);
+      });
+    });
   }
 
   function renderPrpoResults() {
@@ -5325,6 +5455,10 @@ Remark = ${remark}`;
 
     container.innerHTML =
       '<div style="padding:12px 16px;">' +
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">' +
+          '<strong style="font-size:13px;">' + prpoGeneratedData.length + ' route(s) generated</strong>' +
+          '<button id="prpoBackToChecklist" style="margin-left:auto;padding:4px 10px;font-size:11px;border:1px solid #d0d7de;border-radius:6px;background:#f6f8fa;cursor:pointer;">Change DU ID selection</button>' +
+        '</div>' +
         '<table style="width:100%;border-collapse:collapse;font-size:11.5px;min-width:900px;">' +
           '<thead style="background:#f6f8fa;position:sticky;top:0;z-index:1;">' +
             '<tr>' +
@@ -5339,15 +5473,141 @@ Remark = ${remark}`;
           '<tbody>' + rowsHtml + '</tbody>' +
         '</table>' +
       '</div>';
+
+    const backBtn = document.getElementById('prpoBackToChecklist');
+    if (backBtn) backBtn.addEventListener('click', renderPrpoChecklist);
   }
 
-  function downloadPrpoZip() {
+  // ---------------------------------------------------------------------
+  // PRPO export image encoder
+  //
+  // The route screenshots dominate the size of every exported report
+  // (a batch of ~14 PNG map captures was ~7 MB). Both exports re-encode
+  // them as JPEG — jsPDF stores JPEG bytes verbatim (DCT_DECODE), so the
+  // PDF ends up roughly as big as the sum of the JPEG payloads — and the
+  // quality/resolution is tuned per image so the document stays inside a
+  // byte budget no matter how many routes the batch holds.
+  // ---------------------------------------------------------------------
+  const PRPO_PDF_BUDGET_BYTES = 200 * 1024;   // target max size of the PDF
+  const PRPO_PDF_PRINT_DPI = 96;              // effective DPI of the printed map
+  const PRPO_PDF_MIN_IMAGE_BYTES = 3 * 1024;  // floor for one map image
+  const PRPO_HTML_BUDGET_BYTES = 1024 * 1024; // target max size of the HTML report
+  const PRPO_HTML_MIN_IMAGE_BYTES = 12 * 1024;
+
+  // Encoder ladder, best quality first. Each step shrinks the image and/or
+  // lowers the JPEG quality; the first entry that fits the byte allowance
+  // wins, so small batches keep full detail and big ones degrade gracefully.
+  const PRPO_IMAGE_ENCODER_LADDER = [
+    { s: 1.00, q: 0.85 },
+    { s: 1.00, q: 0.70 },
+    { s: 0.85, q: 0.80 },
+    { s: 0.85, q: 0.60 },
+    { s: 0.70, q: 0.75 },
+    { s: 0.70, q: 0.55 },
+    { s: 0.55, q: 0.70 },
+    { s: 0.55, q: 0.45 },
+    { s: 0.45, q: 0.60 },
+    { s: 0.45, q: 0.40 },
+    { s: 0.35, q: 0.50 },
+    { s: 0.35, q: 0.30 },
+    { s: 0.28, q: 0.35, gray: true },
+    { s: 0.22, q: 0.30, gray: true }
+  ];
+
+  function prpoDataUrlBytes(dataUrl) {
+    const comma = dataUrl.indexOf(',');
+    const b64 = comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl;
+    return Math.ceil(b64.length * 3 / 4);
+  }
+
+  async function prpoDecodeImage(dataUrl) {
+    // Preferred path: decode the data URL into a bitmap.
+    try {
+      if (typeof createImageBitmap === 'function') {
+        const res = await fetch(dataUrl);
+        if (res.ok) {
+          const blob = await res.blob();
+          const bmp = await createImageBitmap(blob);
+          if (bmp) return bmp;
+        }
+      }
+    } catch (e) { /* fall through to the <img> path */ }
+    // Fallback: plain <img> decoding.
+    return await new Promise(function(resolve){
+      const img = new Image();
+      img.onload = function(){ resolve(img); };
+      img.onerror = function(){ resolve(null); };
+      img.src = dataUrl;
+    });
+  }
+
+  function prpoEncodeJpeg(source, width, quality, grayscale) {
+    const w = Math.max(1, Math.round(width));
+    const h = Math.max(1, Math.round(source.height * (w / source.width)));
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, w, h);
+    let grayOn = false;
+    if (grayscale && 'filter' in ctx) {
+      try { ctx.filter = 'grayscale(1)'; grayOn = true; } catch (e) { grayOn = false; }
+    }
+    ctx.drawImage(source, 0, 0, w, h);
+    if (grayOn) ctx.filter = 'none';
+    const dataUrl = canvas.toDataURL('image/jpeg', quality);
+    return { dataUrl: dataUrl, bytes: prpoDataUrlBytes(dataUrl), width: w, height: h };
+  }
+
+  // Re-encode every item that carries a route screenshot and return a map
+  // item -> { dataUrl, bytes, width, height }. Items that cannot be decoded
+  // map to null so the caller can fall back to the original capture.
+  async function prpoEncodeImagesForBudget(items, opts) {
+    const count = items.length || 1;
+    const overhead = opts.overheadBytes || 0;
+    const allowance = Math.max(
+      opts.minBytes,
+      Math.floor((opts.budgetBytes - overhead) / count)
+    );
+    const map = new Map();
+    for (const item of items) {
+      const src = item.route && item.route.imageDataUrl;
+      if (!src) { map.set(item, null); continue; }
+      const bmp = await prpoDecodeImage(src);
+      if (!bmp) { map.set(item, null); continue; }
+      const base = Math.min(bmp.width, opts.maxWidthPx);
+      let best = null;
+      for (const cand of PRPO_IMAGE_ENCODER_LADDER) {
+        const enc = prpoEncodeJpeg(bmp, base * cand.s, cand.q, cand.gray);
+        if (!best || enc.bytes < best.bytes) best = enc;
+        if (enc.bytes <= allowance) { best = enc; break; }
+      }
+      map.set(item, best);
+      if (bmp.close) bmp.close();
+    }
+    return { map: map, allowance: allowance };
+  }
+
+  function prpoImageFormat(dataUrl) {
+    if (!dataUrl) return 'JPEG';
+    return dataUrl.indexOf('data:image/png') === 0 ? 'PNG' : 'JPEG';
+  }
+
+  async function downloadPrpoZip() {
     if (prpoGeneratedData.length === 0) return;
 
     const batchType = document.getElementById('prpoBatchTypeSelect').value;
     const batchValue = document.getElementById('prpoBatchSelect').value;
     const originKey = document.getElementById('prpoOriginSelect').value;
     const origin = PRPO_ORIGINS[originKey];
+
+    const encoded = await prpoEncodeImagesForBudget(prpoGeneratedData, {
+      budgetBytes: PRPO_HTML_BUDGET_BYTES,
+      minBytes: PRPO_HTML_MIN_IMAGE_BYTES,
+      maxWidthPx: 700,
+      overheadBytes: 8000
+    });
 
     // Create a simple HTML report that can be saved/printed
     let html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>PRPO Routes - ' + escapeHtml(batchValue) + '</title>' +
@@ -5364,8 +5624,10 @@ Remark = ${remark}`;
     prpoGeneratedData.forEach((item, idx) => {
       const site = item.site;
       const route = item.route;
-      const img = route.imageDataUrl
-        ? '<img src="' + route.imageDataUrl + '" alt="Route ' + (idx + 1) + '" style="max-width:500px;">'
+      const enc = encoded.map.get(item);
+      const imgSrc = enc ? enc.dataUrl : route.imageDataUrl;
+      const img = imgSrc
+        ? '<img src="' + imgSrc + '" alt="Route ' + (idx + 1) + '" style="max-width:500px;">'
         : '<div style="width:500px;height:250px;background:#f6f8fa;border:1px dashed #ddd;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#999;">No image</div>';
 
       html += '<table>' +
@@ -5392,7 +5654,7 @@ Remark = ${remark}`;
     URL.revokeObjectURL(url);
   }
 
-  function exportPrpoPdf() {
+  async function exportPrpoPdf() {
     if (prpoGeneratedData.length === 0) return;
 
     const { jsPDF } = window.jspdf || {};
@@ -5412,6 +5674,18 @@ Remark = ${remark}`;
     const margin = 15;
     const contentWidth = pageWidth - 2 * margin;
     let y = margin;
+
+    // Re-encode the screenshots as JPEG so the PDF stays inside the byte
+    // budget. The allowance is split evenly between the images; the text
+    // overhead is estimated from the number of sites.
+    const imageItems = prpoGeneratedData.filter(function(item){ return !!(item.route && item.route.imageDataUrl); });
+    const maxWidthPx = Math.round((contentWidth / 25.4) * PRPO_PDF_PRINT_DPI);
+    const encoded = await prpoEncodeImagesForBudget(imageItems, {
+      budgetBytes: PRPO_PDF_BUDGET_BYTES,
+      minBytes: PRPO_PDF_MIN_IMAGE_BYTES,
+      maxWidthPx: maxWidthPx,
+      overheadBytes: 6000 + prpoGeneratedData.length * 1200
+    });
 
     // Title
     doc.setFontSize(18);
@@ -5471,21 +5745,37 @@ Remark = ${remark}`;
       });
       y += 3;
 
-      // Route image
+      // Route image — JPEG, aspect ratio preserved, centred in the content
+      // column. The old code forced the full content width and then clamped
+      // the height, which squashed the 750x600 capture vertically.
       if (route.imageDataUrl) {
         try {
-          const imgProps = doc.getImageProperties(route.imageDataUrl);
-          const imgWidth = contentWidth;
-          const imgHeight = (imgProps.height * imgWidth) / imgProps.width;
+          const enc = encoded.map.get(item);
+          const imgData = enc ? enc.dataUrl : route.imageDataUrl;
+          const format = enc ? 'JPEG' : prpoImageFormat(route.imageDataUrl);
+          const aspect = enc
+            ? enc.width / enc.height
+            : (function(){
+                const p = doc.getImageProperties(route.imageDataUrl);
+                return p.width / p.height;
+              })();
           const maxImgHeight = 80;
 
-          if (y + Math.min(imgHeight, maxImgHeight) > pageHeight - margin) {
+          let imgHeightMm = maxImgHeight;
+          let imgWidthMm = imgHeightMm * aspect;
+          if (imgWidthMm > contentWidth) {
+            imgWidthMm = contentWidth;
+            imgHeightMm = imgWidthMm / aspect;
+          }
+          const imgX = margin + (contentWidth - imgWidthMm) / 2;
+
+          if (y + imgHeightMm > pageHeight - margin) {
             doc.addPage();
             y = margin;
           }
 
-          doc.addImage(route.imageDataUrl, 'PNG', margin, y, imgWidth, Math.min(imgHeight, maxImgHeight));
-          y += Math.min(imgHeight, maxImgHeight) + 10;
+          doc.addImage(imgData, format, imgX, y, imgWidthMm, imgHeightMm);
+          y += imgHeightMm + 10;
         } catch (e) {
           console.warn('[PRPO PDF] Failed to add image for site ' + (idx + 1), e);
           doc.setFontSize(8);
@@ -5503,16 +5793,26 @@ Remark = ${remark}`;
       }
     });
 
-    // Save
+    // Save — the blob is created manually so the final size can be logged.
     const filename = 'PRPO_Routes_' + batchValue.replace(/[^a-z0-9]/gi, '_') + '_' + new Date().toISOString().slice(0,10) + '.pdf';
-    doc.save(filename);
+    const blob = doc.output('blob');
+    console.info('[PRPO PDF] ' + filename + ' — ' + (blob.size / 1024).toFixed(0) + ' KB');
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }
 
   function renderPrpoView() {
-    const container = document.getElementById('dashPrpo');
     // Populate batch select on first render
     populatePrpoBatchSelect();
-    container.innerHTML = '<div style="padding:40px;text-align:center;color:#6b7688;">Select a batch and origin, then click Generate Routes.</div>';
+    // Keep the ticks the user made; only rebuild them when the batch changed.
+    if (prpoSelectionBatch !== document.getElementById('prpoBatchSelect').value) resetPrpoSelection();
+    renderPrpoChecklist();
   }
 
   function getSVGPoint(svg, e) {
@@ -7906,8 +8206,8 @@ function _applyPlanCellStyle(el, col, val){
     refreshDashboardView();
   });
   // PRPO event listeners
-  document.getElementById('prpoBatchTypeSelect').addEventListener('change', ()=> populatePrpoBatchSelect());
-  document.getElementById('prpoBatchSelect').addEventListener('change', ()=> { prpoGeneratedData = []; document.getElementById('prpoDownloadBtn').style.display = 'none'; document.getElementById('prpoPdfBtn').style.display = 'none'; });
+  document.getElementById('prpoBatchTypeSelect').addEventListener('change', ()=> { populatePrpoBatchSelect(); resetPrpoSelection(); renderPrpoChecklist(); });
+  document.getElementById('prpoBatchSelect').addEventListener('change', ()=> { prpoGeneratedData = []; document.getElementById('prpoDownloadBtn').style.display = 'none'; document.getElementById('prpoPdfBtn').style.display = 'none'; resetPrpoSelection(); renderPrpoChecklist(); });
   document.getElementById('prpoGenerateBtn').addEventListener('click', generatePrpoRoutes);
   document.getElementById('prpoDownloadBtn').addEventListener('click', downloadPrpoZip);
   document.getElementById('prpoPdfBtn').addEventListener('click', exportPrpoPdf);
