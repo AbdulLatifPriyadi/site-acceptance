@@ -7646,21 +7646,26 @@ function _applyPlanCellStyle(el, col, val){
   // Per-row "Share" button: shares the whole plan for that row's SUBCONT —
   // every person in that subcont, not just the person on this row.
   function sharePlanForRow(rowIdx){
-    if (!planCurrentDate) { setPlanStatus('Pick a date first'); return; }
-    const row = _planRowByIndex(rowIdx);
-    if (!row) {
-      setPlanStatus('No site assigned for this row yet (DU ID is empty)');
-      return;
+    try {
+      if (!planCurrentDate) { setPlanStatus('Pick a date first'); return; }
+      const row = _planRowByIndex(rowIdx);
+      if (!row) {
+        setPlanStatus('No site assigned for this row yet (DU ID is empty)');
+        return;
+      }
+      const rows = _planShareRows(row.subcon);
+      if (rows.length === 0) {
+        setPlanStatus('No sites assigned for ' + row.subcon + ' yet');
+        return;
+      }
+      const targetEl = document.getElementById('planShareTargetInput');
+      const target = targetEl ? targetEl.value.trim() : '';
+      const text = _buildSharePlanText(rows, target);
+      _copyPlanShareText(text, 'Copied plan for ' + row.subcon + ' (' + rows.length + ' site(s)) — paste it into WhatsApp');
+    } catch (e) {
+      console.error('[planShare] share failed', e);
+      setPlanStatus('Copy failed — select the text manually');
     }
-    const rows = _planShareRows(row.subcon);
-    if (rows.length === 0) {
-      setPlanStatus('No sites assigned for ' + row.subcon + ' yet');
-      return;
-    }
-    const targetEl = document.getElementById('planShareTargetInput');
-    const target = targetEl ? targetEl.value.trim() : '';
-    const text = _buildSharePlanText(rows, target);
-    _copyPlanShareText(text, 'Copied plan for ' + row.subcon + ' (' + rows.length + ' site(s)) — paste it into WhatsApp');
   }
 
   // Per-row "Ask" button: asks for progress on THIS person's site only.
@@ -7676,11 +7681,11 @@ function _applyPlanCellStyle(el, col, val){
   }
 
   // Collect the rows the share message is built from: every row belonging to
-  // `subconFilter` that has a DU ID assigned (i.e. an actual site).
+  // `subcontFilter` that has a DU ID assigned (i.e. an actual site).
   // When no subcont is given, the viewer's own subcont is used.
-  function _planShareRows(subconFilter){
+  function _planShareRows(subcontFilter){
     const want = subcontFilter
-      ? canonicalSubcontKey(subconFilter).toLowerCase()
+      ? canonicalSubcontKey(subcontFilter).toLowerCase()
       : (mySubcont ? canonicalSubcontKey(mySubcont).toLowerCase() : '');
     const out = [];
     for (const rid of planRowOrder) {

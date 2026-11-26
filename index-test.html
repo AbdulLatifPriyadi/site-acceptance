@@ -919,14 +919,25 @@ var MOCK_TRACKER = [
 ];
 
 var MOCK_PLAN = [
-  { date:'2026-09-04', account:'adw_tl_agung_32092512', subcon:'ADW', teamType:'CSG', resourceRemark:'Dedicated/Shared', duId:'32CMH_0057_CSG', siteName:'PTI_DESA_UTAMA', activityRemark:'WORK', dailyPlanActivity:'Integration', result:'', rowIdx:16 },
-  { date:'2026-09-04', account:'caa_tl_rezar_32020226', subcon:'CAA', teamType:'WL', resourceRemark:'Dedicated/Shared', duId:'32CMH_0024_CSG', siteName:'TBG_BAROS', activityRemark:'WORK', dailyPlanActivity:'Install', result:'Done, waiting ATP', rowIdx:23 },
-  { date:'2026-09-04', account:'pab_tl_fajarfm_33091410', subcon:'PAB', teamType:'WL', resourceRemark:'Dedicated/Shared', duId:'32BDG_0224_NEW', siteName:'TBG_GURUMINDA', activityRemark:'OTHER PROJECT', dailyPlanActivity:'', result:'', rowIdx:9 },
-  { date:'2026-09-04', account:'nim_tl_gustira_32053405', subcon:'NIM', teamType:'WL', resourceRemark:'Dedicated/Shared', duId:'32CMH_0099_WL', siteName:'CMH_KOMP_PLUIT', activityRemark:'WORK', dailyPlanActivity:'MOS+Install', result:'', rowIdx:3 },
-  { date:'2026-09-04', account:'intisel_tl_rahmat_32051919', subcon:'Intisel', teamType:'WL', resourceRemark:'Dedicated/Shared', duId:'32SKB_0072_NEW', siteName:'PTI_PASAR_PELABUHAN', activityRemark:'WORK', dailyPlanActivity:'ATP', result:'', rowIdx:0 },
-  { date:'2026-09-04', account:'intisel_tl_deni_32053528', subcon:'Intisel', teamType:'WL', resourceRemark:'Dedicated/Shared', duId:'32TNG_0011_CSG', siteName:'TNG_TANJUNG', activityRemark:'IDLE', dailyPlanActivity:'', result:'Site locked, rescheduled', rowIdx:1 },
-  { date:'2026-09-04', account:'inv_tl_sandi_32042901', subcon:'INNOVIS', teamType:'WL', resourceRemark:'Dedicated/Shared', duId:'32BDG_0333_NEW', siteName:'BDG_OFFICE_TLT', activityRemark:'Closing Only', dailyPlanActivity:'MOS', result:'', rowIdx:22 }
+  { date:'2026-09-04', account:'adw_tl_agung_32092512', subcon:'ADW', teamType:'CSG', resourceRemark:'Dedicated/Shared', duId:'32CMH_0057_CSG', siteName:'PTI_DESA_UTAMA', activityRemark:'WORK', dailyPlanActivity:'Integration', result:'', rowIdx:16, rosterId:'r1' },
+  { date:'2026-09-04', account:'caa_tl_rezar_32020226', subcon:'CAA', teamType:'WL', resourceRemark:'Dedicated/Shared', duId:'32CMH_0024_CSG', siteName:'TBG_BAROS', activityRemark:'WORK', dailyPlanActivity:'Install', result:'Done, waiting ATP', rowIdx:23, rosterId:'r2' },
+  { date:'2026-09-04', account:'pab_tl_fajarfm_33091410', subcon:'PAB', teamType:'WL', resourceRemark:'Dedicated/Shared', duId:'32BDG_0224_NEW', siteName:'TBG_GURUMINDA', activityRemark:'OTHER PROJECT', dailyPlanActivity:'', result:'', rowIdx:9, rosterId:'r3' },
+  { date:'2026-09-04', account:'nim_tl_gustira_32053405', subcon:'NIM', teamType:'WL', resourceRemark:'Dedicated/Shared', duId:'32CMH_0099_WL', siteName:'CMH_KOMP_PLUIT', activityRemark:'WORK', dailyPlanActivity:'MOS+Install', result:'', rowIdx:3, rosterId:'r4' },
+  { date:'2026-09-04', account:'intisel_tl_rahmat_32051919', subcon:'Intisel', teamType:'WL', resourceRemark:'Dedicated/Shared', duId:'32SKB_0072_NEW', siteName:'PTI_PASAR_PELABUHAN', activityRemark:'WORK', dailyPlanActivity:'ATP', result:'', rowIdx:0, rosterId:'r5' },
+  { date:'2026-09-04', account:'intisel_tl_deni_32053528', subcon:'Intisel', teamType:'WL', resourceRemark:'Dedicated/Shared', duId:'32TNG_0011_CSG', siteName:'TNG_TANJUNG', activityRemark:'IDLE', dailyPlanActivity:'', result:'Site locked, rescheduled', rowIdx:1, rosterId:'r6' },
+  { date:'2026-09-04', account:'inv_tl_sandi_32042901', subcon:'INNOVIS', teamType:'WL', resourceRemark:'Dedicated/Shared', duId:'32BDG_0333_NEW', siteName:'BDG_OFFICE_TLT', activityRemark:'Closing Only', dailyPlanActivity:'MOS', result:'', rowIdx:22, rosterId:'r7' }
 ];
+
+var MOCK_ROSTER = [
+  { id:'r1', account:'adw_tl_agung_32092512',      subcon:'ADW',     teamType:'CSG', resourceRemark:'Dedicated/Shared', removedAt:'' },
+  { id:'r2', account:'caa_tl_rezar_32020226',      subcon:'CAA',     teamType:'WL',  resourceRemark:'Dedicated/Shared', removedAt:'' },
+  { id:'r3', account:'pab_tl_fajarfm_33091410',    subcon:'PAB',     teamType:'WL',  resourceRemark:'Dedicated/Shared', removedAt:'' },
+  { id:'r4', account:'nim_tl_gustira_32053405',    subcon:'NIM',     teamType:'WL',  resourceRemark:'Dedicated/Shared', removedAt:'' },
+  { id:'r5', account:'intisel_tl_rahmat_32051919', subcon:'Intisel', teamType:'WL',  resourceRemark:'Dedicated/Shared', removedAt:'' },
+  { id:'r6', account:'intisel_tl_deni_32053528',   subcon:'Intisel', teamType:'WL',  resourceRemark:'Dedicated/Shared', removedAt:'' },
+  { id:'r7', account:'inv_tl_sandi_32042901',      subcon:'INNOVIS', teamType:'WL',  resourceRemark:'Dedicated/Shared', removedAt:'' }
+];
+
 
 var MOCK_CLOCKIN = {
   '32CMH_0057_CSG': { name:'Agung (ADW)', team:'CSG', clockIn:'07:30', clockOut:'', account:'adw_tl_agung_32092512' },
@@ -964,6 +975,7 @@ window.fetch = function(url, options) {
   else if (type === 'planDates') data = ['2026-09-04', '2026-09-03', '2026-09-02', '2026-09-01'];
   else if (type === 'activeDate') data = { date: '2026-09-04' };
   else if (type === 'planRoster') data = { added: [], removed: [] };
+  else if (type === 'planRosterDoc') data = { version: 1, roster: MOCK_ROSTER };
   else if (type === 'planRosterEdits') data = {};
   else if (type === 'clockin') data = MOCK_CLOCKIN;
   else if (type === 'clockinSubmit') data = { status: 'ok' };
@@ -7731,21 +7743,26 @@ function _applyPlanCellStyle(el, col, val){
   // Per-row "Share" button: shares the whole plan for that row's SUBCONT —
   // every person in that subcont, not just the person on this row.
   function sharePlanForRow(rowIdx){
-    if (!planCurrentDate) { setPlanStatus('Pick a date first'); return; }
-    const row = _planRowByIndex(rowIdx);
-    if (!row) {
-      setPlanStatus('No site assigned for this row yet (DU ID is empty)');
-      return;
+    try {
+      if (!planCurrentDate) { setPlanStatus('Pick a date first'); return; }
+      const row = _planRowByIndex(rowIdx);
+      if (!row) {
+        setPlanStatus('No site assigned for this row yet (DU ID is empty)');
+        return;
+      }
+      const rows = _planShareRows(row.subcon);
+      if (rows.length === 0) {
+        setPlanStatus('No sites assigned for ' + row.subcon + ' yet');
+        return;
+      }
+      const targetEl = document.getElementById('planShareTargetInput');
+      const target = targetEl ? targetEl.value.trim() : '';
+      const text = _buildSharePlanText(rows, target);
+      _copyPlanShareText(text, 'Copied plan for ' + row.subcon + ' (' + rows.length + ' site(s)) — paste it into WhatsApp');
+    } catch (e) {
+      console.error('[planShare] share failed', e);
+      setPlanStatus('Copy failed — select the text manually');
     }
-    const rows = _planShareRows(row.subcon);
-    if (rows.length === 0) {
-      setPlanStatus('No sites assigned for ' + row.subcon + ' yet');
-      return;
-    }
-    const targetEl = document.getElementById('planShareTargetInput');
-    const target = targetEl ? targetEl.value.trim() : '';
-    const text = _buildSharePlanText(rows, target);
-    _copyPlanShareText(text, 'Copied plan for ' + row.subcon + ' (' + rows.length + ' site(s)) — paste it into WhatsApp');
   }
 
   // Per-row "Ask" button: asks for progress on THIS person's site only.
@@ -7761,11 +7778,11 @@ function _applyPlanCellStyle(el, col, val){
   }
 
   // Collect the rows the share message is built from: every row belonging to
-  // `subconFilter` that has a DU ID assigned (i.e. an actual site).
+  // `subcontFilter` that has a DU ID assigned (i.e. an actual site).
   // When no subcont is given, the viewer's own subcont is used.
-  function _planShareRows(subconFilter){
+  function _planShareRows(subcontFilter){
     const want = subcontFilter
-      ? canonicalSubcontKey(subconFilter).toLowerCase()
+      ? canonicalSubcontKey(subcontFilter).toLowerCase()
       : (mySubcont ? canonicalSubcontKey(mySubcont).toLowerCase() : '');
     const out = [];
     for (const rid of planRowOrder) {
