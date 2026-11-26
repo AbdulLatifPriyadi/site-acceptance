@@ -975,7 +975,12 @@
           title="Broadcast the picked date to all subcont viewers"
           style="padding:4px 9px;border:1px solid #f0b429;border-radius:6px;background:#f0b429;color:#1c2530;font-size:11.5px;cursor:pointer;font-weight:600;display:none;">SET</button>
         <button id="planCopyLastBtn"
-          style="padding:5px 9px;border:1px solid #2f6bc4;border-radius:6px;background:#2f6feb;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;">Copy from last date</button>
+          style="padding:5px 9px;border:1px solid #2f6bc4;border-radius:6px;background:#1f6feb;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;">Copy from last date</button>
+        <button id="planExportBtn"
+          title="Export the saved plan for this date to Excel (.xlsx)"
+          style="padding:5px 9px;border:1px solid #4caf7d;border-radius:6px;background:#1a7f4b;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;">Export to Excel</button>
+        <span id="planRosterStatus" style="font-size:11px; color:#8b949e;"></span>
+        <span id="planRosterBanner" style="display:none; align-items:center; gap:6px; padding:3px 8px; border-radius:6px; background:#f0b429; color:#1c2530; font-size:11px; font-weight:700;"></span>
         <button id="planQueryWorkBtn" title="Fill DU ID &amp; Site Name from current clock-in data"
           style="padding:5px 9px;border:1px solid #4caf7d;border-radius:6px;background:#1a7f4b;color:#fff;font-size:11.5px;cursor:pointer;font-weight:600;">Query work</button>
         <input type="text" id="planShareTargetInput" placeholder="Target"
@@ -1891,7 +1896,7 @@ Remark = ${remark}`;
   // ---------------- Map Dashboard ----------------
   const SUBCONT_PALETTE = ['#d94fa3','#2f6bc4','#4caf7d','#e8a33d','#8a5cc9','#e0574f','#3fa9d8','#a3d94f','#d9824c','#5c8fd9','#c94a9d','#4fd9c0'];
   const SUBCONT_COLOR_MAP = {
-    CCSI: '#e8735a',
+    CCSI: '#d9734f',
     PAB: '#e8735a',
     CAA: '#2fa84f',
     INTISEL: '#2f80ed',
@@ -1901,7 +1906,10 @@ Remark = ${remark}`;
     YPIT: '#f0b429',
     ZMG: '#7b4bb8',
     INNOVIS: '#f4b6d4',
-    TRITAMA: '#f0d040'
+    TRITAMA: '#f0d040',
+    ADW: '#5c8fd9',
+    MPJ: '#3fa9d8',
+    MKU: '#a3d94f'
   };
   const GAP_COL_STYLE = {
     'ATP':         { head:'#4caf7d', cell:'#d8f3e3' },
@@ -1982,17 +1990,31 @@ Remark = ${remark}`;
   let dashPivotMode = 'subcont-gap';
   // ----- Plan tab state -----
   let planCurrentDate = '';   // ISO YYYY-MM-DD currently being edited
-  let planRows = [];          // in-memory mirror; index aligns with PLAN_ROSTER (always full 23)
+  // Plan rows keyed by rosterId. A Map (not an array) because the roster id is
+  // the stable identity: re-ordering the roster or renaming a member must never
+  // move a row onto a different person. `planRowOrder` preserves the roster
+  // order for display.
+  let planRows = new Map();
+  let planRowOrder = [];
   let planDirty = false;      // true after any cell edit, cleared on save / date switch (after confirm)
   // Plan sort state. Default sort by subcon.
   let _planSortKey = 'subcon';
   let _planSortDir = 'asc';   // 'asc' | 'desc'
-  // Plan roster delta (surge-managed additions + removals layered on top of PLAN_ROSTER base).
-  // Mirror of the server's `planRoster` script property. Reconciles on dashboard init.
-  let planRosterDelta = { added: [], removed: [] };
-  // Plan roster field edits: maps account name -> { account, subcon, teamType, resourceRemark }.
-  // Loaded from server on init; updated deltas POSTed on save. Applied in effectiveRoster().
-  let planRosterEdits = {};
+  // ----- Roster (single source of truth: the server) -----
+  // The roster used to live in three places (hardcoded PLAN_ROSTER, a
+  // `planRoster` delta and a `planRosterEdits` override map) merged
+  // inconsistently, which produced the "Account missing" and "Add team doesn't
+  // sync" symptoms. The server now owns ONE roster document; these are the
+  // client-side mirrors of it.
+  let planRosterAccounts = [];       // array of { id, account, subcon, teamType, resourceRemark, removedAt }
+  let planRosterById = new Map();     // rosterId -> account entry
+  let planRosterByAccountLc = new Map(); // lowercased account -> rosterId
+  let planRosterVersion = 0;         // server version of the roster we hold
+  let planRosterLoaded = false;      // true once a roster fetch has resolved
+  let planRosterLastSync = null;     // timestamp of the last successful roster fetch
+  // Roster commands that failed to reach the server. They are retried rather
+  // than silently dropped, so a network hiccup never loses a roster change.
+  let planRosterPendingOps = [];
   // Plan cell selection (mirrors Table view pattern for select + Ctrl+C)
   let planSelStart = null;
   let planSelEnd = null;
@@ -2034,34 +2056,41 @@ Remark = ${remark}`;
     'ZMG':     'yana566487',
     'INDOHR':  'dani788489',
     'INNOVIS': 'iman5998398',
-    'CCSI':    'lukman776380'
+    'CCSI':    'lukman776380',
+    'ADW':     'jpjjk3clft',
+    'MPJ':     'zfqa7tgx3y',
+    'MKU':     'vonrmyq7hw'
   };
-  // ----- Plan tab: fixed roster (single source of truth — keep in sync with site-acceptance team) -----
-  const PLAN_ROSTER = [
-    { account:'intisel_tl_rahmat_32051919',     subcon:'Intisel',  teamType:'WL',  resourceRemark:'Dedicated/Shared' },
-    { account:'intisel_tl_deni_32053528',       subcon:'Intisel',  teamType:'WL',  resourceRemark:'Dedicated/Shared' },
-    { account:'intisel_tl_kusuma_32170422',     subcon:'Intisel',  teamType:'WL',  resourceRemark:'Dedicated/Shared' },
-    { account:'nim_tl_gustira_32053405',        subcon:'NIM',      teamType:'WL',  resourceRemark:'Dedicated/Shared' },
-    { account:'tal_tl_acep_32044619',           subcon:'TRITAMA',  teamType:'WL',  resourceRemark:'Dedicated/Shared' },
-    { account:'intisel_tl_mulyana_32732321',    subcon:'Intisel',  teamType:'WL',  resourceRemark:'Dedicated/Shared' },
-    { account:'andri_poca_wj',                  subcon:'Poca',     teamType:'WL',  resourceRemark:'Dedicated/Shared' },
-    { account:'tal_tl_cahya_32041711',          subcon:'TRITAMA',  teamType:'WL',  resourceRemark:'Dedicated/Shared' },
-    { account:'pab_tl_fajarfm_33091410',        subcon:'PAB',      teamType:'WL',  resourceRemark:'Dedicated/Shared' },
-    { account:'intisel_tl_nazar_32780821',      subcon:'Intisel',  teamType:'WL',  resourceRemark:'Dedicated/Shared' },
-    { account:'nim_tl_dindin_32043209',         subcon:'NIM',      teamType:'WL',  resourceRemark:'Dedicated/Shared' },
-    { account:'pab_tl_ricky_32062430',          subcon:'PAB',      teamType:'WL',  resourceRemark:'Dedicated/Shared' },
-    { account:'pab_tl_fajar_31720219',          subcon:'PAB',      teamType:'WL',  resourceRemark:'Dedicated/Shared' },
-    { account:'pab_mb_zhonaade_35191211',       subcon:'PAB',      teamType:'WL',  resourceRemark:'Dedicated/Shared' },
-    { account:'pab_tl_agusferdi_33091450',      subcon:'PAB',      teamType:'WL',  resourceRemark:'Dedicated/Shared' },
-    { account:'dedi_samsudin',                  subcon:'ZMG',      teamType:'WL',  resourceRemark:'Dedicated/Shared' },
-    { account:'adw_tl_agung_32092512',          subcon:'ADW',      teamType:'CSG', resourceRemark:'Dedicated/Shared' },
-    { account:'adw_tl_yudi_32092712',           subcon:'ADW',      teamType:'CSG', resourceRemark:'Dedicated/Shared' },
-    { account:'pab_mb_perridarmawan_32731619',  subcon:'PAB',      teamType:'CSG', resourceRemark:'Dedicated/Shared' },
-    { account:'poca_tl_yadi_32042903',          subcon:'Poca',     teamType:'WL',  resourceRemark:'Dedicated/Shared' },
-    { account:'chr_jabo_yanaoktaviana',         subcon:'INDOHR',   teamType:'WL',  resourceRemark:'Dedicated/Shared' },
-    { account:'inv_tl_sandi_32042901',          subcon:'INNOVIS',  teamType:'WL',  resourceRemark:'Dedicated/Shared' },
-    { account:'caa_tl_reza.r_32020226',         subcon:'CAA',      teamType:'WL',  resourceRemark:'Dedicated/Shared' }
+  // Canonical subcont vocabulary. Casing is NOT significant — the user confirmed
+  // `Poca` and `POCA` are the same team — so every subcont is stored and
+  // compared as an UPPERCASE key. This is the single list every subcont value
+  // in the app is resolved against, which stops the roster from splitting into
+  // groups that differ only in capitalisation.
+  const PLAN_SUBCONTS = [
+    'ADW', 'CAA', 'CCSI', 'INDOHR', 'INNOVIS', 'INTISEL', 'MKU', 'MPJ',
+    'NIM', 'PAB', 'POCA', 'TRITAMA', 'YPIT', 'ZMG'
   ];
+  const PLAN_SUBCONT_SET = new Set(PLAN_SUBCONTS);
+  // Resolve any free-text subcont value to its canonical uppercase key.
+  // Returns '' when the value matches no known subcont, so the caller can
+  // surface "unknown subcont" instead of silently creating a new group.
+  function canonicalSubcontKey(value){
+    const v = String(value == null ? '' : value).trim();
+    if (!v) return '';
+    const up = v.toUpperCase();
+    if (PLAN_SUBCONT_SET.has(up)) return up;
+    // Fallback: strip trailing digits so "INTISEL12" still resolves.
+    const stripped = up.replace(/\d+$/, '');
+    if (PLAN_SUBCONT_SET.has(stripped)) return stripped;
+    return '';
+  }
+  // ----- Plan tab: fixed roster (single source of truth — keep in sync with site-acceptance team) -----
+  // NOTE: the plan roster is no longer hardcoded here. The server owns ONE
+  // roster document (see planRosterDoc) and the client mirrors it. This
+  // eliminates the three-way merge (base roster + delta + edits) that made
+  // members disappear and made "add member" fail to sync.
+  // The base list now lives only in the Apps Script as PLAN_ROSTER_SEED,
+  // which seeds an empty server roster on first run.
   const PLAN_RESOURCE_REMARK_OPTS  = ['Dedicated','Shared','Dedicated/Shared'];
   const PLAN_ACTIVITY_REMARK_OPTS  = ['WORK','IDLE','ON LEAVE','OTHER PROJECT','WAITING MATERIAL','Closing Only'];
   const PLAN_DAILY_PLAN_OPTS       = ['MOS','MOS+Install','Install','Integration','ATP'];
@@ -2069,7 +2098,7 @@ Remark = ${remark}`;
   function subcontNameFromToken(token){
     const t = String(token || '').trim().toLowerCase();
     for(const k in SUBCONT_TOKENS){
-      if(SUBCONT_TOKENS[k].toLowerCase() === t) return k;
+      if(SUBCONT_TOKENS[k].toLowerCase() === t) return canonicalSubcontKey(k) || k;
     }
     return '';
   }
@@ -2118,7 +2147,11 @@ Remark = ${remark}`;
   }
 
   function normalizeSubcontKey(name){
-    // Strip trailing numbers so "INTISEL123" matches "INTISEL" data
+    // Resolve to the canonical uppercase subcont key. Falls back to the old
+    // trailing-digit strip for values that match no known subcont, so an
+    // unknown team still groups consistently rather than splitting per spelling.
+    const canon = canonicalSubcontKey(name);
+    if (canon) return canon;
     return String(name || '').trim().toUpperCase().replace(/\d+$/, '');
   }
 
@@ -5609,9 +5642,17 @@ Remark = ${remark}`;
     return y + '-' + m + '-' + day;
   }
 
+  // Build the default (empty) plan rows for the current roster.
+  // Returns { rows: Map<rosterId, row>, order: [rosterId, ...] }.
   function defaultPlanRows(){
-    return effectiveRoster().map(function(r){
-      return {
+    const rows = new Map();
+    const order = [];
+    effectiveRoster().forEach(function(r){
+      const rid = String(r.id || '').trim();
+      if (!rid) return;
+      order.push(rid);
+      rows.set(rid, {
+        rosterId:          rid,
         account:           r.account,
         subcon:            r.subcon,
         teamType:          r.teamType,
@@ -5619,60 +5660,64 @@ Remark = ${remark}`;
         duId:              '',
         siteName:          '',
         activityRemark:    '',
-        dailyPlanActivity: ''
-      };
+        dailyPlanActivity: '',
+        result:            ''
+      });
     });
+    return { rows: rows, order: order };
   }
 
-  // Map a fetched row to its roster slot.
+  // Map fetched server rows onto roster members.
   //
-  // Matching is by `account` (a stable, unique identity) rather than by
-  // `rowIdx` (a positional index). Positional matching breaks whenever the
-  // roster changes: removing a member shifts every later index, which would
-  // silently reassign one person's plan data to another person.
+  // The join key is `rosterId` — a stable id that survives renames and roster
+  // re-ordering. The account name is used ONLY as a legacy fallback for server
+  // rows written before the rosterId column existed, and it is matched
+  // case-insensitively so "warsidi_poca_tl" and "Warsidi_poca_tl" resolve to the
+  // same person.
   //
-  // Legacy rows (written before account-keyed saves) may have no account at
-  // all. The positional fallback is used ONLY when those legacy rows form a
-  // complete, exactly-aligned set — otherwise a partially-populated roster
-  // would hand one person's row to a different person.
-  function _assignSavedRows(roster, saved){
+  // The legacy positional fallback (rowIdx) is deliberately NOT used: a
+  // partially-populated roster would hand one person's row to another person.
+  // A row that cannot be matched is simply dropped rather than mis-assigned.
+  function _mergeSavedRows(roster, saved){
     const savedList = Array.isArray(saved) ? saved : [];
-    // Build by account
-    const byAccount = {};
+    const byId = {};
+    const byAccountLc = {};
     savedList.forEach(function(r){
+      const rid = String(r.rosterId || '').trim();
       const acct = String(r.account == null ? '' : r.account).trim();
-      if (acct && !byAccount[acct]) byAccount[acct] = r;
-    });
-    // Build by rowIdx — legacy fallback ONLY.
-    // Safe to use only when the legacy rows (those without an account) are a
-    // complete, exactly-aligned positional set for the current roster.
-    const legacyRows = savedList.filter(function(r){
-      return !String(r.account == null ? '' : r.account).trim();
-    });
-    let byIdx = null;
-    if (legacyRows.length > 0 && legacyRows.length === roster.length) {
-      const candidate = {};
-      let aligned = true;
-      legacyRows.forEach(function(r){
-        if (typeof r.rowIdx !== 'number' || r.rowIdx < 0 || r.rowIdx >= roster.length) { aligned = false; return; }
-        if (candidate[r.rowIdx]) { aligned = false; return; }
-        candidate[r.rowIdx] = r;
-      });
-      if (aligned) byIdx = candidate;
-    }
-    return roster.map(function(r, i){
-      const acct = String(r.account == null ? '' : r.account).trim();
-      const src = (acct && byAccount[acct]) ? byAccount[acct] : (byIdx ? byIdx[i] : null);
-      if (!src) {
-        return {
-          account: r.account, subcon: r.subcon, teamType: r.teamType,
-          resourceRemark: r.resourceRemark,
-          duId: '', siteName: '', activityRemark: '', dailyPlanActivity: '', result: ''
-        };
+      if (rid && !byId[rid]) byId[rid] = r;
+      if (acct) {
+        const lc = acct.toLowerCase();
+        if (!byAccountLc[lc]) byAccountLc[lc] = r;
       }
-      return {
-        account:           src.account           != null ? String(src.account)           : r.account,
-        subcon:            src.subcon            != null ? String(src.subcon)            : r.subcon,
+    });
+    const rows = new Map();
+    const order = [];
+    roster.forEach(function(r){
+      const rid = String(r.id || '').trim();
+      if (!rid) return;
+      order.push(rid);
+      const acct = String(r.account == null ? '' : r.account).trim();
+      const src = byId[rid] || (acct ? byAccountLc[acct.toLowerCase()] : null);
+      if (!src) {
+        rows.set(rid, {
+          rosterId:          rid,
+          account:           r.account,
+          subcon:            r.subcon,
+          teamType:          r.teamType,
+          resourceRemark:    r.resourceRemark,
+          duId:              '',
+          siteName:          '',
+          activityRemark:    '',
+          dailyPlanActivity: '',
+          result:            ''
+        });
+        return;
+      }
+      rows.set(rid, {
+        rosterId:          rid,
+        account:           r.account || (src.account != null ? String(src.account) : ''),
+        subcon:            canonicalSubcontKey(src.subcon) || String(src.subcon || r.subcon).toUpperCase(),
         teamType:          src.teamType          != null ? String(src.teamType)          : r.teamType,
         resourceRemark:    src.resourceRemark    != null ? String(src.resourceRemark)    : r.resourceRemark,
         duId:              src.duId              != null ? String(src.duId)              : '',
@@ -5680,8 +5725,9 @@ Remark = ${remark}`;
         activityRemark:    src.activityRemark    != null ? String(src.activityRemark)    : '',
         dailyPlanActivity: src.dailyPlanActivity != null ? String(src.dailyPlanActivity) : '',
         result:            src.result            != null ? String(src.result)            : ''
-      };
+      });
     });
+    return { rows: rows, order: order };
   }
 
   async function fetchPlanData(date){
@@ -5732,134 +5778,173 @@ Remark = ${remark}`;
     } catch (e) { return false; }
   }
 
-  // ----- Plan roster delta (surge-managed additions + removals) -----
-  function loadPlanRosterDeltaLocal() {
-    try {
-      const raw = localStorage.getItem('planRosterDelta');
-      if (!raw) return { added: [], removed: [] };
-      const parsed = JSON.parse(raw);
+  // ----- Plan roster (server-owned, single source of truth) -----
+  // The server owns ONE roster document: { version, accounts:[{id, account, subcon,
+  // teamType, resourceRemark, removedAt}] }. The client mirrors it here and
+  // mutates it only through postPlanRosterCommand(). Everything is keyed by the
+  // stable `id` (rosterId), never by the account name or an array index.
+  function _applyRosterDoc(accounts, version){
+    const list = Array.isArray(accounts) ? accounts : [];
+    planRosterAccounts = list.map(function(a){
       return {
-        added:   Array.isArray(parsed.added)   ? parsed.added   : [],
-        removed: Array.isArray(parsed.removed) ? parsed.removed : []
+        id:             String(a.id || '').trim(),
+        account:        String(a.account || '').trim(),
+        subcon:         canonicalSubcontKey(a.subcon) || String(a.subcon || '').trim().toUpperCase(),
+        teamType:       String(a.teamType || '').trim(),
+        resourceRemark: String(a.resourceRemark || '').trim(),
+        removedAt:      String(a.removedAt || '')
       };
-    } catch (e) { return { added: [], removed: [] }; }
+    }).filter(function(a){ return a.id && a.account; });
+    planRosterById = new Map();
+    planRosterByAccountLc = new Map();
+    for (const a of planRosterAccounts) {
+      planRosterById.set(a.id, a);
+      const lc = a.account.toLowerCase();
+      if (!planRosterByAccountLc.has(lc)) planRosterByAccountLc.set(lc, a.id);
+    }
+    if (typeof version === 'number' && !isNaN(version)) planRosterVersion = version;
+    planRosterLoaded = true;
+    planRosterLastSync = Date.now();
   }
 
-  function savePlanRosterDeltaLocal() {
+  // Fetch the roster document from the server. Returns true on success.
+  async function fetchPlanRosterDoc(){
+    if (!serverConfigured()) return false;
     try {
-      localStorage.setItem('planRosterDelta', JSON.stringify(planRosterDelta));
-    } catch (e) {}
-  }
-
-  async function fetchPlanRoster() {
-    if (!serverConfigured()) return planRosterDelta;
-    try {
-      const res = await fetchWithTimeout(SCRIPT_URL + '?type=planRoster', 10000);
-      if (!res.ok) return planRosterDelta;
+      const res = await fetchWithTimeout(SCRIPT_URL + '?type=planRosterDoc', 10000);
+      if (!res.ok) return false;
       const json = await res.json();
-      return {
-        added:   Array.isArray(json && json.added)   ? json.added   : [],
-        removed: Array.isArray(json && json.removed) ? json.removed : []
-      };
-    } catch (e) { return planRosterDelta; }
-  }
-
-  async function postPlanRosterSave(delta) {
-    if (!serverConfigured()) return false;
-    try {
-      const res = await fetchWithTimeout(SCRIPT_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ type: 'planRosterSave', added: delta.added, removed: delta.removed })
-      }, 15000);
-      if (!res.ok) console.warn('[planRoster] save failed: HTTP ' + res.status);
-      return res.ok;
+      _applyRosterDoc(json && json.roster ? json.roster : (json && json.accounts), json && json.version);
+      return true;
     } catch (e) {
-      console.warn('[planRoster] save failed', e);
+      console.warn('[planRoster] fetch failed', e);
       return false;
     }
   }
 
-  // ----- Plan roster field edits (Feature 3: roster propagation) -----
-  async function fetchPlanRosterEdits() {
-    if (!serverConfigured()) return {};
-    try {
-      const res = await fetchWithTimeout(SCRIPT_URL + '?type=planRosterEdits', 10000);
-      if (!res.ok) return {};
-      const raw = await res.text();
-      return JSON.parse(raw);
-    } catch (e) { return {}; }
+  // Send one roster command. Handles the stale-version case by re-applying the
+  // command against the fresh roster and retrying (at most twice), so two surge
+  // users cannot silently overwrite each other's roster changes.
+  async function postPlanRosterCommand(op, payload){
+    if (!serverConfigured()) return { ok: false, error: 'Server not configured' };
+    // The server dispatches on `type`, so it MUST be present — without it the
+    // request falls through to the default handler and errors.
+    let body = Object.assign({ type: 'planRosterCommand', op: op, version: planRosterVersion }, payload || {});
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const res = await fetchWithTimeout(SCRIPT_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify(body)
+        }, 15000);
+        if (!res.ok) return { ok: false, error: 'HTTP ' + res.status };
+        const json = await res.json();
+        if (json && json.status === 'stale') {
+          // The roster moved on — take the fresh copy and try again.
+          _applyRosterDoc(json.roster, json.version);
+          body = Object.assign({}, body, { version: planRosterVersion });
+          continue;
+        }
+        if (json && json.status === 'ok') {
+          _applyRosterDoc(json.roster, json.version);
+          return { ok: true, warnings: json.warnings || [] };
+        }
+        return { ok: false, error: (json && json.message) || 'Unexpected response' };
+      } catch (e) {
+        console.warn('[planRoster] command failed', e);
+        return { ok: false, error: (e && e.message) || String(e) };
+      }
+    }
+    return { ok: false, error: 'Roster kept changing — please retry' };
   }
 
-  async function postPlanRosterEdits(edits) {
-    if (!serverConfigured()) return false;
-    try {
-      const res = await fetchWithTimeout(SCRIPT_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ type: 'planRosterEdit', edits: edits })
-      }, 15000);
-      if (!res.ok) console.warn('[planRosterEdits] save failed: HTTP ' + res.status);
-      return res.ok;
-    } catch (e) {
-      console.warn('[planRosterEdits] save failed', e);
-      return false;
+  // Queue a roster command so it can be retried later instead of being lost.
+  function _queueRosterOp(op, payload){
+    planRosterPendingOps.push({ op: op, payload: payload || {} });
+    _renderRosterSyncBanner();
+  }
+
+  // Show the roster sync banner when there are unsynced roster changes.
+  function _renderRosterSyncBanner(){
+    const banner = document.getElementById('planRosterBanner');
+    if (!banner) return;
+    const n = planRosterPendingOps.length;
+    if (!n) {
+      banner.style.display = 'none';
+      banner.innerHTML = '';
+      return;
+    }
+    banner.style.display = 'inline-flex';
+    banner.innerHTML = 'Roster changes not synced (' + n + ') ' +
+      '<button type="button" id="planRosterRetryBtn" style="padding:1px 7px;border:1px solid rgba(0,0,0,.35);border-radius:4px;background:#fff;color:#1c2530;font-size:10.5px;cursor:pointer;font-weight:700;">Retry</button>';
+    const retry = document.getElementById('planRosterRetryBtn');
+    if (retry) {
+      retry.addEventListener('click', async function(){
+        retry.disabled = true;
+        const ok = await retryPendingRosterOps();
+        if (ok) {
+          setPlanStatus('Roster synced');
+          renderPlanView();
+        } else {
+          setPlanStatus('Roster still not synced — will retry');
+        }
+      });
     }
   }
 
-  // Remove a stored roster field edit (matched case-insensitively by the
-  // server). Used when a roster member is renamed or deleted so the old
-  // account override does not linger.
-  async function postPlanRosterEditDelete(account) {
-    if (!serverConfigured()) return false;
-    try {
-      const res = await fetchWithTimeout(SCRIPT_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ type: 'planRosterEditDelete', account: account })
-      }, 15000);
-      if (!res.ok) console.warn('[planRosterEdits] delete failed: HTTP ' + res.status);
-      return res.ok;
-    } catch (e) {
-      console.warn('[planRosterEdits] delete failed', e);
-      return false;
+  // Show the roster count and last sync time, so a stale roster is
+  // immediately attributable instead of looking like data loss.
+  function _renderRosterStatus(){
+    const el = document.getElementById('planRosterStatus');
+    if (!el) return;
+    if (!planRosterLoaded) { el.textContent = 'Roster: loading…'; return; }
+    const total = planRosterAccounts.length;
+    const active = effectiveRoster().length;
+    let when = '';
+    if (planRosterLastSync) {
+      const d = new Date(planRosterLastSync);
+      const hh = String(d.getHours()).padStart(2, '0');
+      const mm = String(d.getMinutes()).padStart(2, '0');
+      const ss = String(d.getSeconds()).padStart(2, '0');
+      when = ' · synced ' + hh + ':' + mm + ':' + ss;
     }
+    el.textContent = 'Roster: ' + active + (active !== total ? ' / ' + total : '') + when;
+    el.title = active !== total
+      ? (total - active) + ' member(s) removed'
+      : 'Roster loaded from the server';
+    _renderRosterSyncBanner();
   }
 
-  // Effective roster = PLAN_ROSTER base minus `removed`, plus `added`, plus `planRosterEdits`.
-  // planRosterEdits overrides base values for matching accounts (4 fields: account, subcon,
-  // teamType, resourceRemark). Edits take priority over added/removed deltas.
-  // Pure / synchronous / cheap — called on every render.
+  // Retry every queued roster command. Returns true when the queue is empty.
+  async function retryPendingRosterOps(){
+    if (!planRosterPendingOps.length) return true;
+    const ops = planRosterPendingOps.slice();
+    planRosterPendingOps = [];
+    let allOk = true;
+    for (const o of ops) {
+      const res = await postPlanRosterCommand(o.op, o.payload);
+      if (!res.ok) {
+        allOk = false;
+        planRosterPendingOps.push(o);
+        console.warn('[planRoster] retry failed for', o.op, res.error);
+      }
+    }
+    _renderRosterSyncBanner();
+    return allOk;
+  }
+
+  // The effective roster: the server's roster, with soft-removed members
+  // filtered out. Pure / synchronous / cheap — called on every render.
   function effectiveRoster() {
-    const removed = new Set((planRosterDelta.removed || []).map(s => String(s).trim().toLowerCase()));
-    const isRemoved = (acct) => removed.has(String(acct == null ? '' : acct).trim().toLowerCase());
-    const base    = PLAN_ROSTER.filter(function(r){ return !isRemoved(r.account); });
-    const added   = (planRosterDelta.added || []).filter(function(r){ return !isRemoved(r.account); });
-    // Apply planRosterEdits on top: edit overrides base + added fields for matching accounts.
-    // Lookup is case-insensitive — the same person can be stored with a
-    // different capitalisation ("Warsidi_poca_tl" vs "warsidi_poca_tl").
-    const edits   = planRosterEdits || {};
-    const editFor = (acct) => {
-      const key = String(acct == null ? '' : acct).trim();
-      if (!key) return undefined;
-      if (edits[key]) return edits[key];
-      const lc = key.toLowerCase();
-      const match = Object.keys(edits).find(function(k){ return String(k).trim().toLowerCase() === lc; });
-      return match ? edits[match] : undefined;
-    };
-    const mergeEdit = function(r){
-      const edit = editFor(r.account);
-      if (!edit) return r;
-      return {
-        account:        edit.account        !== undefined ? edit.account        : r.account,
-        subcon:         edit.subcon         !== undefined ? edit.subcon         : r.subcon,
-        teamType:       edit.teamType       !== undefined ? edit.teamType       : r.teamType,
-        resourceRemark: edit.resourceRemark !== undefined ? edit.resourceRemark : r.resourceRemark
-      };
-    };
-    const merged = base.map(mergeEdit);
-    const addedMerged = added.map(mergeEdit);
-    return merged.concat(addedMerged);
+    return planRosterAccounts.filter(function(a){ return !a.removedAt; });
+  }
+
+  // Look up a roster member by account name (case-insensitive) — used only as a
+  // legacy fallback for rows that predate the rosterId column.
+  function rosterIdForAccount(account){
+    const key = String(account == null ? '' : account).trim().toLowerCase();
+    if (!key) return '';
+    return planRosterByAccountLc.get(key) || '';
   }
   // -------------------------------------------------------------------
 
@@ -5972,6 +6057,18 @@ Remark = ${remark}`;
     // Show loading overlay for the duration of the fetch + render.
     _showPlanLoading();
     try {
+      // The roster is the single source of truth, so it must be loaded before
+      // the table can be built. If we have never loaded it (or it is stale),
+      // fetch it now — otherwise the table would render without members and
+      // look like "Account missing".
+      if (!planRosterLoaded) {
+        const ok = await fetchPlanRosterDoc();
+        if (!ok) {
+          container.innerHTML = '<div id="planWrap" style="overflow:auto;position:absolute;top:0;left:0;right:0;bottom:0;background:#fff;padding:30px;color:#6b7688;font-size:13px;">' +
+            'Could not load the roster from the server. Check your connection and try again.</div>';
+          return;
+        }
+      }
       // Pull saved rows (best-effort; offline / 404 falls back to roster defaults)
       let saved = [];
       try {
@@ -5979,7 +6076,9 @@ Remark = ${remark}`;
       } catch (e) {
         saved = [];
       }
-      planRows = _assignSavedRows(effectiveRoster(), Array.isArray(saved) ? saved : []);
+      const merged = _mergeSavedRows(effectiveRoster(), Array.isArray(saved) ? saved : []);
+      planRows = merged.rows;
+      planRowOrder = merged.order;
       planDirty = false;
       _applySaveButtonState();
       setPlanStatus('');
@@ -5989,6 +6088,7 @@ Remark = ${remark}`;
       _wirePlanTable(container);
       _wirePlanSortHeaders(container);
       _wirePlanResultRefresh(container);
+      _renderRosterStatus();
       // Pin Save to right edge (already absolute in inline style); keep #planWrap clear of the bar
       // even when the bar wraps to a 2nd row on narrow viewports. With statsBar hidden in Plan view,
       // the bar is the first child of dashBody, so offsetHeight alone is the correct top.
@@ -6014,7 +6114,7 @@ Remark = ${remark}`;
       btn.addEventListener('click', function(e){
         e.preventDefault();
         e.stopPropagation();
-        handlePlanDeleteRow(btn.getAttribute('data-account')).catch(function(err){
+        handlePlanDeleteRow(btn.getAttribute('data-account'), btn.getAttribute('data-roster-id')).catch(function(err){
           console.warn('[plan] delete row failed', err);
           setPlanStatus('Delete failed: ' + (err && err.message ? err.message : String(err)));
         });
@@ -6144,10 +6244,11 @@ Remark = ${remark}`;
             }
             // Mirror into planRows + data-val, then repaint cell styling (programmatic
             // .value assignment doesn't fire 'change', so _onPlanCellEdit doesn't run).
-            const rowIdx = Number(td.dataset.row);
+            const rowId = String(td.dataset.row || '');
             const colKey = td.dataset.col;
-            if (planRows[rowIdx] && colKey) {
-              planRows[rowIdx][colKey] = input.value;
+            const row = planRows.get(rowId);
+            if (row && colKey) {
+              row[colKey] = input.value;
               td.setAttribute('data-val', input.value);
               _applyPlanCellStyle(input, colKey, input.value);
               wrote = true;
@@ -6199,9 +6300,10 @@ Remark = ${remark}`;
             if (!input || input.disabled) continue;
             input.value = '';
             // Mirror into planRows and trigger _onPlanCellEdit lifecycle.
-            const rowIdx = Number(td.dataset.row);
-            if (planRows[rowIdx]) {
-              planRows[rowIdx][colKey] = '';
+            const rowId = String(td.dataset.row || '');
+            const row = planRows.get(rowId);
+            if (row) {
+              row[colKey] = '';
               td.setAttribute('data-val', '');
               _applyPlanCellStyle(input, td.dataset.col === 'result' ? 'result' : colKey, '');
             }
@@ -6228,32 +6330,40 @@ Remark = ${remark}`;
     }
   }
 
-  // Compute the list of roster indices to show in the Plan table, after
-  // applying the subcont visibility filter, then sort. _planSortKey === ''
-  // preserves roster order (stable).
+  // Compute the list of roster ids to show in the Plan table, after applying
+  // the subcont visibility filter, then sort. _planSortKey === '' preserves
+  // roster order (stable).
+  //
+  // The list contains rosterIds, not array indices — so sorting or filtering
+  // changes only the presentation order and can never change which row a cell
+  // edit targets.
   function _visibleSortedIndices(){
-    const roster = effectiveRoster();
-    const mySub = mySubcont ? String(mySubcont).toLowerCase() : '';
-    const indices = [];
-    for (let i = 0; i < roster.length; i++) {
-      const r = roster[i];
-      if (!r) continue;
-      if (mySub && String(r.subcon || '').toLowerCase() !== mySub) continue;
-      indices.push(i);
+    const mySub = mySubcont ? canonicalSubcontKey(mySubcont).toLowerCase() : '';
+    const ids = [];
+    for (let i = 0; i < planRowOrder.length; i++) {
+      const rid = planRowOrder[i];
+      const row = planRows.get(rid);
+      if (!row) continue;
+      if (mySub) {
+        const rowSub = canonicalSubcontKey(row.subcon) || String(row.subcon || '').trim().toLowerCase();
+        if (rowSub.toLowerCase() !== mySub) continue;
+      }
+      ids.push(rid);
     }
 
     if (_planSortKey) {
       const key = _planSortKey;
       const dir = _planSortDir === 'desc' ? -1 : 1;
-      indices.sort(function(a, b){
-        const va = String((planRows[a] && planRows[a][key]) || '').toLowerCase();
-        const vb = String((planRows[b] && planRows[b][key]) || '').toLowerCase();
+      ids.sort(function(a, b){
+        const ra = planRows.get(a), rb = planRows.get(b);
+        const va = String((ra && ra[key]) || '').toLowerCase();
+        const vb = String((rb && rb[key]) || '').toLowerCase();
         if (va < vb) return -1 * dir;
         if (va > vb) return  1 * dir;
-        return a - b; // stable: preserve original order on tie
+        return planRowOrder.indexOf(a) - planRowOrder.indexOf(b); // stable on tie
       });
     }
-    return indices;
+    return ids;
   }
 
   // Re-render the table from the current planRows (no fetch). Used after
@@ -6314,9 +6424,10 @@ Remark = ${remark}`;
 
   // Look up the remark for the current row's DU ID from dashTrackerData.
   function _runPlanResultQuery(btn){
-    var rowIdx = Number(btn.getAttribute('data-row'));
-    if (!Number.isFinite(rowIdx) || !planRows[rowIdx]) return;
-    var duId = planRows[rowIdx].duId;
+    var rowId = String(btn.getAttribute('data-row') || '');
+    var row = rowId ? planRows.get(rowId) : null;
+    if (!row) return;
+    var duId = row.duId;
     if (!duId) {
       btn.setAttribute('title', '(no DU ID in this row)');
       return;
@@ -6444,11 +6555,13 @@ function _applyPlanCellStyle(el, col, val){
 
   function _onPlanCellEdit(e){
     const el = e.target;
-    const rowIdx = Number(el.dataset.row);
+    const rowId = String(el.dataset.row || '');
     const col    = el.dataset.col;
-    if (!Number.isFinite(rowIdx) || !col || !planRows[rowIdx]) return;
+    if (!rowId || !col) return;
+    const row = planRows.get(rowId);
+    if (!row) return;
     const val = String(el.value || '');
-    planRows[rowIdx][col] = val;
+    row[col] = val;
     planDirty = true;
     _applySaveButtonState();
     // Mirror into the parent <td>'s data-val so Ctrl+C copies the latest value
@@ -6479,6 +6592,17 @@ function _applyPlanCellStyle(el, col, val){
       btn.style.borderColor = '#6b7688';
       btn.style.color = '#e6edf3';
       btn.style.cursor = 'default';
+    }
+    // The Excel export contains SAVED data only, so it must be disabled while
+    // there are unsaved edits — otherwise the file would silently omit them.
+    const exp = document.getElementById('planExportBtn');
+    if (exp) {
+      exp.disabled = planDirty;
+      exp.style.opacity = planDirty ? '.45' : '1';
+      exp.style.cursor = planDirty ? 'not-allowed' : 'pointer';
+      exp.title = planDirty
+        ? 'Save your changes before exporting — the export contains saved data only'
+        : 'Export the saved plan for this date to Excel (.xlsx)';
     }
   }
 
@@ -6527,11 +6651,11 @@ function _applyPlanCellStyle(el, col, val){
     }
     function delTd(rowIdx, account){
       return '<td data-row="' + rowIdx + '" data-col="del" style="padding:6px 4px; text-align:center;">' +
-        '<button type="button" class="plan-del-row" data-account="' + escAttr(account) + '" title="Delete ' + escAttr(account) + ' from roster" style="background:transparent;border:1px solid #cfd7df;border-radius:4px;color:#6b7688;cursor:pointer;font-size:12px;padding:2px 6px;line-height:1;">✕</button>' +
+        '<button type="button" class="plan-del-row" data-account="' + escAttr(account) + '" data-roster-id="' + escAttr(rowIdx) + '" title="Delete ' + escAttr(account) + ' from roster" style="background:transparent;border:1px solid #cfd7df;border-radius:4px;color:#6b7688;cursor:pointer;font-size:12px;padding:2px 6px;line-height:1;">✕</button>' +
       '</td>';
     }
     // Per-row action buttons at the far right: copy the whole subcont plan, or
-    // copy a progress question for this person's site. `data-row` is the roster index.
+    // copy a progress question for this person's site. `data-row` is the rosterId.
     function actionsTd(rowIdx, account, duId, subcon){
       const shareBtnStyle = 'background:#128c7e;border:1px solid #25d366;border-radius:4px;color:#fff;cursor:pointer;font-size:10px;padding:2px 5px;line-height:1.3;white-space:nowrap;';
       const askBtnStyle   = 'background:#075e54;border:1px solid #25d366;border-radius:4px;color:#fff;cursor:pointer;font-size:10px;padding:2px 5px;line-height:1.3;white-space:nowrap;';
@@ -6560,6 +6684,9 @@ function _applyPlanCellStyle(el, col, val){
         '</div>';
     }
     function makeInputs(row, i){
+      // `i` is the rosterId — the stable identity of this row. Every
+      // data-row attribute carries it so a cell edit always targets the right
+      // person, regardless of sorting or filtering.
       // Per-row subcon tint (uses dashSubcontColor → SUBCONT_COLOR_MAP, with palette fallback).
       const subBg = dashSubcontColor(row.subcon || '');
       const subFg = contrastText(subBg);
@@ -6616,12 +6743,12 @@ function _applyPlanCellStyle(el, col, val){
       return '<div id="planWrap" tabindex="0" style="overflow:auto;position:absolute;top:0;left:0;right:0;bottom:0;user-select:none;-webkit-user-select:none;background:#fff;padding:30px;color:#6b7688;font-size:13px;">' + msg + '</div>';
     }
 
-    const rowsHtml = visibleIdx.map(function(i){
-      const row = planRows[i] || {};
+    const rowsHtml = visibleIdx.map(function(rid){
+      const row = planRows.get(rid) || {};
       const actKey = String(row.activityRemark || '');
       const rowBlocked = !!PLAN_BLOCKED_ACTIVITY[actKey];
       const trStyle = 'border-bottom:1px solid #eef1f3;' + (rowBlocked ? 'background:#f0f0f0;' : '');
-      return '<tr style="' + trStyle + '" data-blocked="' + (rowBlocked ? '1' : '0') + '">' + makeInputs(row, i) + '</tr>';
+      return '<tr style="' + trStyle + '" data-blocked="' + (rowBlocked ? '1' : '0') + '">' + makeInputs(row, rid) + '</tr>';
     }).join('');
 
     let displayHeaders = headers.slice();
@@ -6811,39 +6938,62 @@ function _applyPlanCellStyle(el, col, val){
           setPlanStatus('Save failed: cannot read current state to safely merge');
           return;
         }
-        // Merge by `account` (stable identity) so a roster change never
-        // reassigns one person's plan data to another person.
-        const byAccount = {};
+        // Merge by rosterId — the stable identity — so a roster change never
+        // reassigns one person's plan data to another person. The account name
+        // is only a legacy fallback for server rows written before the
+        // rosterId column existed.
+        const byId = {};
+        const byAccountLc = {};
         (current || []).forEach(function(r){
+          const rid = String(r.rosterId || '').trim();
           const acct = String(r.account == null ? '' : r.account).trim();
-          if (acct && !byAccount[acct]) byAccount[acct] = r;
+          if (rid && !byId[rid]) byId[rid] = r;
+          if (acct) {
+            const lc = acct.toLowerCase();
+            if (!byAccountLc[lc]) byAccountLc[lc] = r;
+          }
         });
         // Local edits win for visible rows; untouched rows keep server values.
-        planRows.forEach(function(local){
+        for (const local of planRows.values()) {
+          const rid = String(local.rosterId || '').trim();
           const acct = String(local.account == null ? '' : local.account).trim();
-          if (acct) byAccount[acct] = local;
-        });
-        rowsToSend = roster.map(function(r, i){
+          if (rid) byId[rid] = local;
+          if (acct) byAccountLc[acct.toLowerCase()] = local;
+        }
+        rowsToSend = roster.map(function(r){
+          const rid = String(r.id || '').trim();
           const acct = String(r.account == null ? '' : r.account).trim();
-          const src = acct ? byAccount[acct] : null;
-          if (src) return src;
+          const src = (rid && byId[rid]) || (acct ? byAccountLc[acct.toLowerCase()] : null);
+          if (src) {
+            // Always carry the current rosterId so the server can key on it.
+            return Object.assign({}, src, { rosterId: rid, account: acct || src.account });
+          }
           return {
-            account: r.account, subcon: r.subcon, teamType: r.teamType,
+            rosterId: rid,
+            account: acct, subcon: r.subcon, teamType: r.teamType,
             resourceRemark: r.resourceRemark,
             duId: '', siteName: '', activityRemark: '', dailyPlanActivity: '', result: ''
           };
         });
       } else {
         // Surge user: send the local planRows as-is (full effective roster in roster order).
-        rowsToSend = planRows;
+        rowsToSend = [];
+        for (const rid of planRowOrder) {
+          const local = planRows.get(rid);
+          if (local) rowsToSend.push(local);
+        }
       }
+
+      // Accounts the surge removed from the roster. Their rows are deleted
+      // from the date instead of being preserved forever. We send the roster
+      // id (reliable across renames) and the account name as a legacy fallback.
+      const removedEntries = planRosterAccounts.filter(function(a){ return a.removedAt; });
 
       const payload = {
         type: 'planSave',
         date: planCurrentDate,
-        // Surge-only: accounts removed from the roster. The server deletes
-        // their rows for this date instead of keeping them forever.
-        pruneAccounts: mySubcont ? [] : (planRosterDelta.removed || []).map(String),
+        pruneAccounts: mySubcont ? [] : removedEntries.map(function(a){ return a.account; }),
+        pruneRosterIds: mySubcont ? [] : removedEntries.map(function(a){ return a.id; }),
         rows: rowsToSend.map(function(r, i){
           return Object.assign({ rowIdx: i }, r);
         })
@@ -6854,125 +7004,92 @@ function _applyPlanCellStyle(el, col, val){
         body: JSON.stringify(payload)
       });
       if (!res.ok) throw new Error('HTTP ' + res.status);
+      const saveJson = await res.json().catch(function(){ return {}; });
       planDirty = false;
       _applySaveButtonState();
-      setPlanStatus('Saved');
 
-      // Feature 3: detect roster field edits and persist them for future dates.
-      // Compare planRows against the base roster (PLAN_ROSTER + added, minus
-      // removed, but WITHOUT planRosterEdits) so we detect changes from their
-      // original values.
-      //
-      // The base lookup is by ACCOUNT, not by index: effectiveRoster() filters
-      // removed entries first, so roster index i does not correspond to
-      // PLAN_ROSTER[i] once anyone has been removed.
-      //
-      // Matching is case-insensitive, and a RENAMED account is matched by
-      // position as a fallback — otherwise renaming a member would never be
-      // detected as an edit (the new name is not a key in the base map).
-      const ROSTER_FIELDS = ['account', 'subcon', 'teamType', 'resourceRemark'];
-      const removedSet = new Set((planRosterDelta.removed || []).map(s => String(s).trim().toLowerCase()));
-      const isRemovedAcct = (acct) => removedSet.has(String(acct == null ? '' : acct).trim().toLowerCase());
-      // Base roster = PLAN_ROSTER (minus removed) + added, keyed by account.
-      const baseByAccount = {};
-      const baseByAccountLc = {};
-      const baseList = [];
-      PLAN_ROSTER.forEach(function(r){
-        if (isRemovedAcct(r.account)) return;
-        baseByAccount[String(r.account || '').trim()] = r;
-        baseByAccountLc[String(r.account || '').trim().toLowerCase()] = r;
-        baseList.push(r);
-      });
-      (planRosterDelta.added || []).forEach(function(r){
-        const acct = String(r.account || '').trim();
-        if (!acct) return;
-        baseByAccount[acct] = r;
-        baseByAccountLc[acct.toLowerCase()] = r;
-        baseList.push(r);
-      });
-      // Accounts consumed by an exact/lc match, so the positional fallback
-      // does not match the same base row twice.
-      const usedBase = new Set();
-      const edits = [];
-      for (let i = 0; i < planRows.length; i++) {
-        const local = planRows[i];
-        if (!local) continue;
-        const localAcct = String(local.account == null ? '' : local.account).trim();
-        if (!localAcct) continue;
-        let base = baseByAccount[localAcct] || baseByAccountLc[localAcct.toLowerCase()];
-        let matchedByPosition = false;
-        if (!base) {
-          // Renamed account: the row at the same position in the base roster.
-          // Only valid while the base and edited lists still line up.
-          if (i < baseList.length) {
-            const candidate = baseList[i];
-            if (!isRemovedAcct(candidate.account) && !usedBase.has(candidate)) {
-              base = candidate;
-              matchedByPosition = true;
-            }
-          }
-        }
-        if (!base) continue;
-        usedBase.add(base);
-        // Check if any of the 4 roster fields differ.
-        let changed = false;
-        for (let fi = 0; fi < ROSTER_FIELDS.length; fi++) {
-          const fk = ROSTER_FIELDS[fi];
-          if (String(local[fk] || '') !== String(base[fk] || '')) { changed = true; break; }
-        }
-        if (changed) {
-          const edit = {
-            account:        local.account        || '',
-            subcon:         local.subcon         || '',
-            teamType:       local.teamType       || '',
-            resourceRemark: local.resourceRemark || ''
-          };
-          // On a rename the old account override must be removed, otherwise
-          // the stale entry keeps overriding the renamed row.
-          if (matchedByPosition || String(base.account).trim() !== localAcct) {
-            edit.previousAccount = String(base.account || '').trim();
-          }
-          edits.push(edit);
-        }
+      // Report what actually persisted, so a partial save is visible.
+      const parts = [];
+      if (saveJson.updated) parts.push(saveJson.updated + ' updated');
+      if (saveJson.appended) parts.push(saveJson.appended + ' added');
+      if (saveJson.deleted) parts.push(saveJson.deleted + ' removed');
+      if (!parts.length) parts.push('no changes');
+      setPlanStatus('Saved (' + parts.join(', ') + ')');
+      if (saveJson.warnings && saveJson.warnings.length) {
+        console.warn('[planSave] warnings', saveJson.warnings);
+        setPlanStatus('Saved (' + parts.join(', ') + ') — ' + saveJson.warnings.length + ' warning(s), see console');
       }
-      if (edits.length > 0) {
-        // Merge into local planRosterEdits and POST to server. Awaited so a
-        // failure is surfaced instead of silently reverting on next load.
-        const prevEdits = {};
-        edits.forEach(function(e){ prevEdits[e.account] = planRosterEdits[e.account]; });
-        edits.forEach(function(e){ planRosterEdits[e.account] = e; });
-        const editsOk = await postPlanRosterEdits(edits);
-        if (editsOk) {
-          // Drop the old account override for renamed rows.
-          const renames = edits.filter(function(e){ return e.previousAccount; });
-          for (const rn of renames) {
-            await postPlanRosterEditDelete(rn.previousAccount);
-            Object.keys(planRosterEdits).forEach(function(k){
-              if (k !== rn.account && k.trim().toLowerCase() === rn.previousAccount.trim().toLowerCase()) {
-                delete planRosterEdits[k];
-              }
-            });
+
+      // Persist roster field edits (rename / team move / remark change) so they
+      // apply to future dates too. Because every local row carries its
+      // rosterId, this is a direct comparison against the roster entry that
+      // owns the same id — no name matching, no positional guessing.
+      const rosterOps = _detectRosterOps();
+      if (rosterOps.length > 0) {
+        let allOk = true;
+        for (const op of rosterOps) {
+          const cmdRes = await postPlanRosterCommand(op.op, op.payload);
+          if (!cmdRes.ok) {
+            allOk = false;
+            _queueRosterOp(op.op, op.payload);
+            console.warn('[planSave] roster command failed', op.op, cmdRes.error);
           }
         }
-        if (!editsOk) {
-          // Revert the local map so the UI matches the server, and keep the
-          // dirty flag so the user can retry.
-          edits.forEach(function(e){
-            if (prevEdits[e.account] === undefined) delete planRosterEdits[e.account];
-            else planRosterEdits[e.account] = prevEdits[e.account];
-          });
-          planDirty = true;
-          _applySaveButtonState();
-          setPlanStatus('Saved (roster changes failed to sync — press Save to retry)');
+        if (allOk) {
+          renderPlanView();
+        } else {
+          setPlanStatus('Plan saved, but roster changes are not synced yet — retry from the banner');
         }
       }
     } catch (e) {
       console.warn('[plan] save failed', e);
       setPlanStatus('Save failed: ' + (e && e.message ? e.message : String(e)));
+      // Keep the dirty flag so the user's changes are not lost and the Save
+      // button stays enabled for a retry.
+      planDirty = true;
+      _applySaveButtonState();
     } finally {
       _hidePlanLoading();
     }
   });
+
+  // Detect roster field changes between the local plan rows and the roster, and
+  // turn them into roster commands.
+  //
+  // Because every local row carries its rosterId, this is a direct comparison
+  // against the roster entry with that id — no name matching, no positional
+  // guessing. A rename shows up as "this id now has a different account name".
+  function _detectRosterOps() {
+    const ops = [];
+    for (const rid of planRowOrder) {
+      const local = planRows.get(rid);
+      if (!local || !rid) continue;
+      const base = planRosterById.get(rid);
+      if (!base) continue; // a row with no roster entry — nothing to update
+      const localAcct = String(local.account == null ? '' : local.account).trim();
+      const localSub = canonicalSubcontKey(local.subcon) || String(local.subcon || '').trim().toUpperCase();
+      const baseSub = canonicalSubcontKey(base.subcon) || String(base.subcon || '').trim().toUpperCase();
+      if (localAcct && localAcct !== base.account) {
+        // Renamed — keep the id, change the display name.
+        ops.push({ op: 'rename', payload: { id: rid, newAccount: localAcct } });
+      }
+      if (localSub && localSub !== baseSub) {
+        ops.push({ op: 'setSubcont', payload: { id: rid, subcont: localSub } });
+      }
+      const localTeam = String(local.teamType || '').trim();
+      const localRemark = String(local.resourceRemark || '').trim();
+      if (localTeam !== base.teamType || localRemark !== base.resourceRemark) {
+        ops.push({
+          op: 'upsert',
+          payload: {
+            id: rid, account: localAcct || base.account, subcon: localSub || baseSub,
+            teamType: localTeam, resourceRemark: localRemark
+          }
+        });
+      }
+    }
+    return ops;
+  }
 
   document.getElementById('planSetActiveBtn').addEventListener('click', async function(){
     // Defensive: the button is also hidden for subcont users.
@@ -7029,33 +7146,42 @@ function _applyPlanCellStyle(el, col, val){
     if (!prior) { setPlanStatus('No previous data to copy'); return; }
     if (!confirm('Copy plan from ' + prior + ' into ' + planCurrentDate + '? This will overwrite current rows.')) return;
     const priorRows = await fetchPlanData(prior);
-    // Match prior rows to the current roster by `account` (stable identity),
-    // so a roster change never copies one person's plan onto another person.
-    const roster = effectiveRoster();
-    const byAccount = {};
+    // Match prior rows to the current roster by rosterId (the stable identity),
+    // so a roster change or a rename never copies one person's plan onto
+    // another person. The account name is only a legacy fallback for rows
+    // written before the rosterId column existed.
+    const byId = {};
+    const byAccountLc = {};
     (priorRows || []).forEach(function(r){
+      const rid = String(r.rosterId || '').trim();
       const acct = String(r.account == null ? '' : r.account).trim();
-      if (acct && !byAccount[acct]) byAccount[acct] = r;
+      if (rid && !byId[rid]) byId[rid] = r;
+      if (acct) {
+        const lc = acct.toLowerCase();
+        if (!byAccountLc[lc]) byAccountLc[lc] = r;
+      }
     });
     let copied = 0;
-    for (let i = 0; i < planRows.length; i++) {
-      const acct = String((planRows[i] && planRows[i].account) || '').trim();
-      const src = acct ? byAccount[acct] : null;
-      if (src) {
-        const fb = roster[i] || {};
-        planRows[i] = {
-          account:           src.account           != null ? String(src.account)           : (planRows[i].account || fb.account || ''),
-          subcon:            src.subcon            != null ? String(src.subcon)            : (planRows[i].subcon  || fb.subcon  || ''),
-          teamType:          src.teamType          != null ? String(src.teamType)          : (planRows[i].teamType|| fb.teamType|| ''),
-          resourceRemark:    src.resourceRemark    != null ? String(src.resourceRemark)    : (planRows[i].resourceRemark || fb.resourceRemark || ''),
-          duId:              src.duId              != null ? String(src.duId)              : '',
-          siteName:          src.siteName          != null ? String(src.siteName)          : '',
-          activityRemark:    src.activityRemark    != null ? String(src.activityRemark)    : '',
-          dailyPlanActivity: src.dailyPlanActivity != null ? String(src.dailyPlanActivity) : '',
-          result:            src.result            != null ? String(src.result)            : ''
-        };
-        copied++;
-      }
+    for (const rid of planRowOrder) {
+      const cur = planRows.get(rid);
+      if (!cur) continue;
+      const acct = String(cur.account || '').trim();
+      const src = byId[rid] || (acct ? byAccountLc[acct.toLowerCase()] : null);
+      if (!src) continue;
+      const base = planRosterById.get(rid) || {};
+      planRows.set(rid, {
+        rosterId:          rid,
+        account:           src.account           != null && String(src.account).trim() ? String(src.account) : (cur.account || base.account || ''),
+        subcon:            canonicalSubcontKey(src.subcon) || String(src.subcon  || cur.subcon  || base.subcon  || ''),
+        teamType:          src.teamType          != null ? String(src.teamType)          : (cur.teamType|| base.teamType|| ''),
+        resourceRemark:    src.resourceRemark    != null ? String(src.resourceRemark)    : (cur.resourceRemark || base.resourceRemark || ''),
+        duId:              src.duId              != null ? String(src.duId)              : '',
+        siteName:          src.siteName          != null ? String(src.siteName)          : '',
+        activityRemark:    src.activityRemark    != null ? String(src.activityRemark)    : '',
+        dailyPlanActivity: src.dailyPlanActivity != null ? String(src.dailyPlanActivity) : '',
+        result:            src.result            != null ? String(src.result)            : ''
+      });
+      copied++;
     }
     if (copied === 0) {
       setPlanStatus('No matching rows to copy from ' + prior);
@@ -7079,15 +7205,110 @@ function _applyPlanCellStyle(el, col, val){
     }
   });
 
+  // ----- Export the plan to Excel (.xlsx) -----
+  //
+  // The export contains the data that is SAVED on the server, so the file
+  // always matches what is really persisted. Unsaved on-screen edits are
+  // excluded, which is why the button is disabled while the plan is dirty —
+  // otherwise the file would silently lack the user's last changes.
+  document.getElementById('planExportBtn').addEventListener('click', async function(){
+    const btn = this;
+    if (!planCurrentDate) { setPlanStatus('Pick a date first'); return; }
+    if (planDirty) { setPlanStatus('Save your changes before exporting'); return; }
+    if (typeof XLSX === 'undefined') { setPlanStatus('Excel library not loaded'); return; }
+    const date = planCurrentDate;
+    const originalLabel = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Exporting…';
+    try {
+      // Fetch fresh from the server — the export is server truth, not the local
+      // mirror.
+      let saved = [];
+      try {
+        saved = await fetchPlanData(date);
+      } catch (e) {
+        setPlanStatus('Export failed: could not read the saved plan');
+        return;
+      }
+      if (!Array.isArray(saved)) saved = [];
+
+      // Filter to the user's team when scoped to a subcont. The server is
+      // token-agnostic, so the scoping happens here.
+      const mySub = mySubcont ? canonicalSubcontKey(mySubcont).toLowerCase() : '';
+      const rosterById = planRosterById;
+      const rows = saved.filter(function(r){
+        if (!mySub) return true;
+        const rid = String(r.rosterId || '').trim();
+        const entry = rid ? rosterById.get(rid) : null;
+        const sub = String((entry && entry.subcon) || r.subcon || '').trim();
+        return canonicalSubcontKey(sub).toLowerCase() === mySub;
+      });
+
+      // Order by the current on-screen sort so the file matches what the user
+      // is looking at.
+      const key = _planSortKey;
+      const dir = _planSortDir === 'desc' ? -1 : 1;
+      const val = function(r, k){
+        if (k === 'account' || k === 'subcon' || k === 'teamType' || k === 'resourceRemark') {
+          const rid = String(r.rosterId || '').trim();
+          const entry = rid ? rosterById.get(rid) : null;
+          if (entry && entry[k] != null) return String(entry[k]);
+        }
+        return String(r[k] == null ? '' : r[k]);
+      };
+      const sorted = rows.slice().sort(function(a, b){
+        if (!key) return 0;
+        const va = val(a, key).toLowerCase();
+        const vb = val(b, key).toLowerCase();
+        if (va < vb) return -1 * dir;
+        if (va > vb) return  1 * dir;
+        return 0;
+      });
+
+      const header = ['Roster ID', 'Account', 'Subcon', 'Team Type', 'Resource Remark',
+                      'DU ID', 'Site Name', 'Activity Remark', 'Daily Plan Activity', 'Result'];
+      const aoa = [header];
+      sorted.forEach(function(r){
+        const rid = String(r.rosterId || '').trim();
+        const entry = rid ? rosterById.get(rid) : null;
+        aoa.push([
+          rid,
+          String(r.account == null ? '' : r.account),
+          String((entry && entry.subcon) || r.subcon || ''),
+          String((entry && entry.teamType) || r.teamType || ''),
+          String((entry && entry.resourceRemark) || r.resourceRemark || ''),
+          String(r.duId == null ? '' : r.duId),
+          String(r.siteName == null ? '' : r.siteName),
+          String(r.activityRemark == null ? '' : r.activityRemark),
+          String(r.dailyPlanActivity == null ? '' : r.dailyPlanActivity),
+          String(r.result == null ? '' : r.result)
+        ]);
+      });
+
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, date.slice(0, 10) || 'Plan');
+      const fname = 'plan-' + date + (mySub ? '-' + mySub : '') + '.xlsx';
+      XLSX.writeFile(wb, fname);
+      setPlanStatus('Exported ' + fname + ' (' + sorted.length + ' rows)');
+    } catch (e) {
+      console.warn('[plan] export failed', e);
+      setPlanStatus('Export failed: ' + (e && e.message ? e.message : String(e)));
+    } finally {
+      btn.disabled = false;
+      btn.textContent = originalLabel;
+    }
+  });
+
   // ----- Share: WhatsApp messages built from the visible Plan rows -----
 
-  // Resolve a single plan row by its roster index (the value carried on the
-  // per-row buttons as data-row). Returns null when the index is invalid or
+  // Resolve a single plan row by its rosterId (the value carried on the
+  // per-row buttons as data-row). Returns null when the id is unknown or
   // the row has no DU ID assigned.
-  function _planRowByIndex(rowIdx){
-    const i = Number(rowIdx);
-    if (!isFinite(i) || i < 0) return null;
-    const row = planRows[i];
+  function _planRowByIndex(rowId){
+    const rid = String(rowId == null ? '' : rowId).trim();
+    if (!rid) return null;
+    const row = planRows.get(rid);
     if (!row) return null;
     const duId = String(row.duId == null ? '' : row.duId).trim();
     if (!duId) return null; // no site assigned — nothing to share
@@ -7096,9 +7317,8 @@ function _applyPlanCellStyle(el, col, val){
     // through planRows and then the roster so the subcont is never undefined.
     let subcon = String(row.subcon == null ? '' : row.subcon).trim();
     if (!subcon) {
-      const roster = effectiveRoster();
-      const r = roster[i];
-      if (r) subcon = String(r.subcon == null ? '' : r.subcon).trim();
+      const rosterEntry = planRosterById.get(rid);
+      if (rosterEntry) subcon = String(rosterEntry.subcon == null ? '' : rosterEntry.subcon).trim();
     }
     return {
       account:  String(row.account == null ? '' : row.account).trim(),
@@ -7144,19 +7364,17 @@ function _applyPlanCellStyle(el, col, val){
   // `subconFilter` that has a DU ID assigned (i.e. an actual site).
   // When no subcont is given, the viewer's own subcont is used.
   function _planShareRows(subconFilter){
-    const roster = effectiveRoster();
-    const want = subconFilter
-      ? String(subconFilter).toLowerCase()
-      : (mySubcont ? String(mySubcont).toLowerCase() : '');
+    const want = subcontFilter
+      ? canonicalSubcontKey(subconFilter).toLowerCase()
+      : (mySubcont ? canonicalSubcontKey(mySubcont).toLowerCase() : '');
     const out = [];
-    for (let i = 0; i < roster.length; i++) {
-      const r = roster[i];
-      if (!r) continue;
-      const row = planRows[i];
+    for (const rid of planRowOrder) {
+      const row = planRows.get(rid);
       if (!row) continue;
       // The subcont is authoritative on the roster entry; planRows may have an
       // empty sheet column for rows written before subcont was tracked.
-      const rowSubcon = String(r.subcon || '').trim() || String(row.subcon || '').trim();
+      const rosterEntry = planRosterById.get(rid);
+      const rowSubcon = String((rosterEntry && rosterEntry.subcon) || '').trim() || String(row.subcon || '').trim();
       if (want && rowSubcon.toLowerCase() !== want) continue;
       const duId = String(row.duId == null ? '' : row.duId).trim();
       if (!duId) continue; // no site assigned — not part of the shared plan
@@ -7169,7 +7387,6 @@ function _applyPlanCellStyle(el, col, val){
     }
     return out;
   }
-
   // Format the plan date as DD/MM/YYYY for the message header.
   function _planShareDate(){
     const d = String(planCurrentDate || todayISO());
@@ -7288,8 +7505,8 @@ function _applyPlanCellStyle(el, col, val){
     var filled = 0;
     var noMatch = 0;
     var skipped = 0;
-    for (var i = 0; i < planRows.length; i++) {
-      var row = planRows[i];
+    for (const rid of planRowOrder) {
+      var row = planRows.get(rid);
       if (!row) continue;
 
       // Skip rows that are blocked (non-working activity). Their duId/siteName
@@ -7325,8 +7542,8 @@ function _applyPlanCellStyle(el, col, val){
     if (filled === 0 && noMatch > 0) {
       // Show which accounts couldn't be matched
       var unmatched = [];
-      for (var i = 0; i < planRows.length; i++) {
-        var r = planRows[i];
+      for (const rid of planRowOrder) {
+        var r = planRows.get(rid);
         if (r && !(r.duId && r.duId.trim()) && r.account && !PLAN_BLOCKED_ACTIVITY[String(r.activityRemark || '')]) unmatched.push(r.account);
       }
       setPlanStatus('No matches — ' + noMatch + ' rows with no clock-in. Check: ' + unmatched.slice(0, 3).join(', '));
@@ -7400,19 +7617,36 @@ function _applyPlanCellStyle(el, col, val){
     const existingAccounts = new Set(effectiveRoster().map(function(r){ return String(r.account || '').trim().toLowerCase(); }));
     if (existingAccounts.has(acc.toLowerCase())) { showErr('Account "' + acc + '" is already in the roster.'); return; }
 
-    // Append to added (not base) and clear removed if it was there.
-    planRosterDelta.added = (planRosterDelta.added || []).concat([{
-      account: acc, subcon: sub, teamType: tt, resourceRemark: rr
-    }]);
-    planRosterDelta.removed = (planRosterDelta.removed || []).filter(function(a){ return String(a).trim().toLowerCase() !== acc.toLowerCase(); });
+    // Canonicalise the subcont. Casing is not significant ("Poca" and "POCA"
+    // are the same team), so it is stored uppercase against the canonical list.
+    const canonSub = canonicalSubcontKey(sub);
+    if (sub && !canonSub) {
+      showErr('Unknown subcont "' + sub + '". Use one of: ' + PLAN_SUBCONTS.join(', '));
+      return;
+    }
 
-    savePlanRosterDeltaLocal();
+    // The server owns the roster, so the add is a single command. The server
+    // assigns the rosterId and returns the full authoritative roster, which
+    // replaces our in-memory copy — the client can never drift from the server.
+    const res = await postPlanRosterCommand('upsert', {
+      account: acc,
+      subcon: canonSub,
+      teamType: tt,
+      resourceRemark: rr
+    });
+    if (!res.ok) {
+      // Queue it so it is retried rather than lost, and tell the user.
+      _queueRosterOp('upsert', { account: acc, subcon: canonSub, teamType: tt, resourceRemark: rr });
+      showErr('Could not reach the server — the member will be added when the connection recovers.');
+      setPlanStatus('Add queued — server not reachable, retry from the banner');
+      return;
+    }
+    if (res.warnings && res.warnings.length) {
+      console.warn('[plan] add member warnings', res.warnings);
+    }
     closePlanAddMemberModal();
     renderPlanView();
-    // Await the server save so a failure is surfaced rather than silently
-    // reverting the roster on the next page load.
-    const ok = await postPlanRosterSave(planRosterDelta);
-    if (!ok) setPlanStatus('Member added locally — server sync FAILED (will revert on reload)');
+    setPlanStatus('Member "' + acc + '" added');
   }
 
   document.getElementById('planAddMemberBtn').addEventListener('click', openPlanAddMemberModal);
@@ -7438,30 +7672,23 @@ function _applyPlanCellStyle(el, col, val){
   });
 
   // ----- Delete roster member (surge-only, delegated via _wirePlanTable) -----
-  async function handlePlanDeleteRow(account){
+  async function handlePlanDeleteRow(account, rosterId){
     if (mySubcont) return;
     if (!account) return;
     if (!confirm('Delete member "' + account + '" from the roster?\n\n' +
                  'Their plan rows on all dates will be dropped on the next save.')) return;
-    // Add to removed (dedupe, case-insensitive); defensively remove from added if present.
-    const lcAcc = String(account).trim().toLowerCase();
-    const removed = (planRosterDelta.removed || []).filter(function(a){ return String(a).trim().toLowerCase() !== lcAcc; });
-    removed.push(account);
-    planRosterDelta.removed = removed;
-    planRosterDelta.added   = (planRosterDelta.added   || []).filter(function(r){ return String(r.account || '').trim().toLowerCase() !== lcAcc; });
-
-    savePlanRosterDeltaLocal();
-    renderPlanView();
-    // Await the server save so a failure is surfaced rather than silently
-    // restoring the member on the next page load.
-    const ok = await postPlanRosterSave(planRosterDelta);
-    if (!ok) {
-      setPlanStatus('Member removed locally — server sync FAILED (will revert on reload)');
-    } else {
-      // Also drop any stored field override for the removed account so it
-      // does not linger on the server and re-apply later.
-      await postPlanRosterEditDelete(account);
+    // Remove by rosterId — the stable identity. The account name is only a
+    // legacy fallback for members added before the rosterId existed.
+    const rid = String(rosterId || '').trim() || rosterIdForAccount(account);
+    const res = await postPlanRosterCommand('remove', { id: rid, account: account });
+    if (!res.ok) {
+      // Queue so it is retried rather than lost.
+      _queueRosterOp('remove', { id: rid, account: account });
+      setPlanStatus('Removal queued — server not reachable, retry from the banner');
+      return;
     }
+    renderPlanView();
+    setPlanStatus('Member "' + account + '" removed');
   }
 
   async function initDashboard(){
@@ -7730,35 +7957,22 @@ function _applyPlanCellStyle(el, col, val){
     }
   })();
 
-  // Prefill plan roster delta from localStorage on page load (no flash of empty roster)
-  planRosterDelta = loadPlanRosterDeltaLocal();
-  // Reconcile with server asynchronously (server-wins on first load).
-  // Only re-render if the server's value actually differs from the local one.
-  fetchPlanRoster().then(function(server){
-    if (JSON.stringify(server) !== JSON.stringify(planRosterDelta)) {
-      planRosterDelta = server;
-      savePlanRosterDeltaLocal();
-      // Only re-render if the plan view is already open. The plan view's
-      // own init will pick up the updated value on first entry otherwise.
-      if (typeof dashView !== 'undefined' && dashView === 'plan' && typeof renderPlanView === 'function') {
-        try { renderPlanView(); } catch(e){ console.warn('[planRoster] post-fetch render failed', e); }
-      }
+  // Load the roster from the server. It is the single source of truth, so the
+  // Plan tab renders once it resolves (showing a loading state until then)
+  // rather than rendering a partial table that may be missing members.
+  fetchPlanRosterDoc().then(function(ok){
+    if (!ok) {
+      console.warn('[planRoster] initial fetch failed — the roster may be stale');
+    } else {
+      console.log('[planRoster] loaded', planRosterAccounts.length, 'accounts, version', planRosterVersion);
+    }
+    // Retry anything that failed while we were offline.
+    retryPendingRosterOps();
+    // Re-render if the plan view is already open so the roster appears.
+    if (typeof dashView !== 'undefined' && dashView === 'plan' && typeof renderPlanView === 'function') {
+      try { renderPlanView(); } catch(e){ console.warn('[planRoster] post-fetch render failed', e); }
     }
   }).catch(function(e){ console.warn('[planRoster] initial fetch failed', e); });
-
-  // Load plan roster field edits from server (Feature 3: roster propagation).
-  // planRosterEdits is applied synchronously inside effectiveRoster() so the
-  // table renders with edits baked in even before this fetch resolves.
-  fetchPlanRosterEdits().then(function(edits){
-    if (edits && typeof edits === 'object') {
-      planRosterEdits = edits;
-      console.log('[planRosterEdits] loaded', Object.keys(planRosterEdits).length, 'accounts');
-      // Re-render plan if already open so the edits appear immediately.
-      if (typeof dashView !== 'undefined' && dashView === 'plan' && typeof renderPlanView === 'function') {
-        try { renderPlanView(); } catch(e){ console.warn('[planRosterEdits] post-fetch render failed', e); }
-      }
-    }
-  }).catch(function(e){ console.warn('[planRosterEdits] initial fetch failed', e); });
 
   // Show ready message on page load
   showLoginDebug('Page ready. Enter token and click Enter Dashboard.');

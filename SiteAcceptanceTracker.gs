@@ -126,6 +126,8 @@ function doGet(e) {
       return serveActiveDate();
     } else if (type === 'planRoster') {
       return servePlanRoster();
+    } else if (type === 'planRosterDoc') {
+      return servePlanRosterDoc();
     } else if (type === 'planRosterEdits') {
       return servePlanRosterEdits();
     } else {
@@ -401,16 +403,24 @@ function doPost(e) {
     }
 
     // Handle plan roster delta save (surge-managed additions/removals)
+    // DEPRECATED: superseded by planRosterCommand.
     if (body.type === 'planRosterSave') {
       return handlePlanRosterSave(body);
     }
 
+    // Handle a plan roster command (the single roster write path)
+    if (body.type === 'planRosterCommand') {
+      return handlePlanRosterCommand(body);
+    }
+
     // Handle plan roster field edits (account/subcon/teamType/resourceRemark propagation)
+    // DEPRECATED: superseded by planRosterCommand.
     if (body.type === 'planRosterEdit') {
       return handlePlanRosterEdit(body);
     }
 
     // Handle removal of a stored plan roster field edit
+    // DEPRECATED: superseded by planRosterCommand.
     if (body.type === 'planRosterEditDelete') {
       return handlePlanRosterEditDelete(body);
     }
@@ -575,12 +585,18 @@ function handleBulkEdit(body) {
 // DAILY PLAN TAB
 // Sheet name: "plan"
 // Columns: date, account, subcon, teamType, resourceRemark,
-//          duId, siteName, activityRemark, dailyPlanActivity, result, rowIdx
+//          duId, siteName, activityRemark, dailyPlanActivity, result,
+//          rowIdx (deprecated), rosterId
 // result is the 10th column (0-based index 9) — user-entered daily result text.
-// rowIdx is the 11th column (0-based index 10) — preserves the
-// client-side roster position so copy-from-last-date matches
-// correctly even after a user reorders or duplicates rows.
+// rowIdx is the 11th column (0-based index 10) — deprecated positional key.
+// rosterId is the 12th column (0-based index 11) — the STABLE join key
+// between a roster member and their plan rows. Matching on rosterId (instead
+// of the account name or a positional index) is what makes renames and roster
+// re-orderings safe: a row can never shift onto the wrong person.
 // ============================================================
+
+var PLAN_COL_ROSTER_ID = 12; // 1-based column index of rosterId
+var PLAN_NUM_COLS = 12;
 
 // --- HELPER: get or create the Plan sheet ---
 function getOrCreatePlanSheet() {
@@ -588,11 +604,19 @@ function getOrCreatePlanSheet() {
   var sheet = ss.getSheetByName('plan');
   if (!sheet) {
     sheet = ss.insertSheet('plan');
-    sheet.getRange(1, 1, 1, 11).setValues([[
+    sheet.getRange(1, 1, 1, PLAN_NUM_COLS).setValues([[
       'date', 'account', 'subcon', 'teamType', 'resourceRemark',
-      'duId', 'siteName', 'activityRemark', 'dailyPlanActivity', 'result', 'rowIdx'
+      'duId', 'siteName', 'activityRemark', 'dailyPlanActivity', 'result',
+      'rowIdx', 'rosterId'
     ]]);
     sheet.setFrozenRows(1);
+  } else {
+    // Existing sheet: make sure the rosterId header is present. The column is
+    // APPENDED (position 12) so no existing column shifts.
+    var header = sheet.getRange(1, PLAN_COL_ROSTER_ID).getValue();
+    if (header !== 'rosterId') {
+      sheet.getRange(1, PLAN_COL_ROSTER_ID).setValue('rosterId');
+    }
   }
   // Force column A (date) to plain text so Sheet doesn't auto-convert
   // 'YYYY-MM-DD' strings into Date objects (which break the strict-equality
@@ -616,7 +640,7 @@ function servePlan(date) {
       .createTextOutput(JSON.stringify([]))
       .setMimeType(ContentService.MimeType.JSON);
   }
-  var values = sh.getRange(2, 1, last - 1, 11).getValues();
+  var values = sh.getRange(2, 1, last - 1, PLAN_NUM_COLS).getValues();
   var want = date ? String(date) : '';
   var rows = [];
   for (var i = 0; i < values.length; i++) {
@@ -636,7 +660,8 @@ function servePlan(date) {
       activityRemark:   String(r[7] == null ? '' : r[7]).trim(),
       dailyPlanActivity:String(r[8] == null ? '' : r[8]).trim(),
       result:           String(r[9] == null ? '' : r[9]),
-      rowIdx:           r[10] === '' || r[10] === null || isNaN(Number(r[10])) ? -1 : Number(r[10])
+      rowIdx:           r[10] === '' || r[10] === null || isNaN(Number(r[10])) ? -1 : Number(r[10]),
+      rosterId:         String(r[11] == null ? '' : r[11]).trim()
     });
   }
   return ContentService
@@ -725,6 +750,16 @@ function handlePlanSave(body) {
   }
   var pruneSet = {};
   for (var p1 = 0; p1 < prune.length; p1++) pruneSet[prune[p1]] = true;
+  // Roster ids the surge has removed. Rows belonging to these members are
+  // deleted from the date as well — matching by the stable id so a rename
+  // cannot leave an orphaned row behind.
+  var pruneIdSet = {};
+  if (body.pruneRosterIds && Array.isArray(body.pruneRosterIds)) {
+    for (var pi = 0; pi < body.pruneRosterIds.length; pi++) {
+      var pid = String(body.pruneRosterIds[pi] || '').trim();
+      if (pid) pruneIdSet[pid] = true;
+    }
+  }
 
   // Serialise concurrent saves. Without this, two users saving the same date
   // can both read the pre-save state and the second write drops the first's rows.
@@ -749,23 +784,28 @@ function handlePlanSave(body) {
     var existing = [];
     var existingRowNums = []; // parallel: sheet row numbers for each existing entry
     if (last > 1) {
-      var vals = sh.getRange(2, 1, last - 1, 11).getValues();
+      var vals = sh.getRange(2, 1, last - 1, PLAN_NUM_COLS).getValues();
       for (var i = 0; i < vals.length; i++) {
         existingRowNums.push(i + 2); // sheet row number (1-based)
         existing.push(vals[i]);
       }
     }
 
-    // --- 2. Build incoming map keyed by account (stable identity) ---
-    // `rowIdx` is kept in the sheet purely as an informational column showing the
-    // roster position at save time; it is NOT used for matching.
-    var incomingByAccount = Object.create(null);
+    // --- 2. Build the incoming map keyed by rosterId ---
+    // rosterId is the stable join key. The legacy `account` name is kept as a
+    // fallback for rows written before the migration (no rosterId yet) so a
+    // first save after the upgrade still attaches to the right person — and it
+    // writes the resolved rosterId back, so the next save is clean.
+    var incomingById = Object.create(null);
+    var incomingByAccountLc = Object.create(null); // legacy fallback
     var incomingOrder = [];
+    var warnings = [];
     for (var j = 0; j < rows.length; j++) {
       var r = rows[j];
       if (!r || typeof r !== 'object') continue; // skip malformed entries
       var account = String(r.account == null ? '' : r.account).trim();
-      if (!account) continue; // rows without an identity can't be matched — skip
+      var rosterId = String(r.rosterId == null ? '' : r.rosterId).trim();
+      if (!account && !rosterId) continue; // rows without an identity can't be matched
       var idx = Number(r.rowIdx);
       var rowVals = [
         date,
@@ -778,45 +818,101 @@ function handlePlanSave(body) {
         String(r.activityRemark    == null ? '' : r.activityRemark),
         String(r.dailyPlanActivity == null ? '' : r.dailyPlanActivity),
         String(r.result            == null ? '' : r.result),
-        isNaN(idx) ? -1 : idx
+        isNaN(idx) ? -1 : idx,
+        rosterId
       ];
-      if (!Object.prototype.hasOwnProperty.call(incomingByAccount, account)) incomingOrder.push(account);
-      incomingByAccount[account] = rowVals;
+      if (rosterId) {
+        if (!Object.prototype.hasOwnProperty.call(incomingById, rosterId)) incomingOrder.push(rosterId);
+        incomingById[rosterId] = rowVals;
+      }
+      if (account) {
+        var lcAcct = account.toLowerCase();
+        if (!Object.prototype.hasOwnProperty.call(incomingByAccountLc, lcAcct)) {
+          incomingByAccountLc[lcAcct] = { rowVals: rowVals, rosterId: rosterId };
+        }
+      }
     }
 
     // --- 3. Update existing rows for this date in place ---
-    var seenIncoming = Object.create(null);
+    var seenIds = Object.create(null);
+    var seenAccountLc = Object.create(null);
     var updated = 0;
+    var unchanged = 0;
     var deleteRowNums = [];
     for (var k = 0; k < existing.length; k++) {
       var dateCellK = _planDateCellToString(existing[k][0]);
       if (dateCellK !== date) continue; // different date — leave untouched
       var existingAccount = String(existing[k][1] == null ? '' : existing[k][1]).trim();
+      var existingId = String(existing[k][11] == null ? '' : existing[k][11]).trim();
       // Explicitly pruned account (removed from the roster) — drop the row.
       if (existingAccount && pruneSet[existingAccount]) {
         deleteRowNums.push(existingRowNums[k]);
         continue;
       }
-      if (existingAccount &&
-          Object.prototype.hasOwnProperty.call(incomingByAccount, existingAccount) &&
-          !seenIncoming[existingAccount]) {
-        // Write the updated values directly over the existing row.
-        sh.getRange(existingRowNums[k], 1, 1, 11).setValues([incomingByAccount[existingAccount]]);
-        seenIncoming[existingAccount] = true;
-        updated++;
+      // Explicitly pruned roster id — drop the row. This is the reliable path
+      // (the id survives renames); the account-name path above is the legacy
+      // fallback for clients that have not migrated yet.
+      if (existingId && pruneIdSet[existingId]) {
+        deleteRowNums.push(existingRowNums[k]);
+        continue;
       }
-      // No incoming row matches this account — leave the existing row as-is
+      // Match by rosterId first — the stable key.
+      var matchVals = null;
+      var matchId = '';
+      if (existingId && Object.prototype.hasOwnProperty.call(incomingById, existingId) && !seenIds[existingId]) {
+        matchVals = incomingById[existingId];
+        matchId = existingId;
+      } else if (existingAccount) {
+        // Legacy fallback: this sheet row predates the rosterId column, so
+        // match it by account name (case-insensitively).
+        var lcExisting = existingAccount.toLowerCase();
+        if (Object.prototype.hasOwnProperty.call(incomingByAccountLc, lcExisting) && !seenAccountLc[lcExisting]) {
+          matchVals = incomingByAccountLc[lcExisting].rowVals;
+          matchId = incomingByAccountLc[lcExisting].rosterId;
+          seenAccountLc[lcExisting] = true;
+          if (!matchId) {
+            warnings.push('Row for "' + existingAccount + '" has no roster id yet — matched by name');
+          }
+        }
+      }
+      if (matchVals) {
+        // Compare against the current row so we can report "unchanged" honestly.
+        var changed = false;
+        for (var cc = 1; cc < PLAN_NUM_COLS; cc++) {
+          if (cc === 10) continue; // rowIdx is informational only
+          var cur = existing[k][cc] === null || existing[k][cc] === undefined ? '' : String(existing[k][cc]);
+          var nw = matchVals[cc] === null || matchVals[cc] === undefined ? '' : String(matchVals[cc]);
+          if (cur !== nw) { changed = true; break; }
+        }
+        // Always carry the rosterId into the sheet row (column 12).
+        sh.getRange(existingRowNums[k], 1, 1, PLAN_NUM_COLS).setValues([matchVals]);
+        if (matchId) seenIds[matchId] = true;
+        if (changed) updated++; else unchanged++;
+      }
+      // No incoming row matches this row — leave the existing row as-is
       // (another subcont's row that wasn't in this submission).
     }
 
-    // --- 4. Append genuinely new accounts after the last used row ---
+    // --- 4. Append genuinely new rows after the last used row ---
     var newRows = [];
     for (var m = 0; m < incomingOrder.length; m++) {
-      var acctM = incomingOrder[m];
-      if (!seenIncoming[acctM]) {
-        newRows.push(incomingByAccount[acctM]);
-        seenIncoming[acctM] = true;
+      var idM = incomingOrder[m];
+      if (!seenIds[idM]) {
+        newRows.push(incomingById[idM]);
+        seenIds[idM] = true;
       }
+    }
+    // Legacy rows that arrived without a rosterId and did not match any
+    // existing sheet row still need appending.
+    var seenAcctKeys = Object.keys(incomingByAccountLc);
+    for (var la = 0; la < seenAcctKeys.length; la++) {
+      var lcK = seenAcctKeys[la];
+      if (seenAccountLc[lcK]) continue;
+      var entry = incomingByAccountLc[lcK];
+      if (entry.rosterId && seenIds[entry.rosterId]) continue;
+      newRows.push(entry.rowVals);
+      if (entry.rosterId) seenIds[entry.rosterId] = true;
+      seenAccountLc[lcK] = true;
     }
     var appended = 0;
     if (newRows.length > 0) {
@@ -826,14 +922,14 @@ function handlePlanSave(body) {
       var writeAt = last + 1;
       for (var s = 0; s < existing.length; s++) {
         var isEmpty = true;
-        for (var c = 0; c < 11; c++) {
+        for (var c = 0; c < PLAN_NUM_COLS; c++) {
           var cv = existing[s][c];
           if (cv !== '' && cv !== null && cv !== undefined) { isEmpty = false; break; }
         }
         if (!isEmpty) writeAt = Math.max(writeAt, existingRowNums[s] + 1);
       }
       // Ensure we don't overwrite rows belonging to other dates.
-      sh.getRange(writeAt, 1, newRows.length, 11).setValues(newRows);
+      sh.getRange(writeAt, 1, newRows.length, PLAN_NUM_COLS).setValues(newRows);
       appended = newRows.length;
     }
 
@@ -847,11 +943,13 @@ function handlePlanSave(body) {
 
     return ContentService
       .createTextOutput(JSON.stringify({
-        status: 'ok',
-        written: updated + appended,
-        updated: updated,
-        appended: appended,
-        deleted: deleteRowNums.length
+        status:    'ok',
+        written:   updated + appended,
+        updated:   updated,
+        appended:  appended,
+        unchanged: unchanged,
+        deleted:   deleteRowNums.length,
+        warnings:  warnings
       }))
       .setMimeType(ContentService.MimeType.JSON);
   } finally {
@@ -886,6 +984,9 @@ function handleSetActiveDate(body) {
 // Serve the surge-managed plan roster delta. Layered on top of the
 // hardcoded base roster in the client. Stored in script properties
 // (survives redeploys). Returns { added: [...], removed: [...] }.
+//
+// DEPRECATED: superseded by servePlanRosterDoc(). Kept for one release so an
+// older client build does not break against a newer backend.
 function servePlanRoster() {
   var raw = PropertiesService.getScriptProperties().getProperty('planRoster') || '';
   var delta;
@@ -901,9 +1002,566 @@ function servePlanRoster() {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
+// ============================================================
+// PLAN ROSTER DOCUMENT (single source of truth)
+//
+// The roster used to live in three places at once — a hardcoded PLAN_ROSTER
+// in the client, a `planRoster` delta, and a `planRosterEdits` override map —
+// and the client merged them inconsistently (by name in some places, by array
+// index in others). That produced the "Account missing" and "Add team doesn't
+// sync" symptoms.
+//
+// Now the server owns ONE document, stored in the `planRosterDoc` script
+// property:
+//   { version: <int>, accounts: [ { id, account, subcon, teamType,
+//                                   resourceRemark, removedAt } ] }
+//
+// `id` is a stable, immutable identifier. It is the join key between the
+// roster and the plan sheet rows, so renaming a member never orphans their
+// plan history and re-ordering the roster never shifts a row onto the wrong
+// person. `version` increments on every mutation so a client holding a stale
+// roster can detect it and re-apply its command.
+//
+// The legacy `planRosterEdits` map is still readable (see servePlanRosterEdits)
+// so an old client build keeps working for one release, but nothing writes to
+// it any more.
+// ============================================================
+
+var PLAN_ROSTER_PROP = 'planRosterDoc';
+
+// Canonical subcont keys. Casing is not significant — the user confirmed
+// `Poca` and `POCA` are the same team — so every subcont is stored uppercase.
+var PLAN_SUBCONT_KEYS = [
+  'ADW', 'CAA', 'CCSI', 'INDOHR', 'INNOVIS', 'INTISEL', 'MKU', 'MPJ',
+  'NIM', 'PAB', 'POCA', 'TRITAMA', 'YPIT', 'ZMG'
+];
+
+// Resolve any free-text subcont value to its canonical uppercase key.
+// Returns '' when the value matches no known subcont.
+function _planCanonicalSubcont(value) {
+  var v = String(value == null ? '' : value).trim();
+  if (!v) return '';
+  var up = v.toUpperCase();
+  for (var i = 0; i < PLAN_SUBCONT_KEYS.length; i++) {
+    if (PLAN_SUBCONT_KEYS[i] === up) return up;
+  }
+  // Fallback: strip trailing digits so "INTISEL12" resolves to "INTISEL".
+  var stripped = up.replace(/\d+$/, '');
+  for (var j = 0; j < PLAN_SUBCONT_KEYS.length; j++) {
+    if (PLAN_SUBCONT_KEYS[j] === stripped) return stripped;
+  }
+  return '';
+}
+
+// Generate a stable, collision-resistant roster id.
+// Uses the account name so ids are reproducible for a given account, but
+// salted with a random suffix so two members can never share an id even if
+// their names differ only by case.
+function _planNewRosterId(account) {
+  var base = String(account || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+  if (!base) base = 'acct';
+  var rand = Math.random().toString(36).substring(2, 8);
+  return base.substring(0, 16) + '_' + rand;
+}
+
+// Read the roster document, normalising its shape. Returns
+// { version: 0, accounts: [] } when unset or corrupt.
+function _planReadRosterDoc() {
+  var raw = PropertiesService.getScriptProperties().getProperty(PLAN_ROSTER_PROP) || '';
+  var doc;
+  try {
+    doc = raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    doc = null;
+  }
+  if (!doc || typeof doc !== 'object') doc = {};
+  if (!Array.isArray(doc.accounts)) doc.accounts = [];
+  var version = Number(doc.version);
+  if (isNaN(version) || version < 0) version = 0;
+  doc.version = version;
+  // Drop entries without an id or account, and make sure every account has
+  // one so downstream code can rely on the shape.
+  var clean = [];
+  for (var i = 0; i < doc.accounts.length; i++) {
+    var a = doc.accounts[i];
+    if (!a || typeof a !== 'object') continue;
+    var acct = String(a.account == null ? '' : a.account).trim();
+    if (!acct) continue;
+    var id = String(a.id == null ? '' : a.id).trim();
+    if (!id) id = _planNewRosterId(acct);
+    clean.push({
+      id:              id,
+      account:         acct,
+      subcon:          _planCanonicalSubcont(a.subcon) || String(a.subcon || '').trim().toUpperCase(),
+      teamType:        String(a.teamType == null ? '' : a.teamType).trim(),
+      resourceRemark:  String(a.resourceRemark == null ? '' : a.resourceRemark).trim(),
+      removedAt:       a.removedAt ? String(a.removedAt) : ''
+    });
+  }
+  doc.accounts = clean;
+  return doc;
+}
+
+// The base roster, used ONLY to seed an empty server roster on first run.
+// After that the server roster is the sole source of truth and this list is
+// never merged at render time.
+// Keep in sync with the site-acceptance team list.
+var PLAN_ROSTER_SEED = [
+  { account: 'intisel_tl_rahmat_32051919',     subcon: 'INTISEL',  teamType: 'WL',  resourceRemark: 'Dedicated/Shared' },
+  { account: 'intisel_tl_deni_32053528',       subcon: 'INTISEL',  teamType: 'WL',  resourceRemark: 'Dedicated/Shared' },
+  { account: 'intisel_tl_kusuma_32170422',     subcon: 'INTISEL',  teamType: 'WL',  resourceRemark: 'Dedicated/Shared' },
+  { account: 'nim_tl_gustira_32053405',        subcon: 'NIM',      teamType: 'WL',  resourceRemark: 'Dedicated/Shared' },
+  { account: 'tal_tl_acep_32044619',          subcon: 'TRITAMA',  teamType: 'WL',  resourceRemark: 'Dedicated/Shared' },
+  { account: 'intisel_tl_mulyana_32732321',    subcon: 'INTISEL',  teamType: 'WL',  resourceRemark: 'Dedicated/Shared' },
+  { account: 'andri_poca_wj',                 subcon: 'POCA',     teamType: 'WL',  resourceRemark: 'Dedicated/Shared' },
+  { account: 'tal_tl_cahya_32041711',          subcon: 'TRITAMA',  teamType: 'WL',  resourceRemark: 'Dedicated/Shared' },
+  { account: 'pab_tl_fajarfm_33091410',        subcon: 'PAB',      teamType: 'WL',  resourceRemark: 'Dedicated/Shared' },
+  { account: 'intisel_tl_nazar_32780821',      subcon: 'INTISEL',  teamType: 'WL',  resourceRemark: 'Dedicated/Shared' },
+  { account: 'nim_tl_dindin_32043209',         subcon: 'NIM',      teamType: 'WL',  resourceRemark: 'Dedicated/Shared' },
+  { account: 'pab_tl_ricky_32062430',          subcon: 'PAB',      teamType: 'WL',  resourceRemark: 'Dedicated/Shared' },
+  { account: 'pab_tl_fajar_31720219',          subcon: 'PAB',      teamType: 'WL',  resourceRemark: 'Dedicated/Shared' },
+  { account: 'pab_mb_zhonaade_35191211',       subcon: 'PAB',      teamType: 'WL',  resourceRemark: 'Dedicated/Shared' },
+  { account: 'pab_tl_agusferdi_33091450',      subcon: 'PAB',      teamType: 'WL',  resourceRemark: 'Dedicated/Shared' },
+  { account: 'dedi_samsudin',                  subcon: 'ZMG',      teamType: 'WL',  resourceRemark: 'Dedicated/Shared' },
+  { account: 'adw_tl_agung_32092512',          subcon: 'ADW',      teamType: 'CSG', resourceRemark: 'Dedicated/Shared' },
+  { account: 'adw_tl_yudi_32092712',           subcon: 'ADW',      teamType: 'CSG', resourceRemark: 'Dedicated/Shared' },
+  { account: 'pab_mb_perridarmawan_32731619',  subcon: 'PAB',      teamType: 'CSG', resourceRemark: 'Dedicated/Shared' },
+  { account: 'poca_tl_yadi_32042903',          subcon: 'POCA',     teamType: 'WL',  resourceRemark: 'Dedicated/Shared' },
+  { account: 'chr_jabo_yanaoktaviana',         subcon: 'INDOHR',   teamType: 'WL',  resourceRemark: 'Dedicated/Shared' },
+  { account: 'inv_tl_sandi_32042901',          subcon: 'INNOVIS',  teamType: 'WL',  resourceRemark: 'Dedicated/Shared' },
+  { account: 'caa_tl_reza.r_32020226',         subcon: 'CAA',      teamType: 'WL',  resourceRemark: 'Dedicated/Shared' }
+];
+
+// Seed the roster document from PLAN_ROSTER_SEED when it is empty. Returns
+// true if a seed was written.
+function _planSeedRosterIfEmpty() {
+  var raw = PropertiesService.getScriptProperties().getProperty(PLAN_ROSTER_PROP) || '';
+  if (raw) {
+    // Already seeded (or already populated) — leave it alone.
+    try {
+      var parsed = JSON.parse(raw);
+      if (parsed && Array.isArray(parsed.accounts) && parsed.accounts.length > 0) return false;
+    } catch (e) { /* corrupt — reseed below */ }
+  }
+  var accounts = PLAN_ROSTER_SEED.map(function(r) {
+    return {
+      id:             _planNewRosterId(r.account),
+      account:        r.account,
+      subcon:         _planCanonicalSubcont(r.subcon),
+      teamType:       r.teamType,
+      resourceRemark: r.resourceRemark,
+      removedAt:      ''
+    };
+  });
+  _planWriteRosterDoc({ version: 1, accounts: accounts });
+  return true;
+}
+
+// Write the roster document.
+function _planWriteRosterDoc(doc) {
+  PropertiesService.getScriptProperties().setProperty(PLAN_ROSTER_PROP, JSON.stringify(doc));
+  return doc;
+}
+
+// Find an account entry by id (exact) or by account name (case-insensitive).
+// Returns the entry, or null.
+function _planFindAccount(doc, id, account) {
+  var i;
+  if (id) {
+    for (i = 0; i < doc.accounts.length; i++) {
+      if (doc.accounts[i].id === id) return doc.accounts[i];
+    }
+  }
+  if (account) {
+    var lc = String(account).trim().toLowerCase();
+    for (i = 0; i < doc.accounts.length; i++) {
+      if (String(doc.accounts[i].account).trim().toLowerCase() === lc) return doc.accounts[i];
+    }
+  }
+  return null;
+}
+
+// Serve the roster document. Always returns the full authoritative roster so
+// the client can replace its in-memory copy wholesale.
+function servePlanRosterDoc() {
+  // Seed from the base roster the first time only. After that the stored
+  // document is the single source of truth.
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+    _planSeedRosterIfEmpty();
+  } catch (e) {
+    // Seeding is best-effort — a busy lock must not block the read.
+  } finally {
+    try { lock.releaseLock(); } catch (e2) {}
+  }
+  var doc = _planReadRosterDoc();
+  return ContentService
+    .createTextOutput(JSON.stringify({
+      status:   'ok',
+      version:  doc.version,
+      accounts: doc.accounts
+    }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+// Apply one roster command and return the full resulting roster.
+//
+// ops:
+//   upsert      — add a member, or update an existing member's fields
+//   remove      — soft-remove a member (sets removedAt)
+//   rename      — change a member's display account name
+//   setSubcont  — move a member to another team
+//
+// The client sends its known `version`. If the server's version has moved on
+// the command is NOT applied and { status:'stale', roster } is returned so the
+// client can re-apply against the fresh roster.
+function handlePlanRosterCommand(body) {
+  var op = String(body.op || '').trim();
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(30000);
+  } catch (lockErr) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ status: 'error', message: 'Server busy, please retry' }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  try {
+    var doc = _planReadRosterDoc();
+    var clientVersion = Number(body.version);
+    if (!isNaN(clientVersion) && clientVersion !== doc.version) {
+      // Another user changed the roster since this client last read it.
+      // Do not apply — hand back the current roster so the client can retry.
+      return ContentService
+        .createTextOutput(JSON.stringify({
+          status: 'stale',
+          version: doc.version,
+          roster: doc.accounts,
+          message: 'Roster changed on the server — please retry'
+        }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    var id = String(body.id || '').trim();
+    var account = String(body.account == null ? '' : body.account).trim();
+    var found = _planFindAccount(doc, id, account);
+    var warnings = [];
+
+    if (op === 'upsert') {
+      var subcon = _planCanonicalSubcont(body.subcon);
+      var teamType = String(body.teamType == null ? '' : body.teamType).trim();
+      var resourceRemark = String(body.resourceRemark == null ? '' : body.resourceRemark).trim();
+      if (found) {
+        // Update fields. A blank account/subcon keeps the existing value so a
+        // partial update cannot wipe the member's identity.
+        if (account) found.account = account;
+        if (subcon) found.subcon = subcon;
+        else if (body.subcon !== undefined) warnings.push('Unknown subcont "' + body.subcon + '" for ' + found.account + ' — kept "' + found.subcon + '"');
+        if (body.teamType !== undefined) found.teamType = teamType;
+        if (body.resourceRemark !== undefined) found.resourceRemark = resourceRemark;
+        found.removedAt = '';
+      } else {
+        if (!account) {
+          warnings.push('Cannot add a member without an account name');
+        } else {
+          // A new member with an account that already exists (case-insensitively)
+          // updates that member instead of creating a duplicate.
+          var lc = account.toLowerCase();
+          var dup = null;
+          for (var d = 0; d < doc.accounts.length; d++) {
+            if (String(doc.accounts[d].account).trim().toLowerCase() === lc) { dup = doc.accounts[d]; break; }
+          }
+          if (dup) {
+            dup.account = account;
+            if (subcon) dup.subcon = subcon;
+            if (body.teamType !== undefined) dup.teamType = teamType;
+            if (body.resourceRemark !== undefined) dup.resourceRemark = resourceRemark;
+            dup.removedAt = '';
+            found = dup;
+          } else {
+            found = {
+              id: _planNewRosterId(account),
+              account: account,
+              subcon: subcon,
+              teamType: teamType,
+              resourceRemark: resourceRemark,
+              removedAt: ''
+            };
+            doc.accounts.push(found);
+          }
+        }
+      }
+    } else if (op === 'remove') {
+      if (!found) {
+        warnings.push('Member not found — nothing to remove');
+      } else {
+        found.removedAt = new Date().toISOString();
+      }
+    } else if (op === 'rename') {
+      var newAccount = String(body.newAccount == null ? '' : body.newAccount).trim();
+      if (!found) {
+        warnings.push('Member not found — nothing to rename');
+      } else if (!newAccount) {
+        warnings.push('New account name is required');
+      } else {
+        found.account = newAccount;
+      }
+    } else if (op === 'setSubcont') {
+      var newSub = _planCanonicalSubcont(body.subcon);
+      if (!found) {
+        warnings.push('Member not found — team unchanged');
+      } else if (!newSub) {
+        warnings.push('Unknown subcont "' + body.subcon + '" — team unchanged');
+      } else {
+        found.subcon = newSub;
+      }
+    } else {
+      warnings.push('Unknown roster command "' + op + '"');
+    }
+
+    doc.version = doc.version + 1;
+    _planWriteRosterDoc(doc);
+
+    return ContentService
+      .createTextOutput(JSON.stringify({
+        status:   'ok',
+        version:  doc.version,
+        roster:   doc.accounts,
+        warnings: warnings
+      }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// ============================================================
+// ONE-SHOT ROSTER MIGRATION
+//
+// Run this ONCE in the Apps Script editor to convert the old, corrupted roster
+// state into the new roster document:
+//
+//   1. Merge duplicate account variants (the user confirmed these are the same
+//      people — `warsidi_poca_tl` / `Warsidi_poca_tl` / `warsidi.poca_tl` /
+//      `warsidi_poca_wj` are all one person, canonical name `warsidi_poca_tl`).
+//   2. Normalise every subcont to its canonical uppercase key
+//      (`Poca` + `POCA` -> `POCA`, `Intisel` -> `INTISEL`, ...).
+//   3. Drop the debug/test accounts (`TESTACC`, `FIXCHECK_1`).
+//   4. Assign a stable id to every account.
+//   5. Back-fill `rosterId` on every `plan` sheet row, matching by account
+//      name case-insensitively.
+//
+// It reads the legacy `planRosterEdits` map, so run it BEFORE deploying the
+// new client (which no longer writes to that map).
+//
+// Returns a human-readable summary. Safe to run twice: the second run finds
+// nothing to do.
+// ============================================================
+function migratePlanRoster() {
+  var report = [];
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(30000);
+  } catch (lockErr) {
+    return 'MIGRATION ABORTED: ' + lockErr.message;
+  }
+  try {
+    // --- Read the legacy sources ---
+    var legacyEdits = {};
+    try {
+      var rawEdits = PropertiesService.getScriptProperties().getProperty('planRosterEdits') || '{}';
+      legacyEdits = JSON.parse(rawEdits) || {};
+    } catch (e) {
+      legacyEdits = {};
+    }
+    var legacyDelta = { added: [], removed: [] };
+    try {
+      var rawDelta = PropertiesService.getScriptProperties().getProperty('planRoster') || '';
+      legacyDelta = rawDelta ? (JSON.parse(rawDelta) || legacyDelta) : legacyDelta;
+    } catch (e) {
+      legacyDelta = { added: [], removed: [] };
+    }
+    if (!Array.isArray(legacyDelta.added)) legacyDelta.added = [];
+    if (!Array.isArray(legacyDelta.removed)) legacyDelta.removed = [];
+
+    // --- Build the merged account set ---
+    // Order: legacy edits first (richest data), then legacy added, then any
+    // base-roster entries we know about. Later duplicates are skipped.
+    var byLc = {};
+    var order = [];
+    function consider(acct, subcon, teamType, resourceRemark, source) {
+      var name = String(acct == null ? '' : acct).trim();
+      if (!name) return null;
+      var lc = name.toLowerCase();
+      // Accounts the user confirmed are the same person.
+      var canonical = null;
+      if (lc === 'warsidi_poca_tl' || lc === 'warsidi.poca_tl' ||
+          lc === 'warsidi_poca_wj' || lc === 'warsidi.poca_wj') {
+        canonical = 'warsidi_poca_tl';
+        lc = canonical;
+      }
+      // Debug/test residue from development — drop it.
+      if (canonical === null && (name === 'TESTACC' || name === 'FIXCHECK_1' ||
+          name === 'BROKEN_TEST')) {
+        report.push('DROPPED test account: ' + name);
+        return null;
+      }
+      var existing = byLc[lc];
+      if (existing) {
+        // Same person — keep the first record but fill in any blank fields.
+        var changed = false;
+        if (!existing.subcon && subcon) { existing.subcon = subcon; changed = true; }
+        if (!existing.teamType && teamType) { existing.teamType = teamType; changed = true; }
+        if (!existing.resourceRemark && resourceRemark) { existing.resourceRemark = resourceRemark; changed = true; }
+        if (changed) {
+          report.push('MERGED duplicate "' + existing.account + '" (also seen as "' + name + '") — filled blank fields');
+        } else {
+          report.push('MERGED duplicate "' + name + '" into "' + existing.account + '"');
+        }
+        return existing;
+      }
+      var rec = {
+        id:             _planNewRosterId(canonical || name),
+        account:        canonical || name,
+        subcon:         _planCanonicalSubcont(subcon),
+        teamType:       String(teamType == null ? '' : teamType).trim(),
+        resourceRemark: String(resourceRemark == null ? '' : resourceRemark).trim(),
+        removedAt:      ''
+      };
+      byLc[lc] = rec;
+      order.push(rec);
+      return rec;
+    }
+
+    var editKeys = Object.keys(legacyEdits);
+    for (var i = 0; i < editKeys.length; i++) {
+      var e = legacyEdits[editKeys[i]] || {};
+      consider(e.account || editKeys[i], e.subcon, e.teamType, e.resourceRemark, 'edit');
+    }
+    for (var a = 0; a < legacyDelta.added.length; a++) {
+      var ar = legacyDelta.added[a] || {};
+      consider(ar.account, ar.subcon, ar.teamType, ar.resourceRemark, 'added');
+    }
+
+    // --- Normalise subcons, reporting every change ---
+    for (var n = 0; n < order.length; n++) {
+      var rec = order[n];
+      var before = String(rec.subcon || '');
+      var canon = _planCanonicalSubcont(before);
+      if (canon && canon !== before) {
+        report.push('SUBCONT ' + rec.account + ': "' + before + '" -> "' + canon + '"');
+        rec.subcon = canon;
+      } else if (!canon && before) {
+        report.push('WARNING unknown subcont "' + before + '" for ' + rec.account + ' — left as-is');
+        rec.subcon = before.toUpperCase();
+      }
+    }
+
+    // --- Removed accounts ---
+    var removedLc = {};
+    for (var rm = 0; rm < legacyDelta.removed.length; rm++) {
+      removedLc[String(legacyDelta.removed[rm]).trim().toLowerCase()] = true;
+    }
+    var kept = [];
+    for (var k = 0; k < order.length; k++) {
+      if (removedLc[order[k].account.toLowerCase()]) {
+        report.push('REMOVED (was in removed list): ' + order[k].account);
+        continue;
+      }
+      kept.push(order[k]);
+    }
+
+    // --- Write the roster document ---
+    var doc = { version: 1, accounts: kept };
+    _planWriteRosterDoc(doc);
+    report.push('ROSTER: ' + kept.length + ' accounts written, version 1');
+
+    // --- Back-fill rosterId on the plan sheet ---
+    var sh = getOrCreatePlanSheet();
+    var last = sh.getLastRow();
+    var backfilled = 0, unmatched = 0;
+    if (last > 1) {
+      var vals = sh.getRange(2, 1, last - 1, 11).getValues();
+      var rowIdMap = {};   // sheet row number -> roster id
+      var rowAcctMap = {}; // sheet row number -> account (for the fallback write)
+      for (var v = 0; v < vals.length; v++) {
+        var sheetRow = v + 2;
+        var acct = String(vals[v][1] == null ? '' : vals[v][1]).trim();
+        if (!acct) continue;
+        var lcAcct = acct.toLowerCase();
+        var hit = byLc[lcAcct];
+        if (!hit && (lcAcct === 'warsidi.poca_tl' || lcAcct === 'warsidi_poca_wj')) {
+          hit = byLc['warsidi_poca_tl'];
+        }
+        if (hit) {
+          rowIdMap[sheetRow] = hit.id;
+          rowAcctMap[sheetRow] = hit.account;
+        } else {
+          unmatched++;
+          rowAcctMap[sheetRow] = acct;
+        }
+      }
+      var rowNums = Object.keys(rowIdMap);
+      if (rowNums.length > 0) {
+        // Write rosterId into column 12 (L). Do it in one batched call.
+        var batch = [];
+        for (var b = 0; b < rowNums.length; b++) {
+          var rn = Number(rowNums[b]);
+          batch.push([rn, rowIdMap[rn]]);
+        }
+        // Group consecutive rows to minimise API calls.
+        var startRow = batch[0][0], values = [], prev = batch[0][0];
+        values.push([batch[0][1]]);
+        for (var t = 1; t < batch.length; t++) {
+          if (batch[t][0] === prev + 1) {
+            values.push([batch[t][1]]);
+          } else {
+            sh.getRange(startRow, 12, values.length, 1).setValues(values);
+            startRow = batch[t][0];
+            values = [[batch[t][1]]];
+          }
+          prev = batch[t][0];
+        }
+        sh.getRange(startRow, 12, values.length, 1).setValues(values);
+        backfilled = batch.length;
+      }
+      // Rename the account column for merged rows so the sheet shows the
+      // canonical name rather than the old variant.
+      var renameRows = [];
+      for (var rr = 2; rr <= last; rr++) {
+        if (rowAcctMap[rr] && byLc[String(rowAcctMap[rr]).toLowerCase()] &&
+            byLc[String(rowAcctMap[rr]).toLowerCase()].account !== rowAcctMap[rr]) {
+          renameRows.push([rr, byLc[String(rowAcctMap[rr]).toLowerCase()].account]);
+        }
+      }
+      if (renameRows.length > 0) {
+        var rStart = renameRows[0][0], rVals = [[renameRows[0][1]]];
+        for (var q = 1; q < renameRows.length; q++) {
+          if (renameRows[q][0] === rStart + rVals.length) {
+            rVals.push([renameRows[q][1]]);
+          } else {
+            sh.getRange(rStart, 2, rVals.length, 1).setValues(rVals);
+            rStart = renameRows[q][0];
+            rVals = [[renameRows[q][1]]];
+          }
+        }
+        sh.getRange(rStart, 2, rVals.length, 1).setValues(rVals);
+        report.push('RENAMED ' + renameRows.length + ' sheet row(s) to the canonical account name');
+      }
+    }
+    report.push('SHEET: ' + backfilled + ' row(s) back-filled with rosterId, ' + unmatched + ' unmatched');
+    report.push('NOTE: run this again later if new legacy rows appear; it is safe to re-run');
+
+    return report.join('\n');
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 // Save the surge-managed plan roster delta. Light validation keeps the
 // schema tight so the client can rely on it. Same trust model as
 // handleSetActiveDate: no auth, surge check is client-side.
+// DEPRECATED: superseded by handlePlanRosterCommand().
 function handlePlanRosterSave(body) {
   var added   = Array.isArray(body.added)   ? body.added   : [];
   var removed = Array.isArray(body.removed) ? body.removed : [];
