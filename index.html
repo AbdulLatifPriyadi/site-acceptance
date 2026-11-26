@@ -1960,6 +1960,9 @@ Remark = ${remark}`;
   let dashMap = null;
   let dashMarkersLayer = null;
   let dashLinesLayer = null;
+  // Bounds captured while the map container was hidden (0x0); applied when the
+  // Map tab becomes visible so the view is framed correctly.
+  let dashPendingBounds = null;
   let dashColorMode = 'gap';
   let dashTrackerData = [];
   let dashMessageLookup = {};
@@ -2655,8 +2658,22 @@ Remark = ${remark}`;
     renderStatsBar();
     if(withCoords.length){
       const bounds = L.latLngBounds(withCoords.map(s=> [s._lat, s._lng]));
-      dashMap.fitBounds(bounds, { padding:[30,30] });
-      console.log('[drawDashboardMap] zoomed to', withCoords.length, 'sites, bounds=', bounds.toBBoxString());
+      // The map container is display:none on other tabs, so it has 0x0 size.
+      // fitBounds() against a 0x0 container picks a wildly wrong zoom (clamped to
+      // maxZoom) and the map then renders shifted/wrongly framed.
+      // Only fit when the container is actually visible; otherwise remember the
+      // bounds and fit them once the Map tab is shown.
+      const mapEl = dashMap.getContainer ? dashMap.getContainer() : document.getElementById('dashMap');
+      const visible = mapEl && mapEl.offsetWidth > 0 && mapEl.offsetHeight > 0;
+      if (visible) {
+        dashMap.invalidateSize({ pan: false });
+        dashMap.fitBounds(bounds, { padding:[30,30] });
+        dashPendingBounds = null;
+        console.log('[drawDashboardMap] zoomed to', withCoords.length, 'sites, bounds=', bounds.toBBoxString());
+      } else {
+        dashPendingBounds = bounds;
+        console.log('[drawDashboardMap] container hidden — deferring fitBounds');
+      }
     } else {
       console.warn('[drawDashboardMap] no sites with coords to display');
     }
@@ -4737,6 +4754,68 @@ Remark = ${remark}`;
   }
 
   // ========== PRPO Tab Functions ==========
+  // OSRM public servers.
+  // The demo server (router.project-osrm.org) blocks abusive IPs and is
+  // best-effort only, so a single endpoint is not reliable — a blocked or
+  // rate-limited request surfaces in the browser as "Failed to fetch".
+  // We try each endpoint in turn and surface a readable message.
+  const OSRM_ENDPOINTS = [
+    'https://router.project-osrm.org',
+    'https://routing.openstreetmap.de/routed-car',
+    'https://routing.openstreetmap.de/routed-bike'
+  ];
+  const OSRM_TIMEOUT_MS = 20000;
+
+  // OSRM's usage policy asks clients to identify themselves and to keep the
+  // request rate low. We send a Referer and space requests out.
+  let _osrmLastRequestAt = 0;
+  const OSRM_MIN_INTERVAL_MS = 350;
+  async function _osrmThrottle() {
+    const wait = _osrmLastRequestAt + OSRM_MIN_INTERVAL_MS - Date.now();
+    if (wait > 0) await new Promise(r => setTimeout(r, wait));
+    _osrmLastRequestAt = Date.now();
+  }
+
+  async function fetchOsrmRoute(origin, site) {
+    const path = `/route/v1/driving/${origin.lng},${origin.lat};${site.lng},${site.lat}?geometries=geojson&overview=full&steps=false`;
+    const errors = [];
+
+    for (const base of OSRM_ENDPOINTS) {
+      await _osrmThrottle();
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), OSRM_TIMEOUT_MS);
+      try {
+        const response = await fetch(base + path, {
+          signal: controller.signal,
+          headers: { 'Accept': 'application/json' },
+          referrerPolicy: 'strict-origin-when-cross-origin'
+        });
+        clearTimeout(timer);
+        if (!response.ok) {
+          errors.push(`${base} → HTTP ${response.status}`);
+          continue;
+        }
+        const data = await response.json();
+        if (!data.routes || data.routes.length === 0) {
+          errors.push(`${base} → no route found`);
+          continue;
+        }
+        return data.routes[0];
+      } catch (err) {
+        clearTimeout(timer);
+        const reason = err && err.name === 'AbortError'
+          ? `timed out after ${Math.round(OSRM_TIMEOUT_MS / 1000)}s`
+          : (err && err.message) || String(err);
+        errors.push(`${base} → ${reason}`);
+      }
+    }
+
+    console.warn('[PRPO] All OSRM endpoints failed:', errors);
+    throw new Error('Routing service unreachable. Tried:\n' + errors.join('\n') +
+      '\n\nThis is usually a network restriction on this device (firewall, VPN or proxy). ' +
+      'Check that router.project-osrm.org is reachable, then try again.');
+  }
+
   // Origin coordinates
   const PRPO_ORIGINS = {
     huawei: { lat: -6.316122607800728, lng: 107.1798044919228, label: 'WH Huawei' },
@@ -4789,10 +4868,17 @@ Remark = ${remark}`;
 
     generateBtn.disabled = true;
     generateBtn.textContent = 'Generating…';
+    statusEl.style.color = '';
     statusEl.textContent = 'Fetching routes…';
     prpoGeneratedData = [];
 
     try {
+      // Pre-flight: confirm at least one routing endpoint answers before
+      // starting a long batch, so a blocked network fails fast with a clear
+      // message instead of "Failed to fetch" on every site.
+      statusEl.textContent = 'Checking routing service…';
+      await fetchOsrmRoute(origin, validSites[0]);
+
       for (let i = 0; i < validSites.length; i++) {
         const site = validSites[i];
         statusEl.textContent = `Generating route ${i + 1} of ${validSites.length}: ${site.siteName || site.duId}…`;
@@ -4816,7 +4902,11 @@ Remark = ${remark}`;
       statusEl.textContent = `Done: ${prpoGeneratedData.length} routes generated`;
     } catch (e) {
       console.error('[PRPO] Generation failed:', e);
-      statusEl.textContent = 'Error: ' + e.message;
+      const msg = e && e.message ? e.message : String(e);
+      statusEl.textContent = 'Error: ' + msg.split('\n')[0];
+      statusEl.style.color = '#ff6b6b';
+      // The status line is too small for the full diagnostic, so also alert it.
+      try { alert('Route generation failed:\n\n' + msg); } catch (_) {}
     } finally {
       generateBtn.disabled = false;
       generateBtn.textContent = 'Generate Routes';
@@ -4836,18 +4926,9 @@ Remark = ${remark}`;
       throw new Error('Leaflet (L) not loaded — check internet connection');
     }
 
-    const url = `https://router.project-osrm.org/route/v1/driving/${origin.lng},${origin.lat};${site.lng},${site.lat}?geometries=geojson&overview=full&steps=false`;
+    // Fetch the route via OSRM (with endpoint fallback + timeout).
+    const route = await fetchOsrmRoute(origin, site);
 
-    const response = await fetch(url);
-    if (!response.ok) throw new Error('OSRM request failed: ' + response.status);
-    const data = await response.json();
-
-    if (!data.routes || data.routes.length === 0) {
-      console.warn('[PRPO] No route found for', site.duId);
-      return null;
-    }
-
-    const route = data.routes[0];
     const distanceKm = (route.distance / 1000).toFixed(1);
     const durationMin = Math.round(route.duration / 60);
 
@@ -4887,8 +4968,15 @@ Remark = ${remark}`;
         icon: L.divIcon({ className: 'prpo-marker', html: '<div style="background:#4caf7d;color:#fff;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:bold;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.3);">D</div>', iconSize: [28, 28], iconAnchor: [14, 14] })
       }).bindPopup('Destination: ' + (site.siteName || site.duId)).addTo(map);
 
-      // Fit bounds to route - do this after layers are added
-      const bounds = routeLayer.getBounds();
+      // Fit bounds to the route AND both markers. The polyline alone can miss
+      // the true start/end (OSRM snaps to the nearest road), which pushes a
+      // marker outside the fitted view and makes the map look shifted.
+      const bounds = L.latLngBounds([
+        routeLayer.getBounds().getSouthWest(),
+        routeLayer.getBounds().getNorthEast(),
+        [origin.lat, origin.lng],
+        [site.lat, site.lng]
+      ]);
       map.fitBounds(bounds, { padding: [30, 30], maxZoom: 16 });
 
       // Wait for tiles to fully load - track tiles in current viewport
@@ -4931,7 +5019,11 @@ Remark = ${remark}`;
       let imageDataUrl = '';
       try {
         mapContainer.style.opacity = '1';
-        map.invalidateSize();
+        // invalidateSize() re-runs Leaflet's size bookkeeping; re-apply the
+        // bounds afterwards so the captured image is framed exactly on the
+        // route instead of drifting towards the default center.
+        map.invalidateSize({ pan: false });
+        map.fitBounds(bounds, { padding: [30, 30], maxZoom: 16 });
 
         await new Promise(r => setTimeout(r, 300));
 
@@ -5335,7 +5427,19 @@ Remark = ${remark}`;
     } else if (view === 'map') {
       // map view — trigger a refresh so drawDashboardMap runs
       try { refreshDashboardView(); } catch(e) { console.warn('[setDashView map]', e); }
-      if (dashMap) setTimeout(() => dashMap.invalidateSize(), 50);
+      if (dashMap) {
+        // The container was display:none until a moment ago, so Leaflet still
+        // has a stale 0x0 size. Resize first, then apply any bounds that were
+        // captured while hidden. Without this the map renders shifted.
+        setTimeout(() => {
+          if (!dashMap) return;
+          dashMap.invalidateSize({ pan: false });
+          if (dashPendingBounds) {
+            dashMap.fitBounds(dashPendingBounds, { padding: [30, 30] });
+            dashPendingBounds = null;
+          }
+        }, 50);
+      }
     } else {
       // graph view (fallback)
     }
