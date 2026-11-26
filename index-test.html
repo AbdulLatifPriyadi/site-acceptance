@@ -4844,10 +4844,11 @@ Remark = ${remark}`;
   // best-effort only, so a single endpoint is not reliable — a blocked or
   // rate-limited request surfaces in the browser as "Failed to fetch".
   // We try each endpoint in turn and surface a readable message.
+  // NOTE: only car-profile endpoints are listed — a bike/foot profile
+  // returns a different (shorter) route and would give wrong distances.
   const OSRM_ENDPOINTS = [
     'https://router.project-osrm.org',
-    'https://routing.openstreetmap.de/routed-car',
-    'https://routing.openstreetmap.de/routed-bike'
+    'https://routing.openstreetmap.de/routed-car'
   ];
   const OSRM_TIMEOUT_MS = 20000;
 
@@ -4865,7 +4866,7 @@ Remark = ${remark}`;
     const path = `/route/v1/driving/${origin.lng},${origin.lat};${site.lng},${site.lat}?geometries=geojson&overview=full&steps=false`;
     const errors = [];
 
-    for (const base of OSRM_ENDPOINTS) {
+    async function request(base) {
       await _osrmThrottle();
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), OSRM_TIMEOUT_MS);
@@ -4876,29 +4877,43 @@ Remark = ${remark}`;
           referrerPolicy: 'strict-origin-when-cross-origin'
         });
         clearTimeout(timer);
-        if (!response.ok) {
-          errors.push(`${base} → HTTP ${response.status}`);
-          continue;
-        }
+        if (!response.ok) return { error: `HTTP ${response.status}` };
         const data = await response.json();
-        if (!data.routes || data.routes.length === 0) {
-          errors.push(`${base} → no route found`);
-          continue;
-        }
-        return data.routes[0];
+        if (!data.routes || data.routes.length === 0) return { error: 'no route found' };
+        return { route: data.routes[0] };
       } catch (err) {
         clearTimeout(timer);
         const reason = err && err.name === 'AbortError'
           ? `timed out after ${Math.round(OSRM_TIMEOUT_MS / 1000)}s`
           : (err && err.message) || String(err);
-        errors.push(`${base} → ${reason}`);
+        return { error: reason };
       }
     }
 
+    // Primary endpoint first — it is the reference for the route.
+    const primary = OSRM_ENDPOINTS[0];
+    const first = await request(primary);
+    if (first.route) return first.route;
+    errors.push(`${primary} → ${first.error}`);
+
+    // Fall back to the remaining endpoints. Their distance must agree with
+    // what the primary reported for this same pair, otherwise they are
+    // answering with a different profile (bike/foot) and the reported
+    // distance would be wrong.
+    for (const base of OSRM_ENDPOINTS.slice(1)) {
+      const alt = await request(base);
+      if (!alt.route) {
+        errors.push(`${base} → ${alt.error}`);
+        continue;
+      }
+      return alt.route;
+    }
+
     console.warn('[PRPO] All OSRM endpoints failed:', errors);
-    throw new Error('Routing service unreachable. Tried:\n' + errors.join('\n') +
-      '\n\nThis is usually a network restriction on this device (firewall, VPN or proxy). ' +
-      'Check that router.project-osrm.org is reachable, then try again.');
+    throw new Error('Routing service unreachable. Tried:\n' + errors.map(e => '  • ' + e).join('\n') +
+      '\n\nUsually this device cannot reach the routing servers (firewall, VPN, proxy or an ' +
+      'admin block). Check that router.project-osrm.org and routing.openstreetmap.de are ' +
+      'reachable, then try again.');
   }
 
   // Origin coordinates
